@@ -1,7 +1,9 @@
 version: 1
 items:
-  - id: tunnel-tent-4p
-    name: 4인용 터널 텐트
+  - id: tunnel-tent-4p-khaki
+    kind: tunnel-tent-4p
+    name: 4인용 터널 텐트 카키
+    model: A사 패밀리 터널 4P
     category: shelter
     quantity: 1
     capacity:
@@ -15,10 +17,14 @@ items:
       - family
       - rain_cover
     status: ok
-  - id: sleeping-bag-3season
-    name: 3계절 침낭
-    category: sleeping
-    quantity: 2
+  - id: tunnel-tent-4p-sand
+    kind: tunnel-tent-4p
+    name: 4인용 터널 텐트 샌드
+    model: B사 리빙쉘 4P
+    category: shelter
+    quantity: 1
+    capacity:
+      people: 4
     season_support:
       spring: true
       summer: true
@@ -26,6 +32,37 @@ items:
       winter: false
     tags:
       - family
+      - rain_cover
+    status: ok
+  - id: sleeping-bag-3season-adult
+    kind: sleeping-bag-3season
+    name: 3계절 침낭 어른용
+    model: 머미형 800g
+    category: sleeping
+    quantity: 1
+    season_support:
+      spring: true
+      summer: true
+      autumn: true
+      winter: false
+    tags:
+      - family
+      - adult
+    status: ok
+  - id: sleeping-bag-3season-kid
+    kind: sleeping-bag-3season
+    name: 3계절 침낭 키즈용
+    model: 키즈형
+    category: sleeping
+    quantity: 1
+    season_support:
+      spring: true
+      summer: true
+      autumn: true
+      winter: false
+    tags:
+      - family
+      - kid
     status: ok
   - id: folding-table
     name: 접이식 테이블

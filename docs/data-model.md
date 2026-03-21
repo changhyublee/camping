@@ -116,6 +116,15 @@ AI가 원본 데이터를 해석해서 만든 추천 결과다.
 
 - 파일명과 내부 ID는 소문자 kebab-case를 사용한다
 - 예: `gapyeong-jarasum`, `family-suv`, `winter-blanket`
+- `id` 는 각 레코드를 고유하게 식별하는 값이다
+- 같은 종류의 장비가 여러 개 있더라도 각 장비 레코드는 서로 다른 `id` 를 가져야 한다
+- 같은 종류를 묶고 싶으면 `kind` 같은 별도 필드를 둔다
+
+예:
+
+- `id: tunnel-tent-4p-khaki`
+- `id: tunnel-tent-4p-sand`
+- 두 레코드 모두 `kind: tunnel-tent-4p`
 
 ### 날짜 규칙
 
@@ -233,8 +242,10 @@ companions:
 ```yaml
 version: 1
 items:
-  - id: tunnel-tent-4p
-    name: 4인용 터널 텐트
+  - id: tunnel-tent-4p-khaki
+    kind: tunnel-tent-4p
+    name: 4인용 터널 텐트 카키
+    model: A사 패밀리 터널 4P
     category: shelter
     quantity: 1
     capacity:
@@ -249,6 +260,53 @@ items:
       - rain_cover
     status: ok
     notes: 여름에는 타프와 함께 사용 권장
+  - id: tunnel-tent-4p-sand
+    kind: tunnel-tent-4p
+    name: 4인용 터널 텐트 샌드
+    model: B사 리빙쉘 4P
+    category: shelter
+    quantity: 1
+    capacity:
+      people: 4
+    season_support:
+      spring: true
+      summer: true
+      autumn: true
+      winter: false
+    tags:
+      - family
+      - rain_cover
+    status: ok
+  - id: sleeping-bag-3season-adult
+    kind: sleeping-bag-3season
+    name: 3계절 침낭 어른용
+    model: 머미형 800g
+    category: sleeping
+    quantity: 1
+    season_support:
+      spring: true
+      summer: true
+      autumn: true
+      winter: false
+    tags:
+      - family
+      - adult
+    status: ok
+  - id: sleeping-bag-3season-kid
+    kind: sleeping-bag-3season
+    name: 3계절 침낭 키즈용
+    model: 키즈형
+    category: sleeping
+    quantity: 1
+    season_support:
+      spring: true
+      summer: true
+      autumn: true
+      winter: false
+    tags:
+      - family
+      - kid
+    status: ok
   - id: firepit-basic
     name: 화로대
     category: cooking_fire
@@ -262,6 +320,19 @@ items:
       - bbq
     status: ok
 ```
+
+필드 해석:
+
+- `id`: 각 장비 레코드의 고유 식별자
+- `kind`: 같은 종류의 장비를 묶는 분류 키
+- `model`: 같은 종류 안에서 모델/사양/버전을 구분하는 설명 필드
+- `quantity`: 완전히 동일한 장비가 몇 개인지 나타내는 수량
+
+권장 입력 원칙:
+
+- 동일 모델이 2개면 `quantity: 2`
+- 같은 종류지만 서로 다른 모델이면 레코드를 2개 만들고 `id` 를 다르게 둔다
+- AI는 `kind` 와 `model` 을 함께 보고 어떤 장비를 추천할지 판단한다
 
 권장 카테고리 예시:
 
