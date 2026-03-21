@@ -4,25 +4,28 @@
 
 이 문서는 이 저장소에서 작업하는 코딩 에이전트를 위한 저장소 단위 지침이다.
 
-이 저장소는 서버 중심 구조가 아니라 로컬 파일과 Codex CLI를 사용하는 로컬 우선 캠핑 분석 프로젝트다.
+이 저장소는 원격 서버 중심 구조가 아니라 로컬 파일, 로컬 웹 UI, 로컬 API를 사용하는 로컬 우선 캠핑 분석 프로젝트다.
 
 ## 먼저 읽을 문서
 
 의미 있는 변경을 하기 전에 아래 순서로 문서를 읽는다.
 
-1. [`README.md`](/Users/leech/workspace/camping/camping/README.md)
-2. [`docs/requirements.md`](/Users/leech/workspace/camping/camping/docs/requirements.md)
-3. [`docs/index.md`](/Users/leech/workspace/camping/camping/docs/index.md)
-4. [`docs/technical-architecture.md`](/Users/leech/workspace/camping/camping/docs/technical-architecture.md)
-5. [`docs/data-model.md`](/Users/leech/workspace/camping/camping/docs/data-model.md)
-6. [`docs/trip-analysis-workflow.md`](/Users/leech/workspace/camping/camping/docs/trip-analysis-workflow.md)
-7. [`docs/mvp-scope.md`](/Users/leech/workspace/camping/camping/docs/mvp-scope.md)
+1. [`README.md`](README.md)
+2. [`docs/requirements.md`](docs/requirements.md)
+3. [`docs/index.md`](docs/index.md)
+4. [`docs/technical-architecture.md`](docs/technical-architecture.md)
+5. [`docs/local-ui-transition-plan.md`](docs/local-ui-transition-plan.md)
+6. [`docs/local-api-contract.md`](docs/local-api-contract.md)
+7. [`docs/ui-flow.md`](docs/ui-flow.md)
+8. [`docs/data-model.md`](docs/data-model.md)
+9. [`docs/trip-analysis-workflow.md`](docs/trip-analysis-workflow.md)
+10. [`docs/mvp-scope.md`](docs/mvp-scope.md)
 
 작업이 예시 파일이나 세팅과 관련되어 있으면 아래도 함께 읽는다.
 
-- [`docs/example-files.md`](/Users/leech/workspace/camping/camping/docs/example-files.md)
-- [`docs/project-setup-checklist.md`](/Users/leech/workspace/camping/camping/docs/project-setup-checklist.md)
-- [`docs/prompt-design.md`](/Users/leech/workspace/camping/camping/docs/prompt-design.md)
+- [`docs/example-files.md`](docs/example-files.md)
+- [`docs/project-setup-checklist.md`](docs/project-setup-checklist.md)
+- [`docs/prompt-design.md`](docs/prompt-design.md)
 
 ## 기준 문서
 
@@ -35,9 +38,10 @@
 
 1. `docs/requirements.md`
 2. `docs/technical-architecture.md`
-3. `docs/data-model.md`
-4. `docs/trip-analysis-workflow.md`
-5. `README.md`
+3. `docs/local-api-contract.md`
+4. `docs/data-model.md`
+5. `docs/trip-analysis-workflow.md`
+6. `README.md`
 
 ## 문서 작성 원칙
 
@@ -48,11 +52,12 @@
 
 ## 프로젝트 원칙
 
-- 서버 없이 시작한다.
+- 원격 서버 없이 시작한다.
 - 이 프로젝트를 로컬 우선 도구로 다룬다.
 - 실제 운영 사용자 데이터는 `./.camping-data/` 에 저장한다.
 - GitHub는 운영 데이터 저장소가 아니라 코드와 문서 저장소로 사용한다.
-- Codex CLI를 주요 분석 실행 주체로 사용한다.
+- 로컬 웹 UI와 로컬 API를 주요 실행 구조로 사용한다.
+- OpenAI 호출은 로컬 API를 통해 수행한다.
 - 사람이 관리하는 데이터는 YAML로 저장한다.
 - 분석 결과는 Markdown으로 저장한다.
 
@@ -108,6 +113,14 @@
 - 세팅 문서
 - 예시 데이터
 
+### `apps/web/`
+
+- 로컬 웹 UI
+
+### `apps/api/`
+
+- 로컬 API 서버
+
 ### `.camping-data/`
 
 - 로컬 운영 데이터
@@ -116,8 +129,9 @@
 
 ## 가드레일
 
-- 사용자가 명시적으로 방향을 바꾸지 않는 한 서버 중심 구조를 도입하지 않는다.
+- 사용자가 명시적으로 방향을 바꾸지 않는 한 원격 서버 중심 구조를 도입하지 않는다.
 - 기본값으로 운영 저장소를 로컬 파일에서 GitHub 중심 흐름으로 바꾸지 않는다.
+- 브라우저에서 OpenAI API를 직접 호출하지 않는다.
 - `.camping-data/` 의 실제 사용자 데이터를 커밋하지 않는다.
 - `docs/examples/` 를 운영 상태로 취급하지 않는다. 이 경로는 예시와 참고용이다.
 - `README.md` 와 `docs/requirements.md` 를 다시 하나의 파일로 합치지 않는다.
@@ -127,25 +141,29 @@
 
 다음 구현 단계는 아래 순서를 우선한다.
 
-1. `prompts/` 생성
-2. `schemas/` 생성
-3. `scripts/validate-data` 생성
-4. `scripts/plan-trip` 생성
-5. 예시 `.camping-data/` 생성
-6. 첫 번째 종단간 분석 루프 실행
+1. `apps/api/` 생성
+2. `apps/web/` 생성
+3. `prompts/` 생성
+4. `schemas/` 생성
+5. `scripts/validate-data` 생성
+6. `scripts/analyze-trip` 생성
+7. 예시 `.camping-data/` 생성
+8. 첫 번째 종단간 분석 루프 실행
 
 ## 파일 생성 기준
 
 새 파일을 추가할 때는 아래 문서의 디렉토리 구조를 따른다.
 
-- [`docs/directory-structure.md`](/Users/leech/workspace/camping/camping/docs/directory-structure.md)
+- [`docs/directory-structure.md`](docs/directory-structure.md)
 
 예상되는 향후 디렉토리:
 
 ```text
+apps/
 prompts/
 schemas/
 scripts/
+shared/
 .camping-data/
 ```
 

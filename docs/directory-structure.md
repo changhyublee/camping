@@ -7,7 +7,7 @@
 목표는 다음과 같다.
 
 - 코드, 문서, 예시, 로컬 운영 데이터를 분리
-- Codex CLI가 읽어야 할 파일 위치를 명확히 함
+- 로컬 웹 UI와 로컬 API가 읽어야 할 파일 위치를 명확히 함
 - v1 구현 시 파일 배치를 흔들리지 않게 고정
 
 ## 2. 최상위 구조
@@ -18,9 +18,11 @@
 .
 ├── README.md
 ├── docs/
+├── apps/
 ├── prompts/
 ├── schemas/
 ├── scripts/
+├── shared/
 └── .camping-data/
 ```
 
@@ -35,9 +37,11 @@
 
 - `README.md`
 - `docs/`
+- `apps/`
 - `prompts/`
 - `schemas/`
 - `scripts/`
+- `shared/`
 
 ### `docs/`
 
@@ -49,14 +53,66 @@
 
 - 요구사항 문서
 - 아키텍처 문서
+- 전환 계획 문서
+- 로컬 API 계약 문서
+- UI 흐름 문서
 - 데이터 모델 문서
 - 워크플로우 문서
 - 프롬프트 설계 문서
 - 예시 YAML/Markdown
 
+### `apps/web/`
+
+- 로컬 브라우저 UI
+- 사용자 입력, 실행, 결과 표시를 담당
+
+권장 하위 구조:
+
+```text
+apps/web/
+├── src/
+│   ├── pages/
+│   ├── components/
+│   ├── hooks/
+│   ├── api/
+│   └── styles/
+└── public/
+```
+
+### `apps/api/`
+
+- 로컬 API 서버
+- 파일 읽기, 입력 검증, OpenAI 호출, 결과 저장을 담당
+
+권장 하위 구조:
+
+```text
+apps/api/
+├── src/
+│   ├── routes/
+│   ├── services/
+│   ├── prompts/
+│   ├── validators/
+│   └── file-store/
+└── tests/
+```
+
+### `shared/`
+
+- 프론트엔드와 API가 공통으로 쓰는 타입/상수/유틸
+
+권장 파일:
+
+```text
+shared/
+├── types/
+├── constants/
+└── utils/
+```
+
 ### `prompts/`
 
-- Codex CLI 분석용 프롬프트 소스
+- OpenAI 분석용 프롬프트 소스
 
 권장 파일:
 
@@ -94,10 +150,10 @@ schemas/
 
 ```text
 scripts/
-├── plan-trip.(ts|js|py)
-├── validate-data.(ts|js|py)
-├── create-trip-template.(ts|js|py)
-└── export-backup.(ts|js|py)
+├── analyze-trip.(ts|js)
+├── validate-data.(ts|js)
+├── create-trip-template.(ts|js)
+└── export-backup.(ts|js)
 ```
 
 ### `.camping-data/`
@@ -191,14 +247,12 @@ scripts/
 
 ```gitignore
 .camping-data/
-```
-
-필요에 따라 아래도 추가 가능하다.
-
-```gitignore
-.DS_Store
+.env
+.env.local
+.env.*.local
 node_modules/
 dist/
+.DS_Store
 ```
 
 ## 8. 파일 네이밍 규칙
@@ -240,6 +294,10 @@ v1 최소 구조는 아래만 있어도 된다.
 .
 ├── README.md
 ├── docs/
+├── apps/
+│   ├── web/
+│   └── api/
+├── prompts/
 ├── .camping-data/
 │   ├── profile.yaml
 │   ├── companions.yaml
@@ -249,7 +307,7 @@ v1 최소 구조는 아래만 있어도 된다.
 │   └── outputs/
 ```
 
-즉, `prompts/`, `schemas/`, `scripts/` 는 초기에 비어 있어도 된다.
+즉, `schemas/`, `scripts/`, `shared/` 는 초기에 비어 있어도 된다.
 
 ## 10. 현재 결정 사항
 
@@ -257,3 +315,4 @@ v1 최소 구조는 아래만 있어도 된다.
 - 문서 예시는 `docs/examples/` 에 둔다
 - 결과 파일은 Markdown으로 저장한다
 - trip 파일이 분석 실행의 기준 경로다
+- 로컬 웹 UI는 `apps/web/`, 로컬 API는 `apps/api/` 를 기본 경로로 한다
