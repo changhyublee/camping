@@ -305,6 +305,7 @@ export function App() {
 
   async function handleDeleteTrip() {
     if (!selectedTripId) return;
+    if (!confirmDeletion(`캠핑 계획을 삭제할까요?\n${selectedTripId}`)) return;
 
     try {
       await apiClient.deleteTrip(selectedTripId);
@@ -607,6 +608,8 @@ export function App() {
     section: EquipmentSection,
     itemId: string,
   ) {
+    if (!confirmDeletion(`장비 항목을 삭제할까요?\n${section} / ${itemId}`)) return;
+
     try {
       await apiClient.deleteEquipmentItem(section, itemId);
       setEquipment(await apiClient.getEquipment());
@@ -706,6 +709,8 @@ export function App() {
   }
 
   async function handleDeleteHistory(historyId: string) {
+    if (!confirmDeletion(`캠핑 히스토리를 삭제할까요?\n${historyId}`)) return;
+
     try {
       await apiClient.deleteHistory(historyId);
       const response = await apiClient.getHistory();
@@ -767,6 +772,8 @@ export function App() {
   }
 
   async function handleDeleteLink(linkId: string) {
+    if (!confirmDeletion(`외부 링크를 삭제할까요?\n${linkId}`)) return;
+
     try {
       await apiClient.deleteLink(linkId);
       setLinks((current) => current.filter((item) => item.id !== linkId));
@@ -2379,4 +2386,8 @@ function getErrorMessage(error: unknown): string {
 function toValidationWarnings(error: unknown): string[] {
   const message = getErrorMessage(error);
   return message ? [message] : ["검증 결과를 가져오지 못했습니다."];
+}
+
+function confirmDeletion(message: string): boolean {
+  return window.confirm(message);
 }

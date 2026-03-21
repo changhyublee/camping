@@ -56,14 +56,15 @@ type MockState = {
 };
 
 let state: MockState;
-
 beforeEach(() => {
   state = createMockState();
   fetchMock.mockImplementation(mockFetch);
+  vi.spyOn(window, "confirm").mockReturnValue(true);
 });
 
 afterEach(() => {
   fetchMock.mockReset();
+  vi.restoreAllMocks();
 });
 
 function jsonResponse(body: unknown, status = 200) {
@@ -499,7 +500,37 @@ describe("App", () => {
     await waitFor(() => {
       expect(screen.getByText("장비 삭제 완료")).toBeInTheDocument();
     });
+    expect(window.confirm).toHaveBeenCalledWith(
+      "장비 항목을 삭제할까요?\ndurable / sleeping-bag-3season-adult",
+    );
     expect(screen.queryByDisplayValue("침낭")).not.toBeInTheDocument();
+  });
+
+  it("does not delete equipment when the confirmation is cancelled", async () => {
+    vi.mocked(window.confirm).mockReturnValue(false);
+    state.equipment.durable.items = [
+      {
+        id: "sleeping-bag-3season-adult",
+        name: "침낭",
+        category: "sleep",
+        quantity: 1,
+        status: "ok",
+      },
+    ];
+
+    render(<App />);
+
+    await userEvent.click(await screen.findByRole("button", { name: "장비 관리" }));
+
+    expect(await screen.findByDisplayValue("침낭")).toBeInTheDocument();
+
+    await userEvent.click(screen.getByRole("button", { name: "삭제" }));
+
+    expect(window.confirm).toHaveBeenCalledWith(
+      "장비 항목을 삭제할까요?\ndurable / sleeping-bag-3season-adult",
+    );
+    expect(screen.queryByText("장비 삭제 완료")).not.toBeInTheDocument();
+    expect(screen.getByDisplayValue("침낭")).toBeInTheDocument();
   });
 
   it("opens archived output markdown from history detail", async () => {
