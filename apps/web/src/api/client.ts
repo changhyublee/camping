@@ -1,9 +1,19 @@
 import type {
   AnalyzeTripRequest,
   AnalyzeTripResponse,
+  ConsumableEquipmentItemInput,
+  DurableEquipmentItemInput,
+  EquipmentCatalog,
+  EquipmentSection,
+  ExternalLink,
+  ExternalLinkInput,
+  HistoryRecord,
+  PlanningAssistantResponse,
+  PrecheckItemInput,
   SaveOutputRequest,
   SaveOutputResponse,
   TripData,
+  TripDraft,
   TripSummary,
   ValidateTripResponse,
 } from "@camping/shared";
@@ -17,6 +27,11 @@ type ApiErrorPayload = {
     message?: string;
   };
 };
+
+type EquipmentItemInput =
+  | DurableEquipmentItemInput
+  | ConsumableEquipmentItemInput
+  | PrecheckItemInput;
 
 export class ApiClientError extends Error {
   code?: string;
@@ -51,8 +66,42 @@ export const apiClient = {
   async getTrips(): Promise<{ items: TripSummary[] }> {
     return request("/api/trips");
   },
+  async createTrip(input: TripDraft): Promise<{ trip_id: string; data: TripData }> {
+    return request("/api/trips", {
+      method: "POST",
+      body: JSON.stringify(input),
+    });
+  },
   async getTrip(tripId: string): Promise<{ trip_id: string; data: TripData }> {
     return request(`/api/trips/${tripId}`);
+  },
+  async updateTrip(
+    tripId: string,
+    input: TripDraft,
+  ): Promise<{ trip_id: string; data: TripData }> {
+    return request(`/api/trips/${tripId}`, {
+      method: "PUT",
+      body: JSON.stringify(input),
+    });
+  },
+  async deleteTrip(tripId: string): Promise<{ status: "deleted" }> {
+    return request(`/api/trips/${tripId}`, {
+      method: "DELETE",
+    });
+  },
+  async archiveTrip(tripId: string): Promise<{ item: HistoryRecord }> {
+    return request(`/api/trips/${tripId}/archive`, {
+      method: "POST",
+    });
+  },
+  async assistTrip(
+    tripId: string,
+    message: string,
+  ): Promise<PlanningAssistantResponse> {
+    return request(`/api/trips/${tripId}/assistant`, {
+      method: "POST",
+      body: JSON.stringify({ message }),
+    });
   },
   async validateTrip(tripId: string): Promise<ValidateTripResponse> {
     return request("/api/validate-trip", {
@@ -70,6 +119,76 @@ export const apiClient = {
     return request("/api/outputs", {
       method: "POST",
       body: JSON.stringify(input),
+    });
+  },
+  async getEquipment(): Promise<EquipmentCatalog> {
+    return request("/api/equipment");
+  },
+  async createEquipmentItem(
+    section: EquipmentSection,
+    input: EquipmentItemInput,
+  ): Promise<{ item: EquipmentItemInput }> {
+    return request(`/api/equipment/${section}/items`, {
+      method: "POST",
+      body: JSON.stringify(input),
+    });
+  },
+  async updateEquipmentItem(
+    section: EquipmentSection,
+    itemId: string,
+    input: EquipmentItemInput,
+  ): Promise<{ item: EquipmentItemInput }> {
+    return request(`/api/equipment/${section}/items/${itemId}`, {
+      method: "PUT",
+      body: JSON.stringify(input),
+    });
+  },
+  async deleteEquipmentItem(
+    section: EquipmentSection,
+    itemId: string,
+  ): Promise<{ status: "deleted" }> {
+    return request(`/api/equipment/${section}/items/${itemId}`, {
+      method: "DELETE",
+    });
+  },
+  async getHistory(): Promise<{ items: HistoryRecord[] }> {
+    return request("/api/history");
+  },
+  async updateHistory(
+    historyId: string,
+    input: HistoryRecord,
+  ): Promise<{ item: HistoryRecord }> {
+    return request(`/api/history/${historyId}`, {
+      method: "PUT",
+      body: JSON.stringify(input),
+    });
+  },
+  async deleteHistory(historyId: string): Promise<{ status: "deleted" }> {
+    return request(`/api/history/${historyId}`, {
+      method: "DELETE",
+    });
+  },
+  async getLinks(): Promise<{ items: ExternalLink[] }> {
+    return request("/api/links");
+  },
+  async createLink(input: ExternalLinkInput): Promise<{ item: ExternalLink }> {
+    return request("/api/links", {
+      method: "POST",
+      body: JSON.stringify(input),
+    });
+  },
+  async updateLink(
+    linkId: string,
+    input: ExternalLinkInput,
+  ): Promise<{ item: ExternalLink }> {
+    return request(`/api/links/${linkId}`, {
+      method: "PUT",
+      body: JSON.stringify(input),
+    });
+  },
+  async deleteLink(linkId: string): Promise<{ status: "deleted" }> {
+    return request(`/api/links/${linkId}`, {
+      method: "DELETE",
     });
   },
 };

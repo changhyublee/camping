@@ -227,6 +227,197 @@ describe("API server", () => {
     await app.close();
   });
 
+  it("creates, updates, and deletes a trip through CRUD endpoints", async () => {
+    const dataDir = await createSeededDataDir();
+    const app = await buildServer({
+      dataDir,
+      projectRoot,
+      modelClient: new MockAnalysisClient("# sample"),
+    });
+
+    const createResponse = await app.inject({
+      method: "POST",
+      url: "/api/trips",
+      payload: {
+        version: 1,
+        trip_id: "2026-05-01-sokcho",
+        title: "5월 속초 캠핑",
+        date: { start: "2026-05-01", end: "2026-05-02" },
+        location: { region: "sokcho" },
+        party: { companion_ids: ["self"] },
+      },
+    });
+
+    expect(createResponse.statusCode).toBe(200);
+    expect(createResponse.json()).toEqual(
+      expect.objectContaining({
+        trip_id: "2026-05-01-sokcho",
+        data: expect.objectContaining({
+          title: "5월 속초 캠핑",
+        }),
+      }),
+    );
+
+    const updateResponse = await app.inject({
+      method: "PUT",
+      url: "/api/trips/2026-05-01-sokcho",
+      payload: {
+        version: 1,
+        title: "5월 속초 가족 캠핑",
+        date: { start: "2026-05-01", end: "2026-05-03" },
+        location: { region: "sokcho" },
+        party: { companion_ids: ["self", "child-1"] },
+      },
+    });
+
+    expect(updateResponse.statusCode).toBe(200);
+    expect(updateResponse.json().data.title).toBe("5월 속초 가족 캠핑");
+
+    const deleteResponse = await app.inject({
+      method: "DELETE",
+      url: "/api/trips/2026-05-01-sokcho",
+    });
+
+    expect(deleteResponse.statusCode).toBe(200);
+    expect(deleteResponse.json()).toEqual({ status: "deleted" });
+
+    await app.close();
+  });
+
+  it("archives a trip into history", async () => {
+    const dataDir = await createSeededDataDir();
+    const app = await buildServer({
+      dataDir,
+      projectRoot,
+      modelClient: new MockAnalysisClient("# sample"),
+    });
+
+    const archiveResponse = await app.inject({
+      method: "POST",
+      url: "/api/trips/2026-04-18-gapyeong/archive",
+    });
+
+    expect(archiveResponse.statusCode).toBe(200);
+    expect(archiveResponse.json().item).toEqual(
+      expect.objectContaining({
+        history_id: "2026-04-18-gapyeong",
+        source_trip_id: "2026-04-18-gapyeong",
+      }),
+    );
+
+    const historyResponse = await app.inject({
+      method: "GET",
+      url: "/api/history",
+    });
+
+    expect(historyResponse.statusCode).toBe(200);
+    expect(historyResponse.json().items).toEqual(
+      expect.arrayContaining([
+        expect.objectContaining({
+          history_id: "2026-04-18-gapyeong",
+        }),
+      ]),
+    );
+
+    const tripResponse = await app.inject({
+      method: "GET",
+      url: "/api/trips/2026-04-18-gapyeong",
+    });
+
+    expect(tripResponse.statusCode).toBe(404);
+
+    await app.close();
+  });
+
+  it("manages equipment and links through CRUD endpoints", async () => {
+    const dataDir = await createSeededDataDir();
+    const app = await buildServer({
+      dataDir,
+      projectRoot,
+      modelClient: new MockAnalysisClient("# sample"),
+    });
+
+    const createEquipmentResponse = await app.inject({
+      method: "POST",
+      url: "/api/equipment/durable/items",
+      payload: {
+        name: "루프 박스",
+        category: "storage",
+        quantity: 1,
+        status: "ok",
+      },
+    });
+
+    expect(createEquipmentResponse.statusCode).toBe(200);
+    const createdEquipmentId = createEquipmentResponse.json().item.id as string;
+
+    const updateEquipmentResponse = await app.inject({
+      method: "PUT",
+      url: `/api/equipment/durable/items/${createdEquipmentId}`,
+      payload: {
+        id: createdEquipmentId,
+        name: "루프 박스",
+        category: "storage",
+        quantity: 2,
+        status: "ok",
+      },
+    });
+
+    expect(updateEquipmentResponse.statusCode).toBe(200);
+    expect(updateEquipmentResponse.json().item.quantity).toBe(2);
+
+    const createLinkResponse = await app.inject({
+      method: "POST",
+      url: "/api/links",
+      payload: {
+        name: "기상청",
+        category: "weather",
+        url: "https://www.weather.go.kr",
+        notes: "공식 예보",
+      },
+    });
+
+    expect(createLinkResponse.statusCode).toBe(200);
+    expect(createLinkResponse.json().item.name).toBe("기상청");
+
+    const deleteEquipmentResponse = await app.inject({
+      method: "DELETE",
+      url: `/api/equipment/durable/items/${createdEquipmentId}`,
+    });
+
+    expect(deleteEquipmentResponse.statusCode).toBe(200);
+
+    await app.close();
+  });
+
+  it("returns planning assistant guidance and actions", async () => {
+    const dataDir = await createSeededDataDir();
+    const app = await buildServer({
+      dataDir,
+      projectRoot,
+      modelClient: new MockAnalysisClient("### AI 보조 응답\n- 우천 대비 장비를 확인하세요."),
+    });
+
+    const response = await app.inject({
+      method: "POST",
+      url: "/api/trips/2026-04-18-gapyeong/assistant",
+      payload: {
+        message: "이번에는 비 예보가 있어",
+      },
+    });
+
+    expect(response.statusCode).toBe(200);
+    expect(response.json()).toEqual(
+      expect.objectContaining({
+        trip_id: "2026-04-18-gapyeong",
+        assistant_message: expect.stringContaining("AI 보조 응답"),
+        actions: expect.any(Array),
+      }),
+    );
+
+    await app.close();
+  });
+
   it("returns markdown with OUTPUT_SAVE_FAILED when analyze-trip save_output cannot write the file", async () => {
     const dataDir = await createSeededDataDir();
     const outputsPath = path.join(dataDir, "outputs");

@@ -1,0 +1,20 @@
+version: 1
+items:
+  - id: weather-kma
+    category: weather
+    name: 기상청
+    url: https://www.weather.go.kr
+    notes: 공식 날씨 예보
+    sort_order: 1
+  - id: map-kakao
+    category: place
+    name: 카카오맵
+    url: https://map.kakao.com
+    notes: 장소와 경로 확인
+    sort_order: 2
+  - id: food-naver
+    category: food
+    name: 네이버 플레이스 맛집 검색
+    url: https://map.naver.com
+    notes: 캠핑장 근처 맛집 찾기
+    sort_order: 3

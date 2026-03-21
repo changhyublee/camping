@@ -44,7 +44,9 @@ export async function buildServer(
         error.code === "TRIP_NOT_FOUND" ||
         error.code === "DEPENDENCY_MISSING" ||
         error.code === "OUTPUT_SAVE_FAILED" ||
-        error.code === "OPENAI_REQUEST_FAILED"
+        error.code === "OPENAI_REQUEST_FAILED" ||
+        error.code === "RESOURCE_NOT_FOUND" ||
+        error.code === "CONFLICT"
       ) {
         return reply.status(status).send({
           status: "failed",
