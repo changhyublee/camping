@@ -8,7 +8,7 @@
 
 - 실제 `.camping-data/` 구성을 쉽게 시작
 - YAML 구조를 문서가 아니라 파일 단위로 확인
-- Codex CLI 분석 전에 샘플 데이터를 검토
+- 로컬 UI와 로컬 API 구현 전에 샘플 데이터를 검토
 
 ## 2. 예시 파일 위치
 
@@ -16,15 +16,15 @@
 
 목록:
 
-- [`docs/examples/profile.yaml`](/Users/leech/workspace/camping/camping/docs/examples/profile.yaml)
-- [`docs/examples/companions.yaml`](/Users/leech/workspace/camping/camping/docs/examples/companions.yaml)
-- [`docs/examples/equipment/durable.yaml`](/Users/leech/workspace/camping/camping/docs/examples/equipment/durable.yaml)
-- [`docs/examples/equipment/consumables.yaml`](/Users/leech/workspace/camping/camping/docs/examples/equipment/consumables.yaml)
-- [`docs/examples/equipment/precheck.yaml`](/Users/leech/workspace/camping/camping/docs/examples/equipment/precheck.yaml)
-- [`docs/examples/preferences/travel.yaml`](/Users/leech/workspace/camping/camping/docs/examples/preferences/travel.yaml)
-- [`docs/examples/preferences/food.yaml`](/Users/leech/workspace/camping/camping/docs/examples/preferences/food.yaml)
-- [`docs/examples/trips/2026-04-18-gapyeong.yaml`](/Users/leech/workspace/camping/camping/docs/examples/trips/2026-04-18-gapyeong.yaml)
-- [`docs/examples/outputs/2026-04-18-gapyeong-plan.md`](/Users/leech/workspace/camping/camping/docs/examples/outputs/2026-04-18-gapyeong-plan.md)
+- [`docs/examples/profile.yaml`](examples/profile.yaml)
+- [`docs/examples/companions.yaml`](examples/companions.yaml)
+- [`docs/examples/equipment/durable.yaml`](examples/equipment/durable.yaml)
+- [`docs/examples/equipment/consumables.yaml`](examples/equipment/consumables.yaml)
+- [`docs/examples/equipment/precheck.yaml`](examples/equipment/precheck.yaml)
+- [`docs/examples/preferences/travel.yaml`](examples/preferences/travel.yaml)
+- [`docs/examples/preferences/food.yaml`](examples/preferences/food.yaml)
+- [`docs/examples/trips/2026-04-18-gapyeong.yaml`](examples/trips/2026-04-18-gapyeong.yaml)
+- [`docs/examples/outputs/2026-04-18-gapyeong-plan.md`](examples/outputs/2026-04-18-gapyeong-plan.md)
 
 ## 3. 사용 방법
 
@@ -32,7 +32,8 @@
 
 1. `docs/examples/` 파일을 참고한다
 2. 실제 운영 시에는 내용을 복사해 `.camping-data/` 아래에 저장한다
-3. trip 파일만 바꿔가며 반복 분석한다
+3. UI에서 trip 파일을 선택하거나 로컬 API 테스트 입력으로 사용한다
+4. 결과 Markdown을 예시 출력과 비교한다
 
 ## 4. 파일별 설명
 
@@ -64,10 +65,12 @@
 ### `trips/*.yaml`
 
 - 실제 분석 요청 단위
+- 로컬 UI와 로컬 API가 함께 참조하는 핵심 입력
 
 ### `outputs/*.md`
 
 - 결과 문서 예시
+- UI 결과 영역이 어떤 정보를 보여줘야 하는지 확인하는 기준
 
 ## 5. 예시 데이터의 의도
 
@@ -79,8 +82,7 @@
 - 봄철 일교차가 큰 환경
 - 저녁 바비큐, 아침 간단식 선호
 
-이 시나리오를 기준으로
-연령대별 개인 준비물, 장비 추천, 요리 제안, 이동/주변 추천이 어떻게 연결되는지 확인할 수 있다.
+이 시나리오를 기준으로 연령대별 개인 준비물, 장비 추천, 요리 제안, 이동/주변 추천이 어떻게 연결되는지 확인할 수 있다.
 
 ## 6. 다음 단계
 
@@ -88,5 +90,6 @@
 
 1. 실제 `.camping-data/` 샘플 생성
 2. trip 파일 변경
-3. Codex CLI 분석 실행
-4. 결과 Markdown 비교
+3. 로컬 API 분석 실행
+4. UI에서 결과 Markdown 렌더링 확인
+5. 결과 Markdown 비교

@@ -1,12 +1,14 @@
 # Claude 작업 지침
 
-이 저장소에서 작업하는 Claude 또는 Claude 호환 에이전트는 [`AGENTS.md`](/Users/leech/workspace/camping/camping/AGENTS.md)를 기본 저장소 지침 문서로 따른다.
+이 저장소에서 작업하는 Claude 또는 Claude 호환 에이전트는 [`AGENTS.md`](AGENTS.md)를 기본 저장소 지침 문서로 따른다.
 
 ## 최소 필수 규칙
 
-- 큰 작업 전에 [`README.md`](/Users/leech/workspace/camping/camping/README.md) 와 [`docs/requirements.md`](/Users/leech/workspace/camping/camping/docs/requirements.md) 를 읽는다.
+- 큰 작업 전에 [`README.md`](README.md) 와 [`docs/requirements.md`](docs/requirements.md) 를 읽는다.
 - 이 프로젝트를 로컬 우선 구조로 다룬다.
-- 기본값으로 서버 중심 설계를 도입하지 않는다.
+- 기본값으로 원격 서버 중심 설계를 도입하지 않는다.
+- 기본 실행 구조는 로컬 웹 UI와 로컬 API다.
+- OpenAI 호출은 브라우저가 아니라 로컬 API가 담당한다.
 - 운영 사용자 데이터는 `./.camping-data/` 를 사용한다.
 - `.camping-data/` 의 실제 사용자 데이터를 커밋하지 않는다.
 - `docs/examples/` 는 예시로만 사용하고 운영 상태로 취급하지 않는다.
@@ -17,7 +19,7 @@
 
 ## 읽기 순서
 
-1. [`AGENTS.md`](/Users/leech/workspace/camping/camping/AGENTS.md)
-2. [`README.md`](/Users/leech/workspace/camping/camping/README.md)
-3. [`docs/requirements.md`](/Users/leech/workspace/camping/camping/docs/requirements.md)
-4. [`docs/index.md`](/Users/leech/workspace/camping/camping/docs/index.md)
+1. [`AGENTS.md`](AGENTS.md)
+2. [`README.md`](README.md)
+3. [`docs/requirements.md`](docs/requirements.md)
+4. [`docs/index.md`](docs/index.md)
