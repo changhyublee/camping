@@ -19,6 +19,9 @@ export function ResultPane({
   isSaving,
   onSave,
 }: ResultPaneProps) {
+  const partialSaveFailureMessage =
+    response?.error?.code === "OUTPUT_SAVE_FAILED" ? response.error.message : null;
+
   return (
     <section className="panel panel--result">
       <div className="panel__eyebrow">Result</div>
@@ -35,6 +38,14 @@ export function ResultPane({
 
       {saveMessage ? (
         <StatusBanner tone="success" title="저장 완료" description={saveMessage} />
+      ) : null}
+
+      {partialSaveFailureMessage ? (
+        <StatusBanner
+          tone="warning"
+          title="결과 생성 완료, 저장 실패"
+          description={partialSaveFailureMessage}
+        />
       ) : null}
 
       {response?.warnings.length ? (

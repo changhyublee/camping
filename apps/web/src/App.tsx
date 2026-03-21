@@ -120,7 +120,11 @@ export function App() {
         save_output: saveOutput,
       });
       setAnalysisResponse(response);
-      setAnalysisError(response.error?.message ?? null);
+      setAnalysisError(
+        response.error?.code === "OUTPUT_SAVE_FAILED"
+          ? null
+          : response.error?.message ?? null,
+      );
 
       if (response.output_path) {
         setSaveMessage(`결과를 ${response.output_path} 에 저장했다.`);

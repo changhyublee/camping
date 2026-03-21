@@ -181,8 +181,12 @@ describe("App", () => {
       await screen.findByRole("button", { name: "분석 실행" }),
     );
 
+    expect(screen.queryByText("분석 실패")).not.toBeInTheDocument();
     expect(
-      await screen.findByText("분석 결과를 저장하지 못했습니다: 2026-04-18-gapyeong"),
+      await screen.findByText("결과 생성 완료, 저장 실패"),
+    ).toBeInTheDocument();
+    expect(
+      screen.getByText("분석 결과를 저장하지 못했습니다: 2026-04-18-gapyeong"),
     ).toBeInTheDocument();
     expect(screen.getByText("저장만 실패")).toBeInTheDocument();
   });

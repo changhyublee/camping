@@ -71,12 +71,6 @@
 }
 ```
 
-저장 옵션 관련 규칙:
-
-- `save_output: true` 분석에서 저장만 실패하면 HTTP 200으로 응답할 수 있다
-- 이 경우 `status: "failed"` 와 `error.code: "OUTPUT_SAVE_FAILED"` 를 함께 내려주고, 생성된 `markdown` 본문은 유지한다
-- UI는 이 응답을 치명적 분석 실패가 아니라 `결과는 생성됐지만 저장은 실패한 상태`로 처리해야 한다
-
 ### `GET /api/trips/:tripId`
 
 목적:
@@ -159,6 +153,13 @@
   "output_path": null
 }
 ```
+
+저장 옵션 관련 규칙:
+
+- `save_output: true` 분석에서 저장만 실패하면 HTTP 200으로 응답할 수 있다
+- 이 경우 `status: "failed"` 와 `error.code: "OUTPUT_SAVE_FAILED"` 를 함께 내려주고, 생성된 `markdown` 본문은 유지한다
+- UI는 이 응답을 치명적 분석 실패가 아니라 `결과는 생성됐지만 저장은 실패한 상태`로 처리해야 한다
+- UI는 Markdown 본문을 유지한 채 `warning` 또는 partial-success 상태를 보여주고, 사용자가 다시 저장을 시도할 수 있어야 한다
 
 ### `POST /api/outputs`
 
