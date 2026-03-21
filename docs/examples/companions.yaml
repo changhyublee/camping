@@ -1,0 +1,24 @@
+version: 1
+companions:
+  - id: self
+    name: 본인
+    age_group: adult
+    birth_year: 1990
+    health_notes: []
+    required_medications: []
+    traits:
+      cold_sensitive: false
+      heat_sensitive: false
+      rain_sensitive: false
+  - id: child-1
+    name: 첫째
+    age_group: preschooler
+    birth_year: 2021
+    health_notes:
+      - skin_sensitive
+    required_medications:
+      - pediatric-fever-medicine
+    traits:
+      cold_sensitive: true
+      heat_sensitive: false
+      rain_sensitive: true

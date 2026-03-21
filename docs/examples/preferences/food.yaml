@@ -1,0 +1,16 @@
+version: 1
+favorite_styles:
+  - bbq
+  - stew
+  - simple_breakfast
+disliked_ingredients:
+  - cilantro
+allergies: []
+meal_preferences:
+  breakfast: light
+  lunch: local_restaurant
+  dinner: campsite_cooking
+cooking_preferences:
+  preferred_difficulty: easy
+  preferred_time_minutes: 40
+  prefer_hot_food_in_cold_weather: true

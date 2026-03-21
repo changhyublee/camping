@@ -1,0 +1,23 @@
+version: 1
+items:
+  - id: butane-gas
+    name: 부탄가스
+    category: fuel
+    quantity_on_hand: 4
+    unit: can
+    low_stock_threshold: 2
+    status: ok
+  - id: mosquito-coil
+    name: 모기향
+    category: insect_repellent
+    quantity_on_hand: 1
+    unit: pack
+    low_stock_threshold: 1
+    status: low
+  - id: fire-starter
+    name: 착화제
+    category: ignition
+    quantity_on_hand: 2
+    unit: pack
+    low_stock_threshold: 1
+    status: ok

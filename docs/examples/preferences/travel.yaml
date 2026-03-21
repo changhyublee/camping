@@ -1,0 +1,13 @@
+version: 1
+travel_style:
+  preferred_stop_count: 1
+  max_extra_drive_minutes: 60
+  avoid_heavy_traffic: true
+interests:
+  - nature
+  - river_walk
+  - local_market
+constraints:
+  pet_friendly_required: false
+  child_friendly_preferred: true
+  indoor_backup_needed: true
