@@ -51,7 +51,7 @@
 - [`trip-analysis-workflow.md`](trip-analysis-workflow.md)
   - UI 입력부터 결과 출력까지의 워크플로우
 - [`prompt-design.md`](prompt-design.md)
-  - OpenAI 응답 생성에 사용하는 프롬프트 설계
+  - AI 응답 생성에 사용하는 프롬프트 설계
 
 ### 범위와 착수
 
@@ -74,9 +74,23 @@
 - [`docs/examples/trips/2026-04-18-gapyeong.yaml`](examples/trips/2026-04-18-gapyeong.yaml)
 - [`docs/examples/outputs/2026-04-18-gapyeong-plan.md`](examples/outputs/2026-04-18-gapyeong-plan.md)
 
-## 현재 추천 다음 단계
+## 현재 상태
 
-1. `apps/web/` 와 `apps/api/` 뼈대를 만든다
-2. `prompts/` 와 `schemas/` 디렉토리를 만든다
-3. `docs/examples/` 기준으로 실제 `.camping-data/` 샘플을 만든다
-4. 로컬 API에서 OpenAI 응답 호출과 결과 저장을 연결한다
+현재 저장소에는 아래 MVP 구현이 포함되어 있다.
+
+- `apps/web/` 로컬 UI
+- `apps/api/` 로컬 API
+- `shared/` 공통 타입과 검증 스키마
+- `prompts/` 실제 분석 프롬프트
+- `schemas/` Codex CLI 출력 스키마
+- `scripts/seed-local-data.ts` 시드 스크립트
+
+## 현재 권장 실행 순서
+
+1. `pnpm install`
+2. `cp .env.example .env`
+3. `codex login`
+4. `pnpm seed`
+5. `pnpm dev:api`
+6. `pnpm dev:web`
+7. 필요하면 `pnpm typecheck`, `pnpm test`, `pnpm build`

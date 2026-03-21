@@ -7,13 +7,13 @@
 목표:
 
 - UI 구현 전에 요청/응답 형식을 고정
-- 파일 읽기, OpenAI 호출, 저장 책임을 API 계층에 모음
+- 파일 읽기, AI 백엔드 호출, 저장 책임을 API 계층에 모음
 - 브라우저가 OpenAI API 키를 직접 다루지 않도록 경계를 분명히 함
 
 ## 2. 기본 원칙
 
 - 모든 API는 로컬 환경에서만 실행한다
-- OpenAI 호출은 API 서버만 수행한다
+- AI 백엔드 호출은 API 서버만 수행한다
 - UI는 `trip_id` 와 사용자 액션 중심으로 요청한다
 - 운영 데이터는 계속 `.camping-data/` 에 저장한다
 - `trip_id` 는 데이터 모델의 파일명 규칙과 동일한 소문자 kebab-case를 따른다
@@ -22,6 +22,7 @@
 
 - `trip_id` 는 `2026-04-18-gapyeong` 같은 소문자 kebab-case만 허용한다
 - `trip_id` 에 `/`, `\\`, `.`, `..` 같은 경로 문자는 허용하지 않는다
+- `trips/<trip-id>.yaml` 파일명과 YAML 내부 `trip_id` 는 반드시 같아야 한다
 - 분석 요청은 날짜와 장소가 모두 비어 있으면 실패로 처리한다
 - 날짜만 있거나 장소만 있는 경우는 경고와 함께 분석을 계속할 수 있다
 - 동행자 정보가 비어 있으면 분석을 중단한다
@@ -39,7 +40,12 @@
 
 ```json
 {
-  "status": "ok"
+  "status": "ok",
+  "backend": "codex-cli",
+  "ready": true,
+  "auth_status": "ok",
+  "model": "gpt-5.4",
+  "message": "Logged in using ChatGPT"
 }
 ```
 
@@ -148,6 +154,13 @@
 }
 ```
 
+저장 옵션 관련 규칙:
+
+- `save_output: true` 분석에서 저장만 실패하면 HTTP 200으로 응답할 수 있다
+- 이 경우 `status: "failed"` 와 `error.code: "OUTPUT_SAVE_FAILED"` 를 함께 내려주고, 생성된 `markdown` 본문은 유지한다
+- UI는 이 응답을 치명적 분석 실패가 아니라 `결과는 생성됐지만 저장은 실패한 상태`로 처리해야 한다
+- UI는 Markdown 본문을 유지한 채 `warning` 또는 partial-success 상태를 보여주고, 사용자가 다시 저장을 시도할 수 있어야 한다
+
 ### `POST /api/outputs`
 
 목적:
@@ -252,7 +265,9 @@ type AnalyzeTripResponse = {
 
 ## 7. 보안 규칙
 
-- `OPENAI_API_KEY` 는 로컬 API 프로세스 환경변수로만 주입한다
+- 기본 인증은 로컬 `codex login` 세션을 사용한다
+- `OPENAI_API_KEY` 는 fallback OpenAI 백엔드를 사용할 때만 로컬 API 프로세스 환경변수로 주입한다
+- 로컬 실행 시 루트 `.env` 파일을 읽어 API와 web 설정을 공유할 수 있다
 - 브라우저 번들에 키를 포함하지 않는다
 - API 응답에 키나 내부 프롬프트 전체를 노출하지 않는다
 

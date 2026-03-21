@@ -82,7 +82,7 @@ apps/web/
 ### `apps/api/`
 
 - 로컬 API 서버
-- 파일 읽기, 입력 검증, OpenAI 호출, 결과 저장을 담당
+- 파일 읽기, 입력 검증, AI 백엔드 호출, 결과 저장을 담당
 
 권장 하위 구조:
 
@@ -112,15 +112,14 @@ shared/
 
 ### `prompts/`
 
-- OpenAI 분석용 프롬프트 소스
+- 로컬 Codex CLI 또는 OpenAI fallback 분석용 프롬프트 소스
 
 권장 파일:
 
 ```text
 prompts/
 ├── system.md
-├── trip-analysis.md
-└── output-format.md
+└── trip-analysis.md
 ```
 
 ### `schemas/`
