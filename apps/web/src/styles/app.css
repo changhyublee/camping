@@ -333,6 +333,30 @@ code {
   gap: 10px;
 }
 
+.companion-panel {
+  display: grid;
+  gap: 14px;
+  margin-top: 18px;
+}
+
+.companion-card__header {
+  display: flex;
+  align-items: flex-start;
+  justify-content: space-between;
+  gap: 12px;
+}
+
+.companion-card__header strong {
+  display: block;
+}
+
+.companion-card__header p,
+.companion-card__copy {
+  margin: 6px 0 0;
+  color: var(--muted);
+  line-height: 1.5;
+}
+
 .form-grid {
   grid-template-columns: repeat(2, minmax(0, 1fr));
 }

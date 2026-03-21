@@ -6,7 +6,9 @@ import type {
   analyzeTripResponseSchema,
   apiErrorSchema,
   backendHealthSchema,
+  companionIdSchema,
   companionSchema,
+  companionInputSchema,
   companionsSchema,
   consumableEquipmentItemSchema,
   consumableEquipmentItemInputSchema,
@@ -53,7 +55,9 @@ export type ErrorCode =
   | "INTERNAL_ERROR";
 
 export type ProfileData = z.infer<typeof profileSchema>;
+export type CompanionId = z.infer<typeof companionIdSchema>;
 export type Companion = z.infer<typeof companionSchema>;
+export type CompanionInput = z.infer<typeof companionInputSchema>;
 export type CompanionsData = z.infer<typeof companionsSchema>;
 export type DurableEquipmentItem = z.infer<typeof durableEquipmentItemSchema>;
 export type DurableEquipmentItemInput = z.infer<

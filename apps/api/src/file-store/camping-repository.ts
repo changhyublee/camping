@@ -8,6 +8,7 @@ import {
 } from "node:fs/promises";
 import path from "node:path";
 import {
+  companionSchema,
   companionsSchema,
   consumableEquipmentSchema,
   durableEquipmentSchema,
@@ -26,6 +27,9 @@ import {
   type ConsumableEquipmentData,
   type ConsumableEquipmentItem,
   type ConsumableEquipmentItemInput,
+  type Companion,
+  type CompanionInput,
+  type CompanionsData,
   type DurableEquipmentData,
   type DurableEquipmentItem,
   type DurableEquipmentItemInput,
@@ -227,6 +231,104 @@ export class CampingRepository {
     await rm(this.getHistoryFilePath(historyId), { force: true });
   }
 
+  async readCompanions(): Promise<CompanionsData> {
+    const companionsPath = this.getCompanionsPath();
+
+    if (!(await fileExists(companionsPath))) {
+      return {
+        version: 1,
+        companions: [],
+      };
+    }
+
+    const companions = await this.readYamlFile(
+      companionsPath,
+      companionsSchema,
+      "RESOURCE_NOT_FOUND",
+      "companions.yaml 파일을 찾을 수 없습니다.",
+      "TRIP_INVALID",
+      "companions.yaml 형식이 올바르지 않습니다.",
+    );
+
+    return {
+      ...companions,
+      companions: [...companions.companions].sort(sortByName),
+    };
+  }
+
+  async createCompanion(input: CompanionInput): Promise<Companion> {
+    const companions = await this.readCompanions();
+
+    if (companions.companions.some((item) => item.id === input.id)) {
+      throw new AppError(
+        "CONFLICT",
+        `같은 id 의 동행자가 이미 존재합니다: ${input.id}`,
+        409,
+      );
+    }
+
+    const companion = companionSchema.parse(input);
+
+    await this.writeYamlFile(this.getCompanionsPath(), {
+      version: companions.version,
+      companions: [...companions.companions, companion].sort(sortByName),
+    });
+
+    return companion;
+  }
+
+  async updateCompanion(
+    companionId: string,
+    input: CompanionInput,
+  ): Promise<Companion> {
+    const companions = await this.readCompanions();
+    const index = companions.companions.findIndex((item) => item.id === companionId);
+
+    if (index < 0) {
+      throw new AppError(
+        "RESOURCE_NOT_FOUND",
+        `수정할 동행자를 찾을 수 없습니다: ${companionId}`,
+        404,
+      );
+    }
+
+    const nextCompanion = companionSchema.parse({
+      ...input,
+      id: companionId,
+    });
+
+    companions.companions[index] = nextCompanion;
+    companions.companions.sort(sortByName);
+    await this.writeYamlFile(this.getCompanionsPath(), companions);
+    return nextCompanion;
+  }
+
+  async deleteCompanion(companionId: string): Promise<void> {
+    const companions = await this.readCompanions();
+    const nextItems = companions.companions.filter((item) => item.id !== companionId);
+
+    if (nextItems.length === companions.companions.length) {
+      throw new AppError(
+        "RESOURCE_NOT_FOUND",
+        `삭제할 동행자를 찾을 수 없습니다: ${companionId}`,
+        404,
+      );
+    }
+
+    if (await this.isCompanionReferenced(companionId)) {
+      throw new AppError(
+        "CONFLICT",
+        `현재 계획 또는 히스토리에서 사용 중인 동행자는 삭제할 수 없습니다: ${companionId}`,
+        409,
+      );
+    }
+
+    await this.writeYamlFile(this.getCompanionsPath(), {
+      version: companions.version,
+      companions: nextItems,
+    });
+  }
+
   async readLinks(): Promise<ExternalLinksData> {
     const linksPath = this.getLinksPath();
 
@@ -403,14 +505,7 @@ export class CampingRepository {
         "TRIP_INVALID",
         "profile.yaml 형식이 올바르지 않습니다.",
       ),
-      this.readYamlFile(
-        path.join(this.config.dataDir, "companions.yaml"),
-        companionsSchema,
-        "DEPENDENCY_MISSING",
-        "companions.yaml 파일이 필요합니다.",
-        "TRIP_INVALID",
-        "companions.yaml 형식이 올바르지 않습니다.",
-      ),
+      this.readCompanions(),
       this.readDurableEquipment(),
       this.readConsumables(),
       this.readPrecheck(),
@@ -896,6 +991,10 @@ export class CampingRepository {
     return path.join(this.config.dataDir, "links.yaml");
   }
 
+  private getCompanionsPath() {
+    return path.join(this.config.dataDir, "companions.yaml");
+  }
+
   private getDurablePath() {
     return path.join(this.config.dataDir, "equipment", "durable.yaml");
   }
@@ -978,6 +1077,49 @@ export class CampingRepository {
     }
 
     return candidate;
+  }
+
+  private async isCompanionReferenced(companionId: string): Promise<boolean> {
+    const [tripFiles, historyFiles] = await Promise.all([
+      this.listYamlFiles(this.getTripsDir()),
+      this.listYamlFiles(this.getHistoryDir()),
+    ]);
+
+    const tripMatches = await Promise.all(
+      tripFiles.map(async (fileName) => {
+        const tripId = fileName.replace(/\.ya?ml$/u, "");
+
+        if (!isTripId(tripId)) {
+          return false;
+        }
+
+        try {
+          const trip = await this.readTrip(tripId);
+          return trip.party.companion_ids.includes(companionId);
+        } catch {
+          return false;
+        }
+      }),
+    );
+
+    if (tripMatches.some(Boolean)) {
+      return true;
+    }
+
+    const historyMatches = await Promise.all(
+      historyFiles.map(async (fileName) => {
+        const historyId = fileName.replace(/\.ya?ml$/u, "");
+
+        try {
+          const history = await this.readHistory(historyId);
+          return history.companion_ids.includes(companionId);
+        } catch {
+          return false;
+        }
+      }),
+    );
+
+    return historyMatches.some(Boolean);
   }
 }
 

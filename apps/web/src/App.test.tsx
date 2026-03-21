@@ -3,6 +3,7 @@ import userEvent from "@testing-library/user-event";
 import { afterEach, beforeEach, describe, expect, it, vi } from "vitest";
 import type {
   AnalyzeTripResponse,
+  Companion,
   EquipmentCatalog,
   GetOutputResponse,
   HistoryRecord,
@@ -31,6 +32,7 @@ type FailedValidationResponse = {
 };
 
 type MockState = {
+  companions: Companion[];
   trips: TripSummary[];
   tripDetails: Record<string, TripData>;
   validations: Record<
@@ -125,6 +127,11 @@ function readTripIdFromPath(pathname: string) {
   return match?.[1] ?? null;
 }
 
+function readCompanionIdFromPath(pathname: string) {
+  const match = pathname.match(/^\/api\/companions\/([^/]+)$/u);
+  return match?.[1] ?? null;
+}
+
 function readOutputTripIdFromPath(pathname: string) {
   const match = pathname.match(/^\/api\/outputs\/([^/]+)$/u);
   return match?.[1] ?? null;
@@ -152,8 +159,40 @@ function mockFetch(input: RequestInfo | URL, init?: RequestInit) {
     return jsonResponse({ items: state.trips });
   }
 
+  if (pathname === "/api/companions" && method === "GET") {
+    return jsonResponse({ items: state.companions });
+  }
+
+  if (pathname === "/api/companions" && method === "POST") {
+    const body = parseBody(init) as Companion;
+
+    state.companions.push(body);
+    state.companions.sort((left, right) => left.name.localeCompare(right.name, "ko"));
+
+    return jsonResponse({ item: body });
+  }
+
   if (pathname === "/api/equipment" && method === "GET") {
     return jsonResponse(state.equipment);
+  }
+
+  const companionIdFromPath = readCompanionIdFromPath(pathname);
+
+  if (companionIdFromPath && method === "PUT") {
+    const body = parseBody(init) as Companion;
+    const index = state.companions.findIndex((item) => item.id === companionIdFromPath);
+
+    if (index >= 0) {
+      state.companions[index] = body;
+    }
+
+    state.companions.sort((left, right) => left.name.localeCompare(right.name, "ko"));
+    return jsonResponse({ item: body });
+  }
+
+  if (companionIdFromPath && method === "DELETE") {
+    state.companions = state.companions.filter((item) => item.id !== companionIdFromPath);
+    return emptyResponse();
   }
 
   const equipmentDeleteParams = readEquipmentDeleteParams(pathname);
@@ -360,6 +399,40 @@ describe("App", () => {
     expect(screen.getByText("저장만 실패")).toBeInTheDocument();
   });
 
+  it("keeps the app usable when companion loading fails on startup", async () => {
+    fetchMock.mockImplementation((input, init) => {
+      const rawUrl = typeof input === "string" ? input : input.toString();
+      const pathname = new URL(rawUrl, "http://localhost").pathname;
+      const method = init?.method?.toUpperCase() ?? "GET";
+
+      if (pathname === "/api/companions" && method === "GET") {
+        return jsonResponse(
+          {
+            status: "failed",
+            error: {
+              code: "TRIP_INVALID",
+              message: "companions.yaml 형식이 올바르지 않습니다.",
+            },
+          },
+          400,
+        );
+      }
+
+      return mockFetch(input, init);
+    });
+
+    render(<App />);
+
+    expect(await screen.findByText("동행자 목록 로딩 경고")).toBeInTheDocument();
+    expect(
+      screen.getByText(
+        "동행자 목록을 불러오지 못했습니다. companions.yaml 형식이 올바르지 않습니다.",
+      ),
+    ).toBeInTheDocument();
+    expect(await screen.findByText("운영 현황")).toBeInTheDocument();
+    expect(screen.queryByText("초기 로딩 실패")).not.toBeInTheDocument();
+  });
+
   it("keeps an invalid trip editable and saves it to the selected trip id", async () => {
     state.trips.push({
       trip_id: "2026-04-20-broken-trip",
@@ -426,12 +499,44 @@ describe("App", () => {
     );
   });
 
+  it("auto-creates missing companions when saving a trip", async () => {
+    render(<App />);
+
+    await userEvent.click(await screen.findByRole("button", { name: "캠핑 계획" }));
+
+    const companionInput = await screen.findByPlaceholderText(
+      "동행자 ID, 콤마 구분 (예: self, child-1)",
+    );
+
+    await userEvent.clear(companionInput);
+    await userEvent.type(companionInput, "self, ghost");
+    await userEvent.click(screen.getByRole("button", { name: "계획 저장" }));
+
+    await waitFor(() => {
+      expect(state.updateTripCalls).toHaveLength(1);
+      expect(state.companions.some((item) => item.id === "ghost")).toBe(true);
+    });
+
+    expect(state.updateTripCalls[0]).toEqual(
+      expect.objectContaining({
+        body: expect.objectContaining({
+          party: {
+            companion_ids: ["self", "ghost"],
+          },
+        }),
+      }),
+    );
+    expect(await screen.findByText(/기본 프로필로 추가했습니다/u)).toBeInTheDocument();
+  });
+
   it("preserves trailing commas in companion input while saving parsed ids", async () => {
     render(<App />);
 
     await userEvent.click(await screen.findByRole("button", { name: "캠핑 계획" }));
 
-    const companionInput = await screen.findByPlaceholderText("동행자 ID, 콤마 구분");
+    const companionInput = await screen.findByPlaceholderText(
+      "동행자 ID, 콤마 구분 (예: self, child-1)",
+    );
 
     await userEvent.clear(companionInput);
     await userEvent.type(companionInput, "self,");
@@ -777,6 +882,34 @@ function createMockState(): MockState {
   };
 
   return {
+    companions: [
+      {
+        id: "self",
+        name: "본인",
+        age_group: "adult",
+        birth_year: 1990,
+        health_notes: [],
+        required_medications: [],
+        traits: {
+          cold_sensitive: false,
+          heat_sensitive: false,
+          rain_sensitive: false,
+        },
+      },
+      {
+        id: "child-1",
+        name: "첫째",
+        age_group: "preschooler",
+        birth_year: 2021,
+        health_notes: [],
+        required_medications: [],
+        traits: {
+          cold_sensitive: true,
+          heat_sensitive: false,
+          rain_sensitive: true,
+        },
+      },
+    ],
     trips: [summarizeTrip(trip)],
     tripDetails: {
       [trip.trip_id]: trip,

@@ -28,6 +28,7 @@
 
 ## 4. 파일별 설명
 
+- `companions.yaml`: 동행자 ID 기준 목록과 이름/연령대/건강 정보
 - `equipment/*.yaml`: 장비, 소모품, 점검 항목
 - `trips/*.yaml`: 앞으로 갈 계획
 - `history/*.yaml`: 완료된 캠핑 기록

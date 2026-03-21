@@ -142,6 +142,99 @@ describe("API server", () => {
     await app.close();
   });
 
+  it("lists companions and creates a missing companion profile", async () => {
+    const dataDir = await createSeededDataDir();
+    const app = await buildServer({
+      dataDir,
+      projectRoot,
+      modelClient: new MockAnalysisClient("# sample"),
+    });
+
+    const listResponse = await app.inject({
+      method: "GET",
+      url: "/api/companions",
+    });
+
+    expect(listResponse.statusCode).toBe(200);
+    expect(listResponse.json().items).toEqual(
+      expect.arrayContaining([
+        expect.objectContaining({
+          id: "self",
+          name: "본인",
+        }),
+      ]),
+    );
+
+    const createResponse = await app.inject({
+      method: "POST",
+      url: "/api/companions",
+      payload: {
+        id: "ghost",
+        name: "ghost",
+        age_group: "adult",
+        health_notes: [],
+        required_medications: [],
+        traits: {
+          cold_sensitive: false,
+          heat_sensitive: false,
+          rain_sensitive: false,
+        },
+      },
+    });
+
+    expect(createResponse.statusCode).toBe(200);
+    expect(createResponse.json().item).toEqual(
+      expect.objectContaining({
+        id: "ghost",
+        name: "ghost",
+      }),
+    );
+
+    const companions = parse(
+      await readFile(path.join(dataDir, "companions.yaml"), "utf8"),
+    ) as {
+      companions: Array<{ id: string }>;
+    };
+
+    expect(companions.companions.map((item) => item.id)).toContain("ghost");
+
+    await app.close();
+  });
+
+  it("rejects companion ids that are not kebab-case", async () => {
+    const dataDir = await createSeededDataDir();
+    const app = await buildServer({
+      dataDir,
+      projectRoot,
+      modelClient: new MockAnalysisClient("# sample"),
+    });
+
+    const response = await app.inject({
+      method: "POST",
+      url: "/api/companions",
+      payload: {
+        id: "Ghost/1",
+        name: "잘못된 ID",
+        age_group: "adult",
+        health_notes: [],
+        required_medications: [],
+        traits: {},
+      },
+    });
+
+    expect(response.statusCode).toBe(400);
+    expect(response.json()).toEqual(
+      expect.objectContaining({
+        status: "failed",
+        error: expect.objectContaining({
+          code: "TRIP_INVALID",
+        }),
+      }),
+    );
+
+    await app.close();
+  });
+
   it("rejects a trip file when the file name and internal trip_id do not match", async () => {
     const dataDir = await createSeededDataDir();
     const tripPath = path.join(dataDir, "trips", "2026-04-18-gapyeong.yaml");

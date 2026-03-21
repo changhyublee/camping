@@ -48,13 +48,14 @@
 ### 4단계. 프론트엔드 뼈대 생성
 
 - [ ] `apps/web` 초기 프로젝트 생성
-- [ ] trip 목록/상세 화면 기본 레이아웃 작성
+- [ ] 메뉴형 레이아웃과 계획/동행자 관리 화면 기본 구조 작성
 - [ ] 분석 실행 버튼과 상태 표시 추가
 - [ ] 결과 Markdown 렌더링 영역 추가
 
 ### 5단계. 로컬 API 뼈대 생성
 
 - [ ] `apps/api` 초기 프로젝트 생성
+- [ ] `GET /api/companions` 구현
 - [ ] `GET /api/trips` 구현
 - [ ] `GET /api/trips/:tripId` 구현
 - [ ] `POST /api/analyze-trip` 구현

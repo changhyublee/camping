@@ -24,6 +24,7 @@ export const generalStatusSchema = z.enum([
 export const tripIdSchema = baseIdSchema;
 export const historyIdSchema = baseIdSchema;
 export const externalLinkIdSchema = baseIdSchema;
+export const companionIdSchema = baseIdSchema;
 export const equipmentSectionSchema = z.enum([
   "durable",
   "consumables",
@@ -55,7 +56,7 @@ export const profileSchema = z.object({
 });
 
 export const companionSchema = z.object({
-  id: z.string().min(1),
+  id: companionIdSchema,
   name: z.string().min(1),
   age_group: ageGroupSchema,
   birth_year: z.number().int().optional(),
@@ -69,6 +70,8 @@ export const companionSchema = z.object({
     })
     .default({}),
 });
+
+export const companionInputSchema = companionSchema;
 
 export const companionsSchema = z.object({
   version: z.number().int().positive(),
@@ -219,7 +222,7 @@ export const tripSchema = z.object({
     })
     .optional(),
   party: z.object({
-    companion_ids: z.array(z.string()).default([]),
+    companion_ids: z.array(companionIdSchema).default([]),
   }),
   vehicle: z
     .object({
@@ -288,7 +291,7 @@ export const historyRecordSchema = z.object({
       region: z.string().optional(),
     })
     .optional(),
-  companion_ids: z.array(z.string()).default([]),
+  companion_ids: z.array(companionIdSchema).default([]),
   attendee_count: z.number().int().nonnegative().optional(),
   notes: z.array(z.string()).default([]),
   archived_at: z.string().min(1),

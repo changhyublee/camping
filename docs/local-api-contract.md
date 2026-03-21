@@ -9,7 +9,7 @@
 - 모든 API는 로컬 환경에서만 실행한다
 - 브라우저는 OpenAI API를 직접 호출하지 않는다
 - 운영 데이터는 `.camping-data/` 에 저장한다
-- `trip_id`, `history_id`, 링크 `id` 는 소문자 kebab-case를 사용한다
+- `trip_id`, `history_id`, 동행자 `id`, 링크 `id` 는 소문자 kebab-case를 사용한다
 - `trip_id` 는 `trips/`, `history/`, `outputs/` 와 충돌하지 않게 유지한다
 
 ## 3. 엔드포인트
@@ -17,6 +17,13 @@
 ### 공통
 
 - `GET /api/health`
+
+### 동행자
+
+- `GET /api/companions`
+- `POST /api/companions`
+- `PUT /api/companions/:companionId`
+- `DELETE /api/companions/:companionId`
 
 ### 캠핑 계획
 
@@ -72,6 +79,20 @@
       "start_date": "2026-04-18",
       "region": "gapyeong",
       "companion_count": 2
+    }
+  ]
+}
+```
+
+### `GET /api/companions`
+
+```json
+{
+  "items": [
+    {
+      "id": "self",
+      "name": "본인",
+      "age_group": "adult"
     }
   ]
 }

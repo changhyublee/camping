@@ -1,6 +1,8 @@
 import type {
   AnalyzeTripRequest,
   AnalyzeTripResponse,
+  Companion,
+  CompanionInput,
   ConsumableEquipmentItemInput,
   DurableEquipmentItemInput,
   EquipmentCatalog,
@@ -71,6 +73,29 @@ async function request<T>(path: string, init?: RequestInit): Promise<T> {
 }
 
 export const apiClient = {
+  async getCompanions(): Promise<{ items: Companion[] }> {
+    return request("/api/companions");
+  },
+  async createCompanion(input: CompanionInput): Promise<{ item: Companion }> {
+    return request("/api/companions", {
+      method: "POST",
+      body: JSON.stringify(input),
+    });
+  },
+  async updateCompanion(
+    companionId: string,
+    input: CompanionInput,
+  ): Promise<{ item: Companion }> {
+    return request(`/api/companions/${companionId}`, {
+      method: "PUT",
+      body: JSON.stringify(input),
+    });
+  },
+  async deleteCompanion(companionId: string): Promise<{ status: "deleted" }> {
+    return request(`/api/companions/${companionId}`, {
+      method: "DELETE",
+    });
+  },
   async getTrips(): Promise<{ items: TripSummary[] }> {
     return request("/api/trips");
   },

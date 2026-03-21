@@ -1,6 +1,8 @@
 import type { FastifyInstance } from "fastify";
 import {
   analyzeTripRequestSchema,
+  companionIdSchema,
+  companionInputSchema,
   consumableEquipmentItemInputSchema,
   durableEquipmentItemInputSchema,
   equipmentSectionSchema,
@@ -40,6 +42,16 @@ function readEquipmentSection(value: unknown) {
   return parsed.data;
 }
 
+function readCompanionIdParam(value: unknown) {
+  const parsed = companionIdSchema.safeParse(value);
+
+  if (!parsed.success) {
+    throw new AppError("TRIP_INVALID", "동행자 ID 형식이 올바르지 않습니다.", 400);
+  }
+
+  return parsed.data;
+}
+
 function parseEquipmentBody(section: string, body: unknown) {
   switch (section) {
     case "durable": {
@@ -74,11 +86,52 @@ function parseEquipmentBody(section: string, body: unknown) {
   }
 }
 
+function parseCompanionBody(body: unknown) {
+  const parsed = companionInputSchema.safeParse(body);
+
+  if (!parsed.success) {
+    throw new AppError("TRIP_INVALID", "동행자 요청 형식이 올바르지 않습니다.", 400);
+  }
+
+  return parsed.data;
+}
+
 export async function registerApiRoutes(
   app: FastifyInstance,
   analysisService: AnalysisService,
 ) {
   app.get("/api/health", async () => analysisService.getHealthStatus());
+
+  app.get("/api/companions", async () => ({
+    items: await analysisService.listCompanions(),
+  }));
+
+  app.post("/api/companions", async (request) => {
+    return {
+      item: await analysisService.createCompanion(parseCompanionBody(request.body)),
+    };
+  });
+
+  app.put("/api/companions/:companionId", async (request) => {
+    const companionId = readCompanionIdParam(
+      (request.params as { companionId?: unknown }).companionId,
+    );
+
+    return {
+      item: await analysisService.updateCompanion(
+        companionId,
+        parseCompanionBody(request.body),
+      ),
+    };
+  });
+
+  app.delete("/api/companions/:companionId", async (request) => {
+    const companionId = readCompanionIdParam(
+      (request.params as { companionId?: unknown }).companionId,
+    );
+
+    return analysisService.deleteCompanion(companionId);
+  });
 
   app.get("/api/trips", async () => ({
     items: await analysisService.listTrips(),

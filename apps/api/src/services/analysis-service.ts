@@ -1,6 +1,8 @@
 import type {
   AnalyzeTripRequest,
   AnalyzeTripResponse,
+  Companion,
+  CompanionInput,
   ConsumableEquipmentItemInput,
   DurableEquipmentItemInput,
   EquipmentCatalog,
@@ -66,6 +68,26 @@ export class AnalysisService {
 
   async listHistory() {
     return this.repository.listHistory();
+  }
+
+  async listCompanions() {
+    return (await this.repository.readCompanions()).companions;
+  }
+
+  async createCompanion(input: CompanionInput): Promise<Companion> {
+    return this.repository.createCompanion(input);
+  }
+
+  async updateCompanion(
+    companionId: string,
+    input: CompanionInput,
+  ): Promise<Companion> {
+    return this.repository.updateCompanion(companionId, input);
+  }
+
+  async deleteCompanion(companionId: string) {
+    await this.repository.deleteCompanion(companionId);
+    return { status: "deleted" as const };
   }
 
   async getHistory(historyId: string) {

@@ -2,6 +2,7 @@ import { useEffect, useMemo, useRef, useState } from "react";
 import ReactMarkdown from "react-markdown";
 import type {
   AnalyzeTripResponse,
+  Companion,
   ConsumableEquipmentItem,
   ConsumableEquipmentItemInput,
   DurableEquipmentItem,
@@ -20,7 +21,7 @@ import type {
   TripDraft,
   TripSummary,
 } from "@camping/shared";
-import { EXTERNAL_LINK_CATEGORY_LABELS } from "@camping/shared";
+import { AGE_GROUP_LABELS, EXTERNAL_LINK_CATEGORY_LABELS } from "@camping/shared";
 import { apiClient, ApiClientError } from "./api/client";
 import { StatusBanner } from "./components/StatusBanner";
 
@@ -40,6 +41,10 @@ type CommaSeparatedInputs = {
 
 export function App() {
   const [activePage, setActivePage] = useState<PageKey>("dashboard");
+  const [companions, setCompanions] = useState<Companion[]>([]);
+  const [companionDraft, setCompanionDraft] =
+    useState<Companion>(createEmptyCompanion());
+  const [editingCompanionId, setEditingCompanionId] = useState<string | null>(null);
   const [trips, setTrips] = useState<TripSummary[]>([]);
   const [selectedTripId, setSelectedTripId] = useState<string | null>(null);
   const [tripDraft, setTripDraft] = useState<TripDraft | null>(null);
@@ -159,6 +164,15 @@ export function App() {
     [links],
   );
 
+  const missingCompanionIds = useMemo(
+    () =>
+      getMissingCompanionIds(
+        tripDraft?.party?.companion_ids ?? [],
+        companions.map((item) => item.id),
+      ),
+    [companions, tripDraft?.party?.companion_ids],
+  );
+
   useEffect(() => {
     selectedHistoryIdRef.current = selectedHistoryId;
     setHistoryOutput(null);
@@ -203,22 +217,59 @@ export function App() {
     setLoadError(null);
 
     try {
-      const [tripResponse, equipmentResponse, historyResponse, linkResponse] =
-        await Promise.all([
-          apiClient.getTrips(),
-          apiClient.getEquipment(),
-          apiClient.getHistory(),
-          apiClient.getLinks(),
-        ]);
+      const [
+        companionResponse,
+        tripResponse,
+        equipmentResponse,
+        historyResponse,
+        linkResponse,
+      ] = await Promise.allSettled([
+        apiClient.getCompanions(),
+        apiClient.getTrips(),
+        apiClient.getEquipment(),
+        apiClient.getHistory(),
+        apiClient.getLinks(),
+      ]);
 
-      setTrips(tripResponse.items);
-      setEquipment(equipmentResponse);
-      setHistory(historyResponse.items);
-      setLinks(linkResponse.items);
-      setSelectedTripId((current) => current ?? tripResponse.items?.[0]?.trip_id ?? null);
-      setSelectedHistoryId(
-        (current) => current ?? historyResponse.items?.[0]?.history_id ?? null,
+      if (tripResponse.status === "rejected") {
+        throw tripResponse.reason;
+      }
+
+      if (equipmentResponse.status === "rejected") {
+        throw equipmentResponse.reason;
+      }
+
+      if (historyResponse.status === "rejected") {
+        throw historyResponse.reason;
+      }
+
+      if (linkResponse.status === "rejected") {
+        throw linkResponse.reason;
+      }
+
+      setTrips(tripResponse.value.items);
+      setEquipment(equipmentResponse.value);
+      setHistory(historyResponse.value.items);
+      setLinks(linkResponse.value.items);
+      setSelectedTripId(
+        (current) => current ?? tripResponse.value.items?.[0]?.trip_id ?? null,
       );
+      setSelectedHistoryId(
+        (current) => current ?? historyResponse.value.items?.[0]?.history_id ?? null,
+      );
+
+      if (companionResponse.status === "fulfilled") {
+        setCompanions(companionResponse.value.items);
+      } else {
+        setCompanions([]);
+        setOperationState({
+          title: "동행자 목록 로딩 경고",
+          tone: "warning",
+          description: `동행자 목록을 불러오지 못했습니다. ${getErrorMessage(
+            companionResponse.reason,
+          )}`,
+        });
+      }
     } catch (error) {
       setLoadError(getErrorMessage(error));
     } finally {
@@ -254,6 +305,132 @@ export function App() {
     setTripDraft((current) => (current ? updater(current) : current));
   }
 
+  function beginCreateCompanion(companionId?: string) {
+    setEditingCompanionId(null);
+    setCompanionDraft(createEmptyCompanion(companionId));
+  }
+
+  function beginEditCompanion(companion: Companion) {
+    setEditingCompanionId(companion.id);
+    setCompanionDraft({
+      ...companion,
+      health_notes: [...companion.health_notes],
+      required_medications: [...companion.required_medications],
+      traits: {
+        cold_sensitive: companion.traits.cold_sensitive ?? false,
+        heat_sensitive: companion.traits.heat_sensitive ?? false,
+        rain_sensitive: companion.traits.rain_sensitive ?? false,
+      },
+    });
+  }
+
+  async function ensureCompanionProfiles(companionIds: string[]) {
+    const missingIds = getMissingCompanionIds(
+      companionIds,
+      companions.map((item) => item.id),
+    );
+
+    if (missingIds.length === 0) {
+      return [];
+    }
+
+    const createdIds: string[] = [];
+
+    for (const companionId of missingIds) {
+      try {
+        await apiClient.createCompanion(createPlaceholderCompanion(companionId));
+        createdIds.push(companionId);
+      } catch (error) {
+        if (error instanceof ApiClientError && error.code === "CONFLICT") {
+          continue;
+        }
+
+        throw error;
+      }
+    }
+
+    const response = await apiClient.getCompanions();
+    setCompanions(response.items);
+
+    return createdIds;
+  }
+
+  async function handleCreateCompanion(input: Companion = companionDraft) {
+    try {
+      const response = await apiClient.createCompanion(input);
+      const nextCompanions = [...companions, response.item].sort(sortCompanions);
+
+      setCompanions(nextCompanions);
+      setCompanionDraft(createEmptyCompanion());
+      setEditingCompanionId(null);
+      setOperationState({
+        title: "동행자 추가 완료",
+        tone: "success",
+        description: `${response.item.name} (${response.item.id})`,
+      });
+    } catch (error) {
+      setOperationState({
+        title: "동행자 추가 실패",
+        tone: "error",
+        description: getErrorMessage(error),
+      });
+    }
+  }
+
+  async function handleSaveCompanion() {
+    if (!editingCompanionId) return;
+
+    try {
+      const response = await apiClient.updateCompanion(editingCompanionId, companionDraft);
+      setCompanions((current) =>
+        current
+          .map((item) => (item.id === response.item.id ? response.item : item))
+          .sort(sortCompanions),
+      );
+      setCompanionDraft(createEmptyCompanion());
+      setEditingCompanionId(null);
+      setOperationState({
+        title: "동행자 저장 완료",
+        tone: "success",
+        description: `${response.item.name} (${response.item.id})`,
+      });
+    } catch (error) {
+      setOperationState({
+        title: "동행자 저장 실패",
+        tone: "error",
+        description: getErrorMessage(error),
+      });
+    }
+  }
+
+  async function handleDeleteCompanion(companionId: string) {
+    if (!confirmDeletion(`동행자 프로필을 삭제할까요?\n${companionId}`)) return;
+
+    try {
+      await apiClient.deleteCompanion(companionId);
+      setCompanions((current) =>
+        current.filter((item) => item.id !== companionId).sort(sortCompanions),
+      );
+
+      if (editingCompanionId === companionId) {
+        setEditingCompanionId(null);
+        setCompanionDraft(createEmptyCompanion());
+      }
+
+      setOperationState({
+        title: "동행자 삭제 완료",
+        tone: "success",
+        description: companionId,
+      });
+    } catch (error) {
+      setOperationState({
+        title: "동행자 삭제 실패",
+        tone: "error",
+        description: getErrorMessage(error),
+      });
+    }
+  }
+
   async function handleSaveTrip() {
     if (!tripDraft) return;
 
@@ -264,6 +441,16 @@ export function App() {
       const response = isCreatingTrip
         ? await apiClient.createTrip(tripDraft)
         : await apiClient.updateTrip(selectedTripId ?? tripDraft.trip_id ?? "", tripDraft);
+      let autoCreatedCompanions: string[] = [];
+      let companionProfileError: string | null = null;
+
+      try {
+        autoCreatedCompanions = await ensureCompanionProfiles(
+          response.data.party.companion_ids,
+        );
+      } catch (error) {
+        companionProfileError = getErrorMessage(error);
+      }
 
       const tripList = await apiClient.getTrips();
       setTrips(tripList.items);
@@ -272,24 +459,41 @@ export function App() {
       setTripDraft(response.data);
       setCommaInputs(createCommaSeparatedInputs(response.data));
       const savedDescription = `${response.data.title} 계획을 저장했습니다.`;
+      const companionDescription =
+        autoCreatedCompanions.length > 0
+          ? ` 등록되지 않은 동행자 ID(${autoCreatedCompanions.join(", ")})를 기본 프로필로 추가했습니다. 이름과 연령대를 확인하세요.`
+          : "";
+      const companionErrorDescription = companionProfileError
+        ? ` 동행자 기본 프로필 자동 추가에 실패했습니다: ${companionProfileError}`
+        : "";
 
       try {
         const validation = await apiClient.validateTrip(response.trip_id);
         setValidationWarnings(validation.warnings);
         setOperationState({
           title: "캠핑 계획 저장 완료",
-          tone: validation.warnings.length > 0 ? "warning" : "success",
+          tone:
+            validation.warnings.length > 0 ||
+            autoCreatedCompanions.length > 0 ||
+            Boolean(companionProfileError)
+              ? "warning"
+              : "success",
           description:
             validation.warnings.length > 0
-              ? `${savedDescription} 검증 경고를 확인하세요.`
-              : savedDescription,
+              ? `${savedDescription}${companionDescription}${companionErrorDescription} 검증 경고를 확인하세요.`
+              : `${savedDescription}${companionDescription}${companionErrorDescription}`,
         });
       } catch (error) {
-        setValidationWarnings(toValidationWarnings(error));
+        setValidationWarnings([
+          ...toValidationWarnings(error),
+          ...(companionProfileError
+            ? [`동행자 기본 프로필 자동 추가 실패: ${companionProfileError}`]
+            : []),
+        ]);
         setOperationState({
           title: "캠핑 계획 저장 완료",
           tone: "warning",
-          description: `${savedDescription} 검증 경고를 확인하세요.`,
+          description: `${savedDescription}${companionDescription}${companionErrorDescription} 검증 경고를 확인하세요.`,
         });
       }
     } catch (error) {
@@ -1361,7 +1565,7 @@ export function App() {
                         }
                       />
                       <input
-                        placeholder="동행자 ID, 콤마 구분"
+                        placeholder="동행자 ID, 콤마 구분 (예: self, child-1)"
                         value={commaInputs.companionIds}
                         onChange={(event) => {
                           setCommaInputs((current) => ({
@@ -1531,6 +1735,271 @@ export function App() {
                         }
                       />
                     </div>
+
+                    <section className="companion-panel">
+                      <div className="panel__header">
+                        <h3>동행자 관리</h3>
+                        <span className="pill">{companions.length}명 등록됨</span>
+                      </div>
+                      <p className="panel__copy">
+                        계획에는 동행자 ID를 입력하고, 없는 ID는 여기서 바로 추가하거나 저장 시
+                        기본 프로필로 자동 등록할 수 있습니다. ID는 소문자 kebab-case를
+                        사용합니다.
+                      </p>
+
+                      {companions.length > 0 ? (
+                        <div className="stack-list">
+                          {companions.map((companion) => {
+                            const included =
+                              tripDraft.party?.companion_ids.includes(companion.id) ?? false;
+
+                            return (
+                              <article className="edit-card" key={companion.id}>
+                                <div className="companion-card__header">
+                                  <div>
+                                    <strong>
+                                      {companion.name} <code>{companion.id}</code>
+                                    </strong>
+                                    <p>
+                                      {AGE_GROUP_LABELS[companion.age_group]}
+                                      {companion.birth_year
+                                        ? ` / ${companion.birth_year}년생`
+                                        : ""}
+                                      {included ? " / 현재 계획에 포함됨" : ""}
+                                    </p>
+                                  </div>
+                                  <div className="button-row">
+                                    <button
+                                      className="button"
+                                      onClick={() => {
+                                        setCommaInputs((current) => ({
+                                          ...current,
+                                          companionIds: joinCommaList(
+                                            mergeCompanionIds(
+                                              tripDraft.party?.companion_ids ?? [],
+                                              companion.id,
+                                            ),
+                                          ),
+                                        }));
+                                        updateTripDraft((current) => ({
+                                          ...current,
+                                          party: {
+                                            companion_ids: mergeCompanionIds(
+                                              current.party?.companion_ids ?? [],
+                                              companion.id,
+                                            ),
+                                          },
+                                        }));
+                                      }}
+                                      type="button"
+                                    >
+                                      계획에 추가
+                                    </button>
+                                    <button
+                                      className="button"
+                                      onClick={() => beginEditCompanion(companion)}
+                                      type="button"
+                                    >
+                                      편집
+                                    </button>
+                                    <button
+                                      className="button"
+                                      onClick={() => handleDeleteCompanion(companion.id)}
+                                      type="button"
+                                    >
+                                      삭제
+                                    </button>
+                                  </div>
+                                </div>
+                              </article>
+                            );
+                          })}
+                        </div>
+                      ) : (
+                        <div className="empty-state empty-state--compact">
+                          등록된 동행자가 없습니다. 아래에서 첫 동행자를 추가하세요.
+                        </div>
+                      )}
+
+                      {missingCompanionIds.length > 0 ? (
+                        <div className="edit-card">
+                          <strong>미등록 동행자 ID</strong>
+                          <p className="companion-card__copy">
+                            {missingCompanionIds.join(", ")} 가 아직 등록되지 않았습니다.
+                          </p>
+                          <div className="button-row">
+                            {missingCompanionIds.map((companionId) => (
+                              <button
+                                className="button"
+                                key={companionId}
+                                onClick={() =>
+                                  void handleCreateCompanion(
+                                    createPlaceholderCompanion(companionId),
+                                  )
+                                }
+                                type="button"
+                              >
+                                {companionId} 기본값으로 추가
+                              </button>
+                            ))}
+                            <button
+                              className="button"
+                              onClick={() => beginCreateCompanion(missingCompanionIds[0])}
+                              type="button"
+                            >
+                              수동으로 상세 입력
+                            </button>
+                          </div>
+                        </div>
+                      ) : null}
+
+                      <div className="edit-card">
+                        <div className="panel__header">
+                          <h3>{editingCompanionId ? "동행자 수정" : "동행자 추가"}</h3>
+                        </div>
+                        <div className="form-grid">
+                          <input
+                            placeholder="동행자 ID (예: child-2)"
+                            value={companionDraft.id}
+                            disabled={Boolean(editingCompanionId)}
+                            onChange={(event) =>
+                              setCompanionDraft((current) => ({
+                                ...current,
+                                id: event.target.value,
+                              }))
+                            }
+                          />
+                          <input
+                            placeholder="이름"
+                            value={companionDraft.name}
+                            onChange={(event) =>
+                              setCompanionDraft((current) => ({
+                                ...current,
+                                name: event.target.value,
+                              }))
+                            }
+                          />
+                          <select
+                            value={companionDraft.age_group}
+                            onChange={(event) =>
+                              setCompanionDraft((current) => ({
+                                ...current,
+                                age_group: event.target.value as Companion["age_group"],
+                              }))
+                            }
+                          >
+                            {Object.entries(AGE_GROUP_LABELS).map(([value, label]) => (
+                              <option key={value} value={value}>
+                                {label}
+                              </option>
+                            ))}
+                          </select>
+                          <input
+                            type="number"
+                            min="1900"
+                            max="2100"
+                            placeholder="출생연도"
+                            value={companionDraft.birth_year ?? ""}
+                            onChange={(event) =>
+                              setCompanionDraft((current) => ({
+                                ...current,
+                                birth_year: parseInteger(event.target.value),
+                              }))
+                            }
+                          />
+                          <textarea
+                            className="form-grid__full"
+                            placeholder="건강 특이사항을 줄 단위로 입력"
+                            value={joinLineList(companionDraft.health_notes)}
+                            onChange={(event) =>
+                              setCompanionDraft((current) => ({
+                                ...current,
+                                health_notes: splitLineList(event.target.value),
+                              }))
+                            }
+                          />
+                          <textarea
+                            className="form-grid__full"
+                            placeholder="필수 복용약을 줄 단위로 입력"
+                            value={joinLineList(companionDraft.required_medications)}
+                            onChange={(event) =>
+                              setCompanionDraft((current) => ({
+                                ...current,
+                                required_medications: splitLineList(event.target.value),
+                              }))
+                            }
+                          />
+                          <label className="checkbox-row">
+                            <input
+                              checked={companionDraft.traits.cold_sensitive ?? false}
+                              onChange={(event) =>
+                                setCompanionDraft((current) => ({
+                                  ...current,
+                                  traits: {
+                                    ...current.traits,
+                                    cold_sensitive: event.target.checked,
+                                  },
+                                }))
+                              }
+                              type="checkbox"
+                            />
+                            추위에 민감
+                          </label>
+                          <label className="checkbox-row">
+                            <input
+                              checked={companionDraft.traits.heat_sensitive ?? false}
+                              onChange={(event) =>
+                                setCompanionDraft((current) => ({
+                                  ...current,
+                                  traits: {
+                                    ...current.traits,
+                                    heat_sensitive: event.target.checked,
+                                  },
+                                }))
+                              }
+                              type="checkbox"
+                            />
+                            더위에 민감
+                          </label>
+                          <label className="checkbox-row">
+                            <input
+                              checked={companionDraft.traits.rain_sensitive ?? false}
+                              onChange={(event) =>
+                                setCompanionDraft((current) => ({
+                                  ...current,
+                                  traits: {
+                                    ...current.traits,
+                                    rain_sensitive: event.target.checked,
+                                  },
+                                }))
+                              }
+                              type="checkbox"
+                            />
+                            비에 민감
+                          </label>
+                        </div>
+                        <div className="button-row">
+                          <button
+                            className="button button--primary"
+                            onClick={() =>
+                              editingCompanionId
+                                ? void handleSaveCompanion()
+                                : void handleCreateCompanion()
+                            }
+                            type="button"
+                          >
+                            {editingCompanionId ? "동행자 저장" : "동행자 추가"}
+                          </button>
+                          <button
+                            className="button"
+                            onClick={() => beginCreateCompanion()}
+                            type="button"
+                          >
+                            새 입력으로 초기화
+                          </button>
+                        </div>
+                      </div>
+                    </section>
 
                     {validationWarnings.length > 0 ? (
                       <StatusBanner
@@ -2048,6 +2517,25 @@ function createEmptyTripDraft(): TripDraft {
   };
 }
 
+function createEmptyCompanion(companionId = ""): Companion {
+  return {
+    id: companionId,
+    name: companionId,
+    age_group: "adult",
+    health_notes: [],
+    required_medications: [],
+    traits: {
+      cold_sensitive: false,
+      heat_sensitive: false,
+      rain_sensitive: false,
+    },
+  };
+}
+
+function createPlaceholderCompanion(companionId: string): Companion {
+  return createEmptyCompanion(companionId);
+}
+
 function createEmptyDurableItem(): DurableEquipmentItemInput {
   return {
     name: "",
@@ -2361,6 +2849,22 @@ function findEquipmentItem(
   }
 
   return equipment.precheck.items.find((item) => item.id === itemId) ?? null;
+}
+
+function getMissingCompanionIds(
+  companionIds: string[],
+  knownCompanionIds: string[],
+) {
+  const knownIds = new Set(knownCompanionIds);
+  return [...new Set(companionIds.filter((item) => item && !knownIds.has(item)))];
+}
+
+function mergeCompanionIds(currentIds: string[], companionId: string) {
+  return [...new Set([...currentIds, companionId])];
+}
+
+function sortCompanions(left: Companion, right: Companion) {
+  return left.name.localeCompare(right.name, "ko");
 }
 
 function sortLinks(left: ExternalLink, right: ExternalLink) {
