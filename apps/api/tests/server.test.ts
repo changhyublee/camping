@@ -284,6 +284,63 @@ describe("API server", () => {
     await app.close();
   });
 
+  it("does not reuse archived trip ids for new plans", async () => {
+    const dataDir = await createSeededDataDir();
+    const app = await buildServer({
+      dataDir,
+      projectRoot,
+      modelClient: new MockAnalysisClient("# sample"),
+    });
+
+    const archiveResponse = await app.inject({
+      method: "POST",
+      url: "/api/trips/2026-04-18-gapyeong/archive",
+    });
+
+    expect(archiveResponse.statusCode).toBe(200);
+
+    const createResponse = await app.inject({
+      method: "POST",
+      url: "/api/trips",
+      payload: {
+        version: 1,
+        title: "4월 가평 가족 캠핑",
+        date: { start: "2026-04-18", end: "2026-04-19" },
+        location: { region: "gapyeong" },
+        party: { companion_ids: ["self", "child-1"] },
+      },
+    });
+
+    expect(createResponse.statusCode).toBe(200);
+    expect(createResponse.json().trip_id).toMatch(/^2026-04-18-gapyeong-\d+$/u);
+    expect(createResponse.json().trip_id).not.toBe("2026-04-18-gapyeong");
+
+    const explicitConflictResponse = await app.inject({
+      method: "POST",
+      url: "/api/trips",
+      payload: {
+        version: 1,
+        trip_id: "2026-04-18-gapyeong",
+        title: "같은 ID 재사용 시도",
+        date: { start: "2026-04-18", end: "2026-04-19" },
+        location: { region: "gapyeong" },
+        party: { companion_ids: ["self"] },
+      },
+    });
+
+    expect(explicitConflictResponse.statusCode).toBe(409);
+    expect(explicitConflictResponse.json()).toEqual(
+      expect.objectContaining({
+        status: "failed",
+        error: expect.objectContaining({
+          code: "CONFLICT",
+        }),
+      }),
+    );
+
+    await app.close();
+  });
+
   it("archives a trip into history", async () => {
     const dataDir = await createSeededDataDir();
     const app = await buildServer({

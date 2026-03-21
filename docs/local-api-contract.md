@@ -10,6 +10,7 @@
 - 브라우저는 OpenAI API를 직접 호출하지 않는다
 - 운영 데이터는 `.camping-data/` 에 저장한다
 - `trip_id`, `history_id`, 링크 `id` 는 소문자 kebab-case를 사용한다
+- `trip_id` 는 `trips/`, `history/`, `outputs/` 와 충돌하지 않게 유지한다
 
 ## 3. 엔드포인트
 

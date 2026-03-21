@@ -84,21 +84,34 @@ export function App() {
     let active = true;
     setDetailLoading(true);
     setLoadError(null);
+    setTripDraft(null);
+    setValidationWarnings([]);
+    setAnalysisResponse(null);
+    setAssistantResponse(null);
 
-    void Promise.all([
+    void Promise.allSettled([
       apiClient.getTrip(selectedTripId),
       apiClient.validateTrip(selectedTripId),
     ])
-      .then(([tripResponse, validationResponse]) => {
+      .then(([tripResult, validationResult]) => {
         if (!active) return;
-        setTripDraft(tripResponse.data);
-        setValidationWarnings(validationResponse.warnings);
-        setAnalysisResponse(null);
-        setAssistantResponse(null);
-      })
-      .catch((error: unknown) => {
-        if (!active) return;
-        setLoadError(getErrorMessage(error));
+
+        if (tripResult.status === "rejected") {
+          setTripDraft(null);
+          setValidationWarnings([]);
+          setLoadError(getErrorMessage(tripResult.reason));
+          return;
+        }
+
+        setTripDraft(tripResult.value.data);
+        setLoadError(null);
+
+        if (validationResult.status === "fulfilled") {
+          setValidationWarnings(validationResult.value.warnings);
+          return;
+        }
+
+        setValidationWarnings(toValidationWarnings(validationResult.reason));
       })
       .finally(() => {
         if (active) {
@@ -185,6 +198,7 @@ export function App() {
     setAnalysisResponse(null);
     setAssistantResponse(null);
     setOperationState(null);
+    setLoadError(null);
   }
 
   function selectTrip(tripId: string) {
@@ -216,14 +230,27 @@ export function App() {
       setSelectedTripId(response.trip_id);
       setIsCreatingTrip(false);
       setTripDraft(response.data);
-      setOperationState({
-        title: "캠핑 계획 저장 완료",
-        tone: "success",
-        description: `${response.data.title} 계획을 저장했습니다.`,
-      });
+      const savedDescription = `${response.data.title} 계획을 저장했습니다.`;
 
-      const validation = await apiClient.validateTrip(response.trip_id);
-      setValidationWarnings(validation.warnings);
+      try {
+        const validation = await apiClient.validateTrip(response.trip_id);
+        setValidationWarnings(validation.warnings);
+        setOperationState({
+          title: "캠핑 계획 저장 완료",
+          tone: validation.warnings.length > 0 ? "warning" : "success",
+          description:
+            validation.warnings.length > 0
+              ? `${savedDescription} 검증 경고를 확인하세요.`
+              : savedDescription,
+        });
+      } catch (error) {
+        setValidationWarnings(toValidationWarnings(error));
+        setOperationState({
+          title: "캠핑 계획 저장 완료",
+          tone: "warning",
+          description: `${savedDescription} 검증 경고를 확인하세요.`,
+        });
+      }
     } catch (error) {
       setOperationState({
         title: "캠핑 계획 저장 실패",
@@ -1028,6 +1055,31 @@ export function App() {
                         }))
                       }
                     />
+                    <input
+                      type="number"
+                      min="0"
+                      placeholder="부족 기준"
+                      value={consumableDraft.low_stock_threshold ?? ""}
+                      onChange={(event) =>
+                        setConsumableDraft((current) => ({
+                          ...current,
+                          low_stock_threshold: parseInteger(event.target.value),
+                        }))
+                      }
+                    />
+                    <select
+                      value={consumableDraft.status}
+                      onChange={(event) =>
+                        setConsumableDraft((current) => ({
+                          ...current,
+                          status: event.target.value as ConsumableEquipmentItem["status"],
+                        }))
+                      }
+                    >
+                      <option value="ok">ok</option>
+                      <option value="low">low</option>
+                      <option value="empty">empty</option>
+                    </select>
                     <button
                       className="button button--primary"
                       onClick={() => handleCreateEquipmentItem("consumables")}
@@ -1833,6 +1885,7 @@ function createEmptyConsumableItem(): ConsumableEquipmentItemInput {
     category: "fuel",
     quantity_on_hand: 0,
     unit: "pack",
+    low_stock_threshold: undefined,
     status: "ok",
   };
 }
@@ -1973,6 +2026,31 @@ function ConsumableList(props: {
               props.onChange(item.id, (current) => ({ ...current, unit: event.target.value }))
             }
           />
+          <input
+            type="number"
+            min="0"
+            placeholder="부족 기준"
+            value={item.low_stock_threshold ?? ""}
+            onChange={(event) =>
+              props.onChange(item.id, (current) => ({
+                ...current,
+                low_stock_threshold: parseInteger(event.target.value),
+              }))
+            }
+          />
+          <select
+            value={item.status}
+            onChange={(event) =>
+              props.onChange(item.id, (current) => ({
+                ...current,
+                status: event.target.value as ConsumableEquipmentItem["status"],
+              }))
+            }
+          >
+            <option value="ok">ok</option>
+            <option value="low">low</option>
+            <option value="empty">empty</option>
+          </select>
           <div className="button-row">
             <button className="button" onClick={() => props.onSave(item.id)} type="button">
               저장
@@ -2117,4 +2195,9 @@ function getErrorMessage(error: unknown): string {
   }
 
   return "알 수 없는 오류가 발생했습니다.";
+}
+
+function toValidationWarnings(error: unknown): string[] {
+  const message = getErrorMessage(error);
+  return message ? [message] : ["검증 결과를 가져오지 못했습니다."];
 }

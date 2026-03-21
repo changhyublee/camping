@@ -122,17 +122,9 @@ export class CampingRepository {
   async createTrip(draft: TripDraft): Promise<TripData> {
     const tripId = draft.trip_id ?? (await this.createUniqueTripId(draft));
     const trip = normalizeTripDraft(draft, tripId);
-    const tripPath = this.getTripFilePath(tripId);
+    await this.ensureTripIdAvailable(tripId);
 
-    if (await fileExists(tripPath)) {
-      throw new AppError(
-        "CONFLICT",
-        `같은 trip_id 의 계획이 이미 존재합니다: ${tripId}`,
-        409,
-      );
-    }
-
-    await this.writeYamlFile(tripPath, trip);
+    await this.writeYamlFile(this.getTripFilePath(tripId), trip);
     return trip;
   }
 
@@ -155,6 +147,16 @@ export class CampingRepository {
     const outputPath = (await fileExists(this.getTripOutputPath(tripId)))
       ? getTripOutputRelativePath(tripId)
       : null;
+    const historyPath = this.getHistoryFilePath(tripId);
+
+    if (await fileExists(historyPath)) {
+      throw new AppError(
+        "CONFLICT",
+        `같은 history_id 의 히스토리가 이미 존재합니다: ${tripId}`,
+        409,
+      );
+    }
+
     const history = historyRecordSchema.parse({
       version: 1,
       history_id: tripId,
@@ -899,8 +901,28 @@ export class CampingRepository {
         [draft.date?.start, draft.location?.region, draft.title],
         "trip",
       ),
-      async (candidate) => !(await fileExists(this.getTripFilePath(candidate))),
+      async (candidate) => !(await this.isTripArtifactPresent(candidate)),
     ) as Promise<TripId>;
+  }
+
+  private async ensureTripIdAvailable(tripId: string): Promise<void> {
+    if (await this.isTripArtifactPresent(tripId)) {
+      throw new AppError(
+        "CONFLICT",
+        `같은 trip_id 의 계획 또는 기록이 이미 존재합니다: ${tripId}`,
+        409,
+      );
+    }
+  }
+
+  private async isTripArtifactPresent(tripId: string): Promise<boolean> {
+    const [tripExists, historyExists, outputExists] = await Promise.all([
+      fileExists(this.getTripFilePath(tripId)),
+      fileExists(this.getHistoryFilePath(tripId)),
+      fileExists(this.getTripOutputPath(tripId)),
+    ]);
+
+    return tripExists || historyExists || outputExists;
   }
 
   private async createUniqueLinkId(name: string): Promise<string> {

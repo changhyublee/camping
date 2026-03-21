@@ -15,11 +15,28 @@ const fetchMock = vi.fn<typeof fetch>();
 
 vi.stubGlobal("fetch", fetchMock);
 
+type ApiResponse<T> = {
+  body: T;
+  status?: number;
+};
+
+type FailedValidationResponse = {
+  status: "failed";
+  warnings: string[];
+  error: {
+    code: string;
+    message: string;
+  };
+};
+
 type MockState = {
   trips: TripSummary[];
-  trip: TripData;
-  validation: ValidateTripResponse;
-  analysis: { body: AnalyzeTripResponse; status?: number };
+  tripDetails: Record<string, TripData>;
+  validations: Record<
+    string,
+    ApiResponse<ValidateTripResponse | FailedValidationResponse>
+  >;
+  analysis: ApiResponse<AnalyzeTripResponse>;
   equipment: EquipmentCatalog;
   history: HistoryRecord[];
   links: Array<{
@@ -29,6 +46,10 @@ type MockState = {
     url: string;
     notes?: string;
     sort_order: number;
+  }>;
+  updateTripCalls: Array<{
+    tripId: string;
+    body: TripData;
   }>;
 };
 
@@ -51,58 +72,139 @@ function jsonResponse(body: unknown, status = 200) {
   } as Response);
 }
 
+function parseBody(init?: RequestInit) {
+  if (!init?.body || typeof init.body !== "string") {
+    return undefined;
+  }
+
+  return JSON.parse(init.body) as Record<string, unknown>;
+}
+
+function summarizeTrip(trip: TripData): TripSummary {
+  return {
+    trip_id: trip.trip_id,
+    title: trip.title,
+    start_date: trip.date?.start,
+    end_date: trip.date?.end,
+    region: trip.location?.region,
+    companion_count: trip.party.companion_ids.length,
+  };
+}
+
+function updateTripSummary(trip: TripData) {
+  const nextSummary = summarizeTrip(trip);
+  const index = state.trips.findIndex((item) => item.trip_id === trip.trip_id);
+
+  if (index >= 0) {
+    state.trips[index] = nextSummary;
+    return;
+  }
+
+  state.trips.push(nextSummary);
+}
+
+function readTripIdFromPath(pathname: string) {
+  const match = pathname.match(/^\/api\/trips\/([^/]+)$/u);
+  return match?.[1] ?? null;
+}
+
 function mockFetch(input: RequestInfo | URL, init?: RequestInit) {
-  const url = typeof input === "string" ? input : input.toString();
+  const rawUrl = typeof input === "string" ? input : input.toString();
+  const pathname = new URL(rawUrl, "http://localhost").pathname;
   const method = init?.method?.toUpperCase() ?? "GET";
 
-  if (url.endsWith("/api/trips") && method === "GET") {
+  if (pathname === "/api/trips" && method === "GET") {
     return jsonResponse({ items: state.trips });
   }
 
-  if (url.endsWith("/api/equipment") && method === "GET") {
+  if (pathname === "/api/equipment" && method === "GET") {
     return jsonResponse(state.equipment);
   }
 
-  if (url.endsWith("/api/history") && method === "GET") {
+  if (pathname === "/api/history" && method === "GET") {
     return jsonResponse({ items: state.history });
   }
 
-  if (url.endsWith("/api/links") && method === "GET") {
+  if (pathname === "/api/links" && method === "GET") {
     return jsonResponse({ items: state.links });
   }
 
-  if (url.endsWith(`/api/trips/${state.trip.trip_id}`) && method === "GET") {
+  const tripIdFromPath = readTripIdFromPath(pathname);
+
+  if (tripIdFromPath && method === "GET") {
+    const trip = state.tripDetails[tripIdFromPath];
+
+    if (!trip) {
+      return jsonResponse({
+        status: "failed",
+        error: {
+          code: "TRIP_NOT_FOUND",
+          message: `trip 파일을 찾을 수 없습니다: ${tripIdFromPath}`,
+        },
+      }, 404);
+    }
+
     return jsonResponse({
-      trip_id: state.trip.trip_id,
-      data: state.trip,
+      trip_id: tripIdFromPath,
+      data: trip,
     });
   }
 
-  if (url.endsWith("/api/validate-trip") && method === "POST") {
-    return jsonResponse(state.validation);
+  if (tripIdFromPath && method === "PUT") {
+    const body = parseBody(init) as TripData;
+    const trip = {
+      ...body,
+      trip_id: tripIdFromPath,
+    } satisfies TripData;
+
+    state.tripDetails[tripIdFromPath] = trip;
+    updateTripSummary(trip);
+    state.updateTripCalls.push({
+      tripId: tripIdFromPath,
+      body: trip,
+    });
+
+    return jsonResponse({
+      trip_id: tripIdFromPath,
+      data: trip,
+    });
   }
 
-  if (url.endsWith("/api/analyze-trip") && method === "POST") {
+  if (pathname === "/api/validate-trip" && method === "POST") {
+    const body = parseBody(init);
+    const tripId = body?.trip_id as string;
+    const response = state.validations[tripId];
+
+    if (!response) {
+      throw new Error(`Unhandled validation request: ${tripId}`);
+    }
+
+    return jsonResponse(response.body, response.status ?? 200);
+  }
+
+  if (pathname === "/api/analyze-trip" && method === "POST") {
     return jsonResponse(state.analysis.body, state.analysis.status ?? 200);
   }
 
-  if (url.endsWith("/api/outputs") && method === "POST") {
+  if (pathname === "/api/outputs" && method === "POST") {
     return jsonResponse({
       status: "saved",
       output_path: ".camping-data/outputs/2026-04-18-gapyeong-plan.md",
     });
   }
 
-  if (url.endsWith(`/api/trips/${state.trip.trip_id}/assistant`) && method === "POST") {
+  const assistantMatch = pathname.match(/^\/api\/trips\/([^/]+)\/assistant$/u);
+
+  if (assistantMatch && method === "POST") {
     return jsonResponse({
-      trip_id: state.trip.trip_id,
+      trip_id: assistantMatch[1],
       warnings: [],
       assistant_message: "### AI 보조 응답\n- 비 예보 대비 타프를 검토하세요.",
       actions: [],
     });
   }
 
-  throw new Error(`Unhandled request: ${method} ${url}`);
+  throw new Error(`Unhandled request: ${method} ${pathname}`);
 }
 
 describe("App", () => {
@@ -124,9 +226,11 @@ describe("App", () => {
   });
 
   it("shows analysis API errors in the planning page", async () => {
-    state.validation = {
-      status: "ok",
-      warnings: ["예상 날씨 정보가 없어 결과 정확도가 제한될 수 있습니다."],
+    state.validations["2026-04-18-gapyeong"] = {
+      body: {
+        status: "ok",
+        warnings: ["예상 날씨 정보가 없어 결과 정확도가 제한될 수 있습니다."],
+      },
     };
     state.analysis = {
       status: 502,
@@ -187,55 +291,143 @@ describe("App", () => {
     ).toBeInTheDocument();
     expect(screen.getByText("저장만 실패")).toBeInTheDocument();
   });
+
+  it("keeps an invalid trip editable and saves it to the selected trip id", async () => {
+    state.trips.push({
+      trip_id: "2026-04-20-broken-trip",
+      title: "문제 계획",
+      start_date: "2026-04-20",
+      region: "yangyang",
+      companion_count: 1,
+    });
+    state.tripDetails["2026-04-20-broken-trip"] = {
+      version: 1,
+      trip_id: "2026-04-20-broken-trip",
+      title: "문제 계획",
+      date: {
+        start: "2026-04-20",
+        end: "2026-04-21",
+      },
+      location: {
+        region: "yangyang",
+      },
+      party: {
+        companion_ids: ["ghost"],
+      },
+      notes: [],
+    };
+    state.validations["2026-04-20-broken-trip"] = {
+      status: 400,
+      body: {
+        status: "failed",
+        warnings: [],
+        error: {
+          code: "TRIP_INVALID",
+          message: "등록되지 않은 동행자 ID가 있습니다: ghost",
+        },
+      },
+    };
+
+    render(<App />);
+
+    await userEvent.click(await screen.findByRole("button", { name: "캠핑 계획" }));
+    await userEvent.click(await screen.findByRole("button", { name: /문제 계획/u }));
+
+    expect(await screen.findByDisplayValue("문제 계획")).toBeInTheDocument();
+    expect(
+      await screen.findByText("등록되지 않은 동행자 ID가 있습니다: ghost"),
+    ).toBeInTheDocument();
+
+    const titleInput = screen.getByDisplayValue("문제 계획");
+
+    await userEvent.clear(titleInput);
+    await userEvent.type(titleInput, "문제 계획 수정");
+    await userEvent.click(screen.getByRole("button", { name: "계획 저장" }));
+
+    await waitFor(() => {
+      expect(state.updateTripCalls).toHaveLength(1);
+    });
+
+    expect(state.updateTripCalls[0]).toEqual(
+      expect.objectContaining({
+        tripId: "2026-04-20-broken-trip",
+        body: expect.objectContaining({
+          title: "문제 계획 수정",
+        }),
+      }),
+    );
+  });
+
+  it("shows low stock threshold and status controls for consumables", async () => {
+    state.equipment.consumables.items = [
+      {
+        id: "butane-gas",
+        name: "부탄가스",
+        category: "fuel",
+        quantity_on_hand: 1,
+        unit: "ea",
+        low_stock_threshold: 2,
+        status: "low",
+      },
+    ];
+
+    render(<App />);
+
+    await userEvent.click(await screen.findByRole("button", { name: "장비 관리" }));
+    await userEvent.click(screen.getByRole("button", { name: "소모품" }));
+
+    expect(await screen.findAllByPlaceholderText("부족 기준")).toHaveLength(2);
+    expect(screen.getAllByRole("option", { name: "empty" }).length).toBeGreaterThan(0);
+  });
 });
 
 function createMockState(): MockState {
+  const trip: TripData = {
+    version: 1,
+    trip_id: "2026-04-18-gapyeong",
+    title: "4월 가평 가족 캠핑",
+    date: {
+      start: "2026-04-18",
+      end: "2026-04-19",
+    },
+    location: {
+      campsite_name: "자라섬 캠핑장",
+      region: "gapyeong",
+    },
+    party: {
+      companion_ids: ["self", "child-1"],
+    },
+    conditions: {
+      electricity_available: true,
+      cooking_allowed: true,
+      expected_weather: {
+        source: "manual",
+        summary: "맑음",
+      },
+    },
+    meal_plan: {
+      use_ai_recommendation: true,
+      requested_dishes: ["bbq"],
+    },
+    travel_plan: {
+      use_ai_recommendation: true,
+      requested_stops: [],
+    },
+    notes: [],
+  };
+
   return {
-    trips: [
-      {
-        trip_id: "2026-04-18-gapyeong",
-        title: "4월 가평 가족 캠핑",
-        start_date: "2026-04-18",
-        region: "gapyeong",
-        companion_count: 2,
-      },
-    ],
-    trip: {
-      version: 1,
-      trip_id: "2026-04-18-gapyeong",
-      title: "4월 가평 가족 캠핑",
-      date: {
-        start: "2026-04-18",
-        end: "2026-04-19",
-      },
-      location: {
-        campsite_name: "자라섬 캠핑장",
-        region: "gapyeong",
-      },
-      party: {
-        companion_ids: ["self", "child-1"],
-      },
-      conditions: {
-        electricity_available: true,
-        cooking_allowed: true,
-        expected_weather: {
-          source: "manual",
-          summary: "맑음",
+    trips: [summarizeTrip(trip)],
+    tripDetails: {
+      [trip.trip_id]: trip,
+    },
+    validations: {
+      [trip.trip_id]: {
+        body: {
+          status: "ok",
+          warnings: [],
         },
       },
-      meal_plan: {
-        use_ai_recommendation: true,
-        requested_dishes: ["bbq"],
-      },
-      travel_plan: {
-        use_ai_recommendation: true,
-        requested_stops: [],
-      },
-      notes: [],
-    },
-    validation: {
-      status: "ok",
-      warnings: [],
     },
     analysis: {
       body: {
@@ -262,5 +454,6 @@ function createMockState(): MockState {
     },
     history: [],
     links: [],
+    updateTripCalls: [],
   };
 }
