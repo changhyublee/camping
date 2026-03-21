@@ -1,4 +1,27 @@
-import type { AgeGroup, ErrorCode, ExternalLinkCategory } from "./types";
+import type {
+  AgeGroup,
+  ConsumableEquipmentItem,
+  DurableEquipmentItem,
+  EquipmentCategoriesData,
+  EquipmentCategory,
+  EquipmentSection,
+  ErrorCode,
+  ExternalLinkCategory,
+  PrecheckItem,
+} from "./types";
+
+type DurableStatus = Extract<
+  DurableEquipmentItem["status"],
+  "ok" | "low" | "needs_check" | "needs_repair"
+>;
+type ConsumableStatus = Extract<
+  ConsumableEquipmentItem["status"],
+  "ok" | "low" | "empty"
+>;
+type PrecheckStatus = Extract<
+  PrecheckItem["status"],
+  "ok" | "needs_check" | "needs_repair"
+>;
 
 export const TRIP_ID_REGEX = /^[a-z0-9]+(?:-[a-z0-9]+)*$/;
 
@@ -32,4 +55,56 @@ export const EXTERNAL_LINK_CATEGORY_LABELS: Record<
   food: "맛집",
   shopping: "장보기",
   general: "기타",
+};
+
+export const DURABLE_STATUS_LABELS: Record<DurableStatus, string> = {
+  ok: "정상",
+  low: "부족",
+  needs_check: "점검 필요",
+  needs_repair: "수리 필요",
+};
+
+export const CONSUMABLE_STATUS_LABELS: Record<ConsumableStatus, string> = {
+  ok: "정상",
+  low: "부족",
+  empty: "없음",
+};
+
+export const PRECHECK_STATUS_LABELS: Record<PrecheckStatus, string> = {
+  ok: "정상",
+  needs_check: "점검 필요",
+  needs_repair: "수리 필요",
+};
+
+export const EQUIPMENT_SECTION_LABELS: Record<EquipmentSection, string> = {
+  durable: "반복 장비",
+  consumables: "소모품",
+  precheck: "출발 전 점검",
+};
+
+const DEFAULT_DURABLE_CATEGORIES: EquipmentCategory[] = [
+  { id: "shelter", label: "쉘터/텐트", sort_order: 1 },
+  { id: "sleeping", label: "침구", sort_order: 2 },
+  { id: "furniture", label: "가구", sort_order: 3 },
+  { id: "lighting", label: "조명", sort_order: 4 },
+  { id: "cooking_fire", label: "화기", sort_order: 5 },
+  { id: "cooking", label: "조리", sort_order: 6 },
+];
+
+const DEFAULT_CONSUMABLE_CATEGORIES: EquipmentCategory[] = [
+  { id: "fuel", label: "연료", sort_order: 1 },
+  { id: "insect_repellent", label: "벌레 퇴치", sort_order: 2 },
+  { id: "ignition", label: "점화", sort_order: 3 },
+];
+
+const DEFAULT_PRECHECK_CATEGORIES: EquipmentCategory[] = [
+  { id: "battery", label: "배터리", sort_order: 1 },
+  { id: "vehicle", label: "차량", sort_order: 2 },
+];
+
+export const DEFAULT_EQUIPMENT_CATEGORIES: EquipmentCategoriesData = {
+  version: 1,
+  durable: DEFAULT_DURABLE_CATEGORIES,
+  consumables: DEFAULT_CONSUMABLE_CATEGORIES,
+  precheck: DEFAULT_PRECHECK_CATEGORIES,
 };

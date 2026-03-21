@@ -1,0 +1,37 @@
+version: 1
+durable:
+  - id: shelter
+    label: 쉘터/텐트
+    sort_order: 1
+  - id: sleeping
+    label: 침구
+    sort_order: 2
+  - id: furniture
+    label: 가구
+    sort_order: 3
+  - id: lighting
+    label: 조명
+    sort_order: 4
+  - id: cooking_fire
+    label: 화기
+    sort_order: 5
+  - id: cooking
+    label: 조리
+    sort_order: 6
+consumables:
+  - id: fuel
+    label: 연료
+    sort_order: 1
+  - id: insect_repellent
+    label: 벌레 퇴치
+    sort_order: 2
+  - id: ignition
+    label: 점화
+    sort_order: 3
+precheck:
+  - id: battery
+    label: 배터리
+    sort_order: 1
+  - id: vehicle
+    label: 차량
+    sort_order: 2

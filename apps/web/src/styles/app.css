@@ -363,6 +363,9 @@ code {
 
 .form-grid__full {
   grid-column: 1 / -1;
+}
+
+textarea.form-grid__full {
   min-height: 112px;
 }
 
@@ -392,6 +395,17 @@ code {
 .history-output-card__header p,
 .link-group__header span {
   margin: 6px 0 0;
+  color: var(--muted);
+}
+
+.field {
+  display: grid;
+  gap: 8px;
+  min-width: 0;
+}
+
+.field__label {
+  font-size: 0.87rem;
   color: var(--muted);
 }
 

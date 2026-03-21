@@ -1,10 +1,12 @@
 import type {
+  EquipmentCategoriesData,
+  EquipmentCategory,
   HistoryRecord,
   TripData,
   TripId,
   TripSummary,
 } from "./types";
-import { TRIP_ID_REGEX } from "./constants";
+import { DEFAULT_EQUIPMENT_CATEGORIES, TRIP_ID_REGEX } from "./constants";
 
 export function isTripId(value: string): value is TripId {
   return TRIP_ID_REGEX.test(value);
@@ -70,4 +72,30 @@ function normalizeIdPart(value: string | undefined | null): string {
     .replace(/[^a-z0-9]+/g, "-")
     .replace(/^-+|-+$/g, "")
     .replace(/-{2,}/g, "-");
+}
+
+export function cloneEquipmentCategories(): EquipmentCategoriesData {
+  return {
+    version: DEFAULT_EQUIPMENT_CATEGORIES.version,
+    durable: DEFAULT_EQUIPMENT_CATEGORIES.durable.map(cloneEquipmentCategory),
+    consumables: DEFAULT_EQUIPMENT_CATEGORIES.consumables.map(
+      cloneEquipmentCategory,
+    ),
+    precheck: DEFAULT_EQUIPMENT_CATEGORIES.precheck.map(cloneEquipmentCategory),
+  };
+}
+
+export function humanizeEquipmentCategoryId(categoryId: string): string {
+  return categoryId
+    .split(/[-_]/)
+    .filter(Boolean)
+    .join(" ");
+}
+
+function cloneEquipmentCategory(category: EquipmentCategory): EquipmentCategory {
+  return {
+    id: category.id,
+    label: category.label,
+    sort_order: category.sort_order,
+  };
 }

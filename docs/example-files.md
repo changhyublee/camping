@@ -13,6 +13,7 @@
 - [`docs/examples/equipment/durable.yaml`](examples/equipment/durable.yaml)
 - [`docs/examples/equipment/consumables.yaml`](examples/equipment/consumables.yaml)
 - [`docs/examples/equipment/precheck.yaml`](examples/equipment/precheck.yaml)
+- [`docs/examples/equipment/categories.yaml`](examples/equipment/categories.yaml)
 - [`docs/examples/preferences/travel.yaml`](examples/preferences/travel.yaml)
 - [`docs/examples/preferences/food.yaml`](examples/preferences/food.yaml)
 - [`docs/examples/trips/2026-04-18-gapyeong.yaml`](examples/trips/2026-04-18-gapyeong.yaml)
@@ -30,6 +31,7 @@
 
 - `companions.yaml`: 동행자 ID 기준 목록과 이름/연령대/건강 정보
 - `equipment/*.yaml`: 장비, 소모품, 점검 항목
+- `equipment/categories.yaml`: 장비 섹션별 카테고리 코드와 표시 이름
 - `trips/*.yaml`: 앞으로 갈 계획
 - `history/*.yaml`: 완료된 캠핑 기록
 - `links.yaml`: 참고용 외부 링크 북마크

@@ -5,6 +5,8 @@ import {
   companionInputSchema,
   consumableEquipmentItemInputSchema,
   durableEquipmentItemInputSchema,
+  equipmentCategoryIdSchema,
+  equipmentCategoryInputSchema,
   equipmentSectionSchema,
   externalLinkInputSchema,
   historyRecordSchema,
@@ -17,6 +19,44 @@ import {
 } from "@camping/shared";
 import type { AnalysisService } from "../services/analysis-service";
 import { AppError } from "../services/app-error";
+
+type ValidationIssue = {
+  code: string;
+  path: Array<string | number>;
+  message: string;
+  received?: unknown;
+  expected?: unknown;
+  validation?: unknown;
+  minimum?: number | bigint;
+  type?: string;
+  inclusive?: boolean;
+  [key: string]: unknown;
+};
+
+type SafeParseSchema<T> = {
+  safeParse(
+    value: unknown,
+  ):
+    | {
+        success: true;
+        data: T;
+      }
+    | {
+        success: false;
+        error: {
+          issues: readonly unknown[];
+        };
+      };
+};
+
+type BodyErrorCode =
+  | "TRIP_INVALID"
+  | "INVALID_TRIP_ID_FORMAT"
+  | {
+      code: "INVALID_TRIP_ID_FORMAT";
+      field: string;
+      fallbackCode?: "TRIP_INVALID";
+    };
 
 function readIdParam(value: unknown, label: string): string {
   const parsed = tripIdSchema.safeParse(value);
@@ -52,34 +92,38 @@ function readCompanionIdParam(value: unknown) {
   return parsed.data;
 }
 
+function readEquipmentCategoryIdParam(value: unknown) {
+  const parsed = equipmentCategoryIdSchema.safeParse(value);
+
+  if (!parsed.success) {
+    throw new AppError("TRIP_INVALID", "장비 카테고리 ID 형식이 올바르지 않습니다.", 400);
+  }
+
+  return parsed.data;
+}
+
 function parseEquipmentBody(section: string, body: unknown) {
   switch (section) {
     case "durable": {
-      const parsed = durableEquipmentItemInputSchema.safeParse(body);
-
-      if (!parsed.success) {
-        throw new AppError("TRIP_INVALID", "내구 장비 요청 형식이 올바르지 않습니다.", 400);
-      }
-
-      return parsed.data;
+      return parseBodyOrThrow(
+        "내구 장비 요청",
+        durableEquipmentItemInputSchema,
+        body,
+      );
     }
     case "consumables": {
-      const parsed = consumableEquipmentItemInputSchema.safeParse(body);
-
-      if (!parsed.success) {
-        throw new AppError("TRIP_INVALID", "소모품 요청 형식이 올바르지 않습니다.", 400);
-      }
-
-      return parsed.data;
+      return parseBodyOrThrow(
+        "소모품 요청",
+        consumableEquipmentItemInputSchema,
+        body,
+      );
     }
     case "precheck": {
-      const parsed = precheckItemInputSchema.safeParse(body);
-
-      if (!parsed.success) {
-        throw new AppError("TRIP_INVALID", "점검 항목 요청 형식이 올바르지 않습니다.", 400);
-      }
-
-      return parsed.data;
+      return parseBodyOrThrow(
+        "점검 항목 요청",
+        precheckItemInputSchema,
+        body,
+      );
     }
     default:
       throw new AppError("TRIP_INVALID", "장비 섹션 값이 올바르지 않습니다.", 400);
@@ -87,13 +131,115 @@ function parseEquipmentBody(section: string, body: unknown) {
 }
 
 function parseCompanionBody(body: unknown) {
-  const parsed = companionInputSchema.safeParse(body);
+  return parseBodyOrThrow("동행자 요청", companionInputSchema, body);
+}
+
+function parseBodyOrThrow<T>(
+  label: string,
+  schema: SafeParseSchema<T>,
+  body: unknown,
+  code: BodyErrorCode = "TRIP_INVALID",
+) {
+  const parsed = schema.safeParse(body);
 
   if (!parsed.success) {
-    throw new AppError("TRIP_INVALID", "동행자 요청 형식이 올바르지 않습니다.", 400);
+    const issues = parsed.error.issues as ValidationIssue[];
+    throw new AppError(
+      resolveBodyErrorCode(issues, code),
+      buildInvalidBodyMessage(label, issues),
+      400,
+    );
   }
 
   return parsed.data;
+}
+
+function resolveBodyErrorCode(issues: ValidationIssue[], code: BodyErrorCode) {
+  if (typeof code === "string") {
+    return code;
+  }
+
+  if (
+    issues.length > 0 &&
+    issues.every((issue) => String(issue.path[0] ?? "") === code.field)
+  ) {
+    return code.code;
+  }
+
+  return code.fallbackCode ?? "TRIP_INVALID";
+}
+
+function buildInvalidBodyMessage(label: string, issues: ValidationIssue[]) {
+  const formattedIssues = issues.slice(0, 5).map(formatZodIssue);
+
+  if (formattedIssues.length === 0) {
+    return `${label} 형식이 올바르지 않습니다.`;
+  }
+
+  return `${label} 형식이 올바르지 않습니다. ${formattedIssues.join(" / ")}`;
+}
+
+function formatZodIssue(issue: ValidationIssue) {
+  const path = issue.path.length > 0 ? issue.path.join(".") : "요청 본문";
+  return `${path}: ${translateZodIssue(issue)}`;
+}
+
+function translateZodIssue(issue: ValidationIssue) {
+  if (issue.message === "id must be lowercase kebab-case") {
+    return "소문자 kebab-case 형식이어야 합니다.";
+  }
+
+  switch (issue.code) {
+    case "invalid_type":
+      return issue.received === "undefined"
+        ? "값이 필요합니다."
+        : `${readExpectedTypeLabel(issue.expected)} 형식이어야 합니다.`;
+    case "invalid_string":
+      if (issue.validation === "regex") {
+        return "형식이 올바르지 않습니다.";
+      }
+
+      return issue.message;
+    case "invalid_enum_value":
+      return `허용되지 않는 값입니다: ${String(issue.received)}`;
+    case "too_small":
+      if (issue.type === "string") {
+        return issue.minimum === 1
+          ? "값을 입력해야 합니다."
+          : `${issue.minimum}자 이상 입력해야 합니다.`;
+      }
+
+      if (issue.type === "array") {
+        return `${issue.minimum}개 이상 필요합니다.`;
+      }
+
+      if (issue.type === "number" || issue.type === "bigint") {
+        return issue.inclusive
+          ? `${issue.minimum} 이상이어야 합니다.`
+          : `${issue.minimum}보다 커야 합니다.`;
+      }
+
+      return issue.message;
+    default:
+      return issue.message;
+  }
+}
+
+function readExpectedTypeLabel(expected?: unknown) {
+  switch (expected) {
+    case "string":
+      return "문자열";
+    case "number":
+      return "숫자";
+    case "array":
+      return "배열";
+    case "object":
+      return "객체";
+    case "boolean":
+      return "불리언";
+    default:
+      return "올바른 값";
+  }
 }
 
 export async function registerApiRoutes(
@@ -138,13 +284,9 @@ export async function registerApiRoutes(
   }));
 
   app.post("/api/trips", async (request) => {
-    const parsed = tripDraftSchema.safeParse(request.body);
-
-    if (!parsed.success) {
-      throw new AppError("TRIP_INVALID", "trip 생성 요청 형식이 올바르지 않습니다.", 400);
-    }
-
-    const trip = await analysisService.createTrip(parsed.data);
+    const trip = await analysisService.createTrip(
+      parseBodyOrThrow("trip 생성 요청", tripDraftSchema, request.body),
+    );
     return {
       trip_id: trip.trip_id,
       data: trip,
@@ -168,13 +310,10 @@ export async function registerApiRoutes(
       (request.params as { tripId?: unknown }).tripId,
       "trip_id",
     );
-    const parsed = tripDraftSchema.safeParse(request.body);
-
-    if (!parsed.success) {
-      throw new AppError("TRIP_INVALID", "trip 수정 요청 형식이 올바르지 않습니다.", 400);
-    }
-
-    const trip = await analysisService.updateTrip(tripId, parsed.data);
+    const trip = await analysisService.updateTrip(
+      tripId,
+      parseBodyOrThrow("trip 수정 요청", tripDraftSchema, request.body),
+    );
     return {
       trip_id: tripId,
       data: trip,
@@ -206,41 +345,41 @@ export async function registerApiRoutes(
       (request.params as { tripId?: unknown }).tripId,
       "trip_id",
     );
-    const parsed = planningAssistantRequestSchema.safeParse(request.body);
+    const body = parseBodyOrThrow(
+      "assistant 요청",
+      planningAssistantRequestSchema,
+      request.body,
+    );
 
-    if (!parsed.success) {
-      throw new AppError("TRIP_INVALID", "assistant 요청 형식이 올바르지 않습니다.", 400);
-    }
-
-    return analysisService.assistTripPlanning(tripId, parsed.data.message);
+    return analysisService.assistTripPlanning(tripId, body.message);
   });
 
   app.post("/api/validate-trip", async (request) => {
-    const parsed = validateTripRequestSchema.safeParse(request.body);
+    const body = parseBodyOrThrow(
+      "validate-trip 요청",
+      validateTripRequestSchema,
+      request.body,
+      {
+        code: "INVALID_TRIP_ID_FORMAT",
+        field: "trip_id",
+      },
+    );
 
-    if (!parsed.success) {
-      throw new AppError(
-        "INVALID_TRIP_ID_FORMAT",
-        "trip_id 형식이 올바르지 않습니다.",
-        400,
-      );
-    }
-
-    return analysisService.validateTrip(parsed.data.trip_id);
+    return analysisService.validateTrip(body.trip_id);
   });
 
   app.post("/api/analyze-trip", async (request) => {
-    const parsed = analyzeTripRequestSchema.safeParse(request.body);
-
-    if (!parsed.success) {
-      throw new AppError(
-        "INVALID_TRIP_ID_FORMAT",
-        "analyze-trip 요청 형식이 올바르지 않습니다.",
-        400,
-      );
-    }
-
-    return analysisService.analyzeTrip(parsed.data);
+    return analysisService.analyzeTrip(
+      parseBodyOrThrow(
+        "analyze-trip 요청",
+        analyzeTripRequestSchema,
+        request.body,
+        {
+          code: "INVALID_TRIP_ID_FORMAT",
+          field: "trip_id",
+        },
+      ),
+    );
   });
 
   app.get("/api/outputs/:tripId", async (request) => {
@@ -253,20 +392,73 @@ export async function registerApiRoutes(
   });
 
   app.post("/api/outputs", async (request) => {
-    const parsed = saveOutputRequestSchema.safeParse(request.body);
-
-    if (!parsed.success) {
-      throw new AppError(
-        "INVALID_TRIP_ID_FORMAT",
-        "outputs 저장 요청 형식이 올바르지 않습니다.",
-        400,
-      );
-    }
-
-    return analysisService.saveOutput(parsed.data);
+    return analysisService.saveOutput(
+      parseBodyOrThrow(
+        "outputs 저장 요청",
+        saveOutputRequestSchema,
+        request.body,
+        {
+          code: "INVALID_TRIP_ID_FORMAT",
+          field: "trip_id",
+        },
+      ),
+    );
   });
 
   app.get("/api/equipment", async () => analysisService.getEquipmentCatalog());
+
+  app.get("/api/equipment/categories", async () => {
+    return analysisService.getEquipmentCategories();
+  });
+
+  app.post("/api/equipment/categories/:section", async (request) => {
+    const section = readEquipmentSection(
+      (request.params as { section?: unknown }).section,
+    );
+
+    return {
+      item: await analysisService.createEquipmentCategory(
+        section,
+        parseBodyOrThrow(
+          "장비 카테고리 생성 요청",
+          equipmentCategoryInputSchema,
+          request.body,
+        ),
+      ),
+    };
+  });
+
+  app.put("/api/equipment/categories/:section/:categoryId", async (request) => {
+    const section = readEquipmentSection(
+      (request.params as { section?: unknown }).section,
+    );
+    const categoryId = readEquipmentCategoryIdParam(
+      (request.params as { categoryId?: unknown }).categoryId,
+    );
+
+    return {
+      item: await analysisService.updateEquipmentCategory(
+        section,
+        categoryId,
+        parseBodyOrThrow(
+          "장비 카테고리 수정 요청",
+          equipmentCategoryInputSchema,
+          request.body,
+        ),
+      ),
+    };
+  });
+
+  app.delete("/api/equipment/categories/:section/:categoryId", async (request) => {
+    const section = readEquipmentSection(
+      (request.params as { section?: unknown }).section,
+    );
+    const categoryId = readEquipmentCategoryIdParam(
+      (request.params as { categoryId?: unknown }).categoryId,
+    );
+
+    return analysisService.deleteEquipmentCategory(section, categoryId);
+  });
 
   app.post("/api/equipment/:section/items", async (request) => {
     const section = readEquipmentSection(
@@ -326,14 +518,11 @@ export async function registerApiRoutes(
       (request.params as { historyId?: unknown }).historyId,
       "history_id",
     );
-    const parsed = historyRecordSchema.safeParse(request.body);
-
-    if (!parsed.success) {
-      throw new AppError("TRIP_INVALID", "history 수정 요청 형식이 올바르지 않습니다.", 400);
-    }
-
     return {
-      item: await analysisService.updateHistory(historyId, parsed.data),
+      item: await analysisService.updateHistory(
+        historyId,
+        parseBodyOrThrow("history 수정 요청", historyRecordSchema, request.body),
+      ),
     };
   });
 
@@ -351,14 +540,10 @@ export async function registerApiRoutes(
   }));
 
   app.post("/api/links", async (request) => {
-    const parsed = externalLinkInputSchema.safeParse(request.body);
-
-    if (!parsed.success) {
-      throw new AppError("TRIP_INVALID", "링크 생성 요청 형식이 올바르지 않습니다.", 400);
-    }
-
     return {
-      item: await analysisService.createLink(parsed.data),
+      item: await analysisService.createLink(
+        parseBodyOrThrow("링크 생성 요청", externalLinkInputSchema, request.body),
+      ),
     };
   });
 
@@ -367,14 +552,11 @@ export async function registerApiRoutes(
       (request.params as { linkId?: unknown }).linkId,
       "link_id",
     );
-    const parsed = externalLinkInputSchema.safeParse(request.body);
-
-    if (!parsed.success) {
-      throw new AppError("TRIP_INVALID", "링크 수정 요청 형식이 올바르지 않습니다.", 400);
-    }
-
     return {
-      item: await analysisService.updateLink(linkId, parsed.data),
+      item: await analysisService.updateLink(
+        linkId,
+        parseBodyOrThrow("링크 수정 요청", externalLinkInputSchema, request.body),
+      ),
     };
   });
 

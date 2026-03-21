@@ -29,6 +29,7 @@
 ├── profile.yaml
 ├── companions.yaml
 ├── equipment/
+│   ├── categories.yaml
 │   ├── durable.yaml
 │   ├── consumables.yaml
 │   └── precheck.yaml
@@ -49,6 +50,7 @@
 - `profile.yaml`
 - `companions.yaml`
 - `equipment/*.yaml`
+- `equipment/categories.yaml`
 - `preferences/*.yaml`
 - `trips/*.yaml`
 - `history/*.yaml`
@@ -78,6 +80,11 @@
 - `cache/places/*.json`
 
 ## 5. 파일별 역할
+
+### `equipment/categories.yaml`
+
+- 장비 섹션별 카테고리 코드와 표시 이름
+- 장비 화면 셀렉트와 관리 설정 화면의 기준 데이터
 
 ### `equipment/durable.yaml`
 
@@ -117,6 +124,7 @@
 ## 6. 도메인 규칙
 
 - 개인 준비물은 사용자가 직접 입력하는 인벤토리가 아니다
+- 장비 카테고리 코드는 영어 기반 식별값으로 유지하고, 사용자가 보는 이름은 `categories.yaml` 에서 관리한다
 - 히스토리는 계획 완료 후 별도 파일로 생성하고, 아카이브가 끝나면 원래 계획 파일은 `trips/` 에서 제거한다
 - 링크는 외부 API 캐시가 아니라 사용자가 관리하는 북마크 데이터다
 - `trip_id` 는 계획, 히스토리, 결과 Markdown 참조를 보호하기 위해 재사용하지 않는다

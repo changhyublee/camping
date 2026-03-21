@@ -64,6 +64,7 @@
 - [`docs/examples/equipment/durable.yaml`](examples/equipment/durable.yaml)
 - [`docs/examples/equipment/consumables.yaml`](examples/equipment/consumables.yaml)
 - [`docs/examples/equipment/precheck.yaml`](examples/equipment/precheck.yaml)
+- [`docs/examples/equipment/categories.yaml`](examples/equipment/categories.yaml)
 - [`docs/examples/preferences/travel.yaml`](examples/preferences/travel.yaml)
 - [`docs/examples/preferences/food.yaml`](examples/preferences/food.yaml)
 - [`docs/examples/trips/2026-04-18-gapyeong.yaml`](examples/trips/2026-04-18-gapyeong.yaml)

@@ -29,6 +29,7 @@
 - `apps/web`
   - 대시보드
   - 장비 관리
+  - 관리 설정
   - 캠핑 계획 편집/분석
   - 계획 화면 내 동행자 인라인 관리
   - 히스토리 관리
@@ -37,6 +38,7 @@
   - CRUD 요청 검증
   - YAML 파일 읽기/쓰기
   - 동행자 CRUD
+  - 장비 카테고리 CRUD
   - 계획 아카이브
   - 분석 실행
   - AI 보조 응답 생성
@@ -50,6 +52,7 @@
 ├── profile.yaml
 ├── companions.yaml
 ├── equipment/
+│   ├── categories.yaml
 │   ├── durable.yaml
 │   ├── consumables.yaml
 │   └── precheck.yaml
@@ -74,6 +77,14 @@
 
 - `equipment/*.yaml` 에 직접 CRUD 한다
 - 반복 장비, 소모품, 점검 항목을 분리한다
+- 카테고리는 자유 입력이 아니라 `equipment/categories.yaml` 기반 셀렉트로 선택한다
+- 기존 장비에만 남아 있는 카테고리 값도 화면에서 깨지지 않도록 병합해 표시한다
+
+### 관리 설정
+
+- `equipment/categories.yaml` 에 섹션별 카테고리 코드와 표시 이름을 저장한다
+- 반복 장비, 소모품, 출발 전 점검 섹션별 카테고리를 추가/수정/삭제한다
+- 이미 사용 중인 카테고리와 마지막 남은 카테고리는 삭제를 막는다
 
 ### 캠핑 계획
 

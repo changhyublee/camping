@@ -4,6 +4,13 @@ export const baseIdSchema = z
   .string()
   .regex(/^[a-z0-9]+(?:-[a-z0-9]+)*$/, "id must be lowercase kebab-case");
 
+export const equipmentCategoryIdSchema = z
+  .string()
+  .regex(
+    /^[a-z0-9]+(?:[-_][a-z0-9]+)*$/,
+    "category id must be lowercase and may use - or _",
+  );
+
 export const ageGroupSchema = z.enum([
   "adult",
   "preschooler",
@@ -30,6 +37,24 @@ export const equipmentSectionSchema = z.enum([
   "consumables",
   "precheck",
 ]);
+
+export const equipmentCategorySchema = z.object({
+  id: equipmentCategoryIdSchema,
+  label: z.string().min(1),
+  sort_order: z.number().int().nonnegative().default(0),
+});
+
+export const equipmentCategoryInputSchema = equipmentCategorySchema.extend({
+  id: equipmentCategoryIdSchema.optional(),
+  sort_order: z.number().int().nonnegative().optional(),
+});
+
+export const equipmentCategoriesSchema = z.object({
+  version: z.number().int().positive(),
+  durable: z.array(equipmentCategorySchema).default([]),
+  consumables: z.array(equipmentCategorySchema).default([]),
+  precheck: z.array(equipmentCategorySchema).default([]),
+});
 export const externalLinkCategorySchema = z.enum([
   "weather",
   "place",

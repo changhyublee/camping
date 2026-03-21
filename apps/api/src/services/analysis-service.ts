@@ -6,6 +6,9 @@ import type {
   ConsumableEquipmentItemInput,
   DurableEquipmentItemInput,
   EquipmentCatalog,
+  EquipmentCategoriesData,
+  EquipmentCategory,
+  EquipmentCategoryInput,
   EquipmentSection,
   ExternalLink,
   ExternalLinkInput,
@@ -105,6 +108,30 @@ export class AnalysisService {
 
   async getEquipmentCatalog(): Promise<EquipmentCatalog> {
     return this.repository.readEquipmentCatalog();
+  }
+
+  async getEquipmentCategories(): Promise<EquipmentCategoriesData> {
+    return this.repository.readEquipmentCategories();
+  }
+
+  async createEquipmentCategory(
+    section: EquipmentSection,
+    input: EquipmentCategoryInput,
+  ): Promise<EquipmentCategory> {
+    return this.repository.createEquipmentCategory(section, input);
+  }
+
+  async updateEquipmentCategory(
+    section: EquipmentSection,
+    categoryId: string,
+    input: EquipmentCategoryInput,
+  ): Promise<EquipmentCategory> {
+    return this.repository.updateEquipmentCategory(section, categoryId, input);
+  }
+
+  async deleteEquipmentCategory(section: EquipmentSection, categoryId: string) {
+    await this.repository.deleteEquipmentCategory(section, categoryId);
+    return { status: "deleted" as const };
   }
 
   async createEquipmentItem(

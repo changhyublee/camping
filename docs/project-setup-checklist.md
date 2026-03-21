@@ -48,7 +48,7 @@
 ### 4단계. 프론트엔드 뼈대 생성
 
 - [ ] `apps/web` 초기 프로젝트 생성
-- [ ] 메뉴형 레이아웃과 계획/동행자 관리 화면 기본 구조 작성
+- [ ] 메뉴형 레이아웃과 계획/동행자/관리 설정 화면 기본 구조 작성
 - [ ] 분석 실행 버튼과 상태 표시 추가
 - [ ] 결과 Markdown 렌더링 영역 추가
 
@@ -56,6 +56,7 @@
 
 - [ ] `apps/api` 초기 프로젝트 생성
 - [ ] `GET /api/companions` 구현
+- [ ] 장비 카테고리 CRUD 구현
 - [ ] `GET /api/trips` 구현
 - [ ] `GET /api/trips/:tripId` 구현
 - [ ] `POST /api/analyze-trip` 구현
@@ -72,6 +73,7 @@
 - [ ] `docs/examples/profile.yaml` 검토
 - [ ] `docs/examples/companions.yaml` 검토
 - [ ] `docs/examples/equipment/*.yaml` 검토
+- [ ] `docs/examples/equipment/categories.yaml` 검토
 - [ ] `docs/examples/preferences/*.yaml` 검토
 - [ ] `docs/examples/trips/*.yaml` 검토
 - [ ] `docs/examples/outputs/*.md` 검토
@@ -82,6 +84,7 @@
 - [ ] `profile.yaml` 생성
 - [ ] `companions.yaml` 생성
 - [ ] `equipment/` 생성
+- [ ] `equipment/categories.yaml` 생성
 - [ ] `preferences/` 생성
 - [ ] `trips/` 생성
 - [ ] `outputs/` 생성

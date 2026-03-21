@@ -8,15 +8,19 @@ import {
 } from "node:fs/promises";
 import path from "node:path";
 import {
+  buildKebabId,
+  cloneEquipmentCategories,
   companionSchema,
   companionsSchema,
   consumableEquipmentSchema,
   durableEquipmentSchema,
+  equipmentCategoriesSchema,
   externalLinksSchema,
   foodPreferencesSchema,
   getHistoryFilename,
   getTripOutputFilename,
   getTripOutputRelativePath,
+  humanizeEquipmentCategoryId,
   historyRecordSchema,
   isTripId,
   precheckSchema,
@@ -33,6 +37,9 @@ import {
   type DurableEquipmentData,
   type DurableEquipmentItem,
   type DurableEquipmentItemInput,
+  type EquipmentCategoriesData,
+  type EquipmentCategory,
+  type EquipmentCategoryInput,
   type EquipmentCatalog,
   type EquipmentSection,
   type ExternalLink,
@@ -435,6 +442,138 @@ export class CampingRepository {
     };
   }
 
+  async readEquipmentCategories(): Promise<EquipmentCategoriesData> {
+    const categoriesPath = this.getEquipmentCategoriesPath();
+    const baseCategories = (await fileExists(categoriesPath))
+      ? await this.readYamlFile(
+          categoriesPath,
+          equipmentCategoriesSchema,
+          "DEPENDENCY_MISSING",
+          "equipment/categories.yaml 파일이 필요합니다.",
+          "TRIP_INVALID",
+          "equipment/categories.yaml 형식이 올바르지 않습니다.",
+        )
+      : cloneEquipmentCategories();
+
+    const [durable, consumables, precheck] = await Promise.all([
+      this.readDurableEquipment(),
+      this.readConsumables(),
+      this.readPrecheck(),
+    ]);
+
+    return {
+      version: baseCategories.version,
+      durable: mergeEquipmentCategories(
+        baseCategories.durable,
+        durable.items.map((item) => item.category),
+      ),
+      consumables: mergeEquipmentCategories(
+        baseCategories.consumables,
+        consumables.items.map((item) => item.category),
+      ),
+      precheck: mergeEquipmentCategories(
+        baseCategories.precheck,
+        precheck.items.map((item) => item.category),
+      ),
+    };
+  }
+
+  async createEquipmentCategory(
+    section: EquipmentSection,
+    input: EquipmentCategoryInput,
+  ): Promise<EquipmentCategory> {
+    const categories = await this.readEquipmentCategories();
+    const categoryId =
+      input.id ?? (await this.createUniqueEquipmentCategoryId(section, input.label));
+
+    if (categories[section].some((item) => item.id === categoryId)) {
+      throw new AppError(
+        "CONFLICT",
+        `같은 id 의 장비 카테고리가 이미 존재합니다: ${categoryId}`,
+        409,
+      );
+    }
+
+    const category: EquipmentCategory = {
+      id: categoryId,
+      label: input.label,
+      sort_order:
+        input.sort_order ??
+        Math.max(0, ...categories[section].map((item) => item.sort_order)) + 1,
+    };
+
+    categories[section].push(category);
+    categories[section] = sortEquipmentCategories(categories[section]);
+    await this.writeYamlFile(this.getEquipmentCategoriesPath(), categories);
+    return category;
+  }
+
+  async updateEquipmentCategory(
+    section: EquipmentSection,
+    categoryId: string,
+    input: EquipmentCategoryInput,
+  ): Promise<EquipmentCategory> {
+    const categories = await this.readEquipmentCategories();
+    const index = categories[section].findIndex((item) => item.id === categoryId);
+
+    if (index < 0) {
+      throw new AppError(
+        "RESOURCE_NOT_FOUND",
+        `수정할 장비 카테고리를 찾을 수 없습니다: ${categoryId}`,
+        404,
+      );
+    }
+
+    const nextCategory: EquipmentCategory = {
+      ...categories[section][index],
+      label: input.label,
+      sort_order: input.sort_order ?? categories[section][index].sort_order,
+      id: categoryId,
+    };
+
+    categories[section][index] = nextCategory;
+    categories[section] = sortEquipmentCategories(categories[section]);
+    await this.writeYamlFile(this.getEquipmentCategoriesPath(), categories);
+    return nextCategory;
+  }
+
+  async deleteEquipmentCategory(
+    section: EquipmentSection,
+    categoryId: string,
+  ): Promise<void> {
+    const categories = await this.readEquipmentCategories();
+    const nextItems = categories[section].filter((item) => item.id !== categoryId);
+
+    if (nextItems.length === categories[section].length) {
+      throw new AppError(
+        "RESOURCE_NOT_FOUND",
+        `삭제할 장비 카테고리를 찾을 수 없습니다: ${categoryId}`,
+        404,
+      );
+    }
+
+    if (nextItems.length === 0) {
+      throw new AppError(
+        "CONFLICT",
+        "각 장비 섹션에는 최소 한 개 이상의 카테고리가 필요합니다.",
+        409,
+      );
+    }
+
+    const referenceCount = await this.countEquipmentCategoryReferences(section, categoryId);
+
+    if (referenceCount > 0) {
+      throw new AppError(
+        "CONFLICT",
+        `현재 장비 ${referenceCount}건에서 사용 중인 카테고리는 삭제할 수 없습니다: ${categoryId}`,
+        409,
+      );
+    }
+
+    categories[section] = nextItems;
+    await this.writeYamlFile(this.getEquipmentCategoriesPath(), categories);
+  }
+
   async createEquipmentItem(
     section: EquipmentSection,
     input: EquipmentItemInput,
@@ -619,6 +758,7 @@ export class CampingRepository {
       id: itemId,
     };
 
+    await this.ensureEquipmentCategoryRegistered("durable", item.category);
     data.items.push(item);
     data.items.sort(sortByName);
     await this.writeYamlFile(this.getDurablePath(), data);
@@ -646,6 +786,7 @@ export class CampingRepository {
       id: itemId,
     };
 
+    await this.ensureEquipmentCategoryRegistered("durable", item.category);
     data.items[index] = item;
     data.items.sort(sortByName);
     await this.writeYamlFile(this.getDurablePath(), data);
@@ -690,6 +831,7 @@ export class CampingRepository {
       id: itemId,
     };
 
+    await this.ensureEquipmentCategoryRegistered("consumables", item.category);
     data.items.push(item);
     data.items.sort(sortByName);
     await this.writeYamlFile(this.getConsumablesPath(), data);
@@ -717,6 +859,7 @@ export class CampingRepository {
       id: itemId,
     };
 
+    await this.ensureEquipmentCategoryRegistered("consumables", item.category);
     data.items[index] = item;
     data.items.sort(sortByName);
     await this.writeYamlFile(this.getConsumablesPath(), data);
@@ -759,6 +902,7 @@ export class CampingRepository {
       id: itemId,
     };
 
+    await this.ensureEquipmentCategoryRegistered("precheck", item.category);
     data.items.push(item);
     data.items.sort(sortByName);
     await this.writeYamlFile(this.getPrecheckPath(), data);
@@ -786,6 +930,7 @@ export class CampingRepository {
       id: itemId,
     };
 
+    await this.ensureEquipmentCategoryRegistered("precheck", item.category);
     data.items[index] = item;
     data.items.sort(sortByName);
     await this.writeYamlFile(this.getPrecheckPath(), data);
@@ -841,6 +986,46 @@ export class CampingRepository {
       "TRIP_INVALID",
       "equipment/precheck.yaml 형식이 올바르지 않습니다.",
     );
+  }
+
+  private async ensureEquipmentCategoryRegistered(
+    section: EquipmentSection,
+    categoryId: string,
+  ) {
+    const categories = await this.readEquipmentCategories();
+
+    if (categories[section].some((item) => item.id === categoryId)) {
+      return;
+    }
+
+    categories[section].push({
+      id: categoryId,
+      label: humanizeEquipmentCategoryId(categoryId),
+      sort_order:
+        Math.max(0, ...categories[section].map((item) => item.sort_order)) + 1,
+    });
+    categories[section] = sortEquipmentCategories(categories[section]);
+    await this.writeYamlFile(this.getEquipmentCategoriesPath(), categories);
+  }
+
+  private async countEquipmentCategoryReferences(
+    section: EquipmentSection,
+    categoryId: string,
+  ): Promise<number> {
+    switch (section) {
+      case "durable":
+        return (await this.readDurableEquipment()).items.filter(
+          (item) => item.category === categoryId,
+        ).length;
+      case "consumables":
+        return (await this.readConsumables()).items.filter(
+          (item) => item.category === categoryId,
+        ).length;
+      case "precheck":
+        return (await this.readPrecheck()).items.filter(
+          (item) => item.category === categoryId,
+        ).length;
+    }
   }
 
   private async listYamlFiles(directory: string): Promise<string[]> {
@@ -1007,6 +1192,10 @@ export class CampingRepository {
     return path.join(this.config.dataDir, "equipment", "precheck.yaml");
   }
 
+  private getEquipmentCategoriesPath() {
+    return path.join(this.config.dataDir, "equipment", "categories.yaml");
+  }
+
   private async createUniqueTripId(draft: TripDraft): Promise<TripId> {
     return this.createUniqueId(
       derivePreferredId(
@@ -1060,6 +1249,19 @@ export class CampingRepository {
           ...catalog.consumables.items,
           ...catalog.precheck.items,
         ].some((item) => item.id === candidate);
+      },
+    );
+  }
+
+  private async createUniqueEquipmentCategoryId(
+    section: EquipmentSection,
+    label: string,
+  ): Promise<string> {
+    return this.createUniqueId(
+      deriveEquipmentCategoryBaseId(section, label),
+      async (candidate) => {
+        const categories = await this.readEquipmentCategories();
+        return !categories[section].some((item) => item.id === candidate);
       },
     );
   }
@@ -1146,6 +1348,49 @@ function normalizeTripDraft(draft: TripDraft, tripId: string): TripData {
   }
 
   return parsed.data;
+}
+
+function mergeEquipmentCategories(
+  categories: EquipmentCategory[],
+  referencedCategoryIds: string[],
+): EquipmentCategory[] {
+  const merged = [...categories];
+  const knownIds = new Set(categories.map((item) => item.id));
+  let nextSortOrder = Math.max(0, ...categories.map((item) => item.sort_order));
+
+  for (const categoryId of [...new Set(referencedCategoryIds)]) {
+    if (knownIds.has(categoryId)) {
+      continue;
+    }
+
+    nextSortOrder += 1;
+    merged.push({
+      id: categoryId,
+      label: humanizeEquipmentCategoryId(categoryId),
+      sort_order: nextSortOrder,
+    });
+    knownIds.add(categoryId);
+  }
+
+  return sortEquipmentCategories(merged);
+}
+
+function deriveEquipmentCategoryBaseId(
+  section: EquipmentSection,
+  label: string,
+) {
+  const candidate = buildKebabId(section, [label]).replace(`${section}-`, "");
+  return !candidate || candidate === section ? "category" : candidate;
+}
+
+function sortEquipmentCategories(categories: EquipmentCategory[]) {
+  return [...categories].sort((left, right) => {
+    if (left.sort_order !== right.sort_order) {
+      return left.sort_order - right.sort_order;
+    }
+
+    return left.label.localeCompare(right.label, "ko");
+  });
 }
 
 async function fileExists(filePath: string): Promise<boolean> {

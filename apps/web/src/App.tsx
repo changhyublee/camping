@@ -1,4 +1,5 @@
 import { useEffect, useMemo, useRef, useState } from "react";
+import type { ReactNode } from "react";
 import ReactMarkdown from "react-markdown";
 import type {
   AnalyzeTripResponse,
@@ -8,6 +9,9 @@ import type {
   DurableEquipmentItem,
   DurableEquipmentItemInput,
   EquipmentCatalog,
+  EquipmentCategoriesData,
+  EquipmentCategory,
+  EquipmentCategoryInput,
   EquipmentSection,
   ExternalLink,
   ExternalLinkCategory,
@@ -21,16 +25,31 @@ import type {
   TripDraft,
   TripSummary,
 } from "@camping/shared";
-import { AGE_GROUP_LABELS, EXTERNAL_LINK_CATEGORY_LABELS } from "@camping/shared";
+import {
+  AGE_GROUP_LABELS,
+  CONSUMABLE_STATUS_LABELS,
+  DURABLE_STATUS_LABELS,
+  EQUIPMENT_SECTION_LABELS,
+  EXTERNAL_LINK_CATEGORY_LABELS,
+  PRECHECK_STATUS_LABELS,
+} from "@camping/shared";
+import { buildKebabId, cloneEquipmentCategories } from "@camping/shared";
 import { apiClient, ApiClientError } from "./api/client";
 import { StatusBanner } from "./components/StatusBanner";
 
-type PageKey = "dashboard" | "equipment" | "planning" | "history" | "links";
+type PageKey =
+  | "dashboard"
+  | "equipment"
+  | "planning"
+  | "history"
+  | "links"
+  | "management";
 
 type OperationState = {
   title: string;
   tone: "success" | "warning" | "error";
   description: string;
+  items?: string[];
 };
 
 type CommaSeparatedInputs = {
@@ -38,6 +57,9 @@ type CommaSeparatedInputs = {
   requestedDishes: string;
   requestedStops: string;
 };
+
+type CategoryDrafts = Record<EquipmentSection, EquipmentCategoryInput>;
+type CategoryLabelDrafts = Record<EquipmentSection, Record<string, string>>;
 
 export function App() {
   const [activePage, setActivePage] = useState<PageKey>("dashboard");
@@ -57,8 +79,14 @@ export function App() {
   const [assistantInput, setAssistantInput] = useState("");
   const [assistantLoading, setAssistantLoading] = useState(false);
   const [equipment, setEquipment] = useState<EquipmentCatalog | null>(null);
+  const [equipmentCategories, setEquipmentCategories] =
+    useState<EquipmentCategoriesData>(cloneEquipmentCategories());
   const [equipmentSection, setEquipmentSection] =
     useState<EquipmentSection>("durable");
+  const [categoryDrafts, setCategoryDrafts] =
+    useState<CategoryDrafts>(createEmptyCategoryDrafts());
+  const [categoryLabelDrafts, setCategoryLabelDrafts] =
+    useState<CategoryLabelDrafts>(createEmptyCategoryLabelDrafts());
   const [history, setHistory] = useState<HistoryRecord[]>([]);
   const [selectedHistoryId, setSelectedHistoryId] = useState<string | null>(null);
   const [historyOutput, setHistoryOutput] = useState<GetOutputResponse | null>(null);
@@ -164,6 +192,16 @@ export function App() {
     [links],
   );
 
+  const currentEquipmentCategories = useMemo(
+    () => equipmentCategories[equipmentSection],
+    [equipmentCategories, equipmentSection],
+  );
+
+  const categoryDraftPreviewId = useMemo(
+    () => buildCategoryPreviewId(equipmentSection, categoryDrafts[equipmentSection].label),
+    [categoryDrafts, equipmentSection],
+  );
+
   const missingCompanionIds = useMemo(
     () =>
       getMissingCompanionIds(
@@ -180,6 +218,30 @@ export function App() {
     setHistoryOutputLoading(false);
   }, [selectedHistoryId]);
 
+  useEffect(() => {
+    setDurableDraft((current) => ({
+      ...current,
+      category: resolveCategorySelection(
+        current.category,
+        equipmentCategories.durable,
+      ),
+    }));
+    setConsumableDraft((current) => ({
+      ...current,
+      category: resolveCategorySelection(
+        current.category,
+        equipmentCategories.consumables,
+      ),
+    }));
+    setPrecheckDraft((current) => ({
+      ...current,
+      category: resolveCategorySelection(
+        current.category,
+        equipmentCategories.precheck,
+      ),
+    }));
+  }, [equipmentCategories]);
+
   const tripCountLabel = useMemo(() => {
     if (isCreatingTrip) {
       return "새 캠핑 계획 작성 중";
@@ -189,7 +251,7 @@ export function App() {
       return "등록된 캠핑 계획을 선택하거나 새로 만들 수 있습니다.";
     }
 
-    return `${tripDraft.title} / ${
+    return `${tripDraft.title.trim() || "새 캠핑 계획"} / ${
       selectedTripId ?? "저장 전 초안"
     } / 동행 ${tripDraft.party?.companion_ids.length ?? 0}명`;
   }, [isCreatingTrip, selectedTripId, tripDraft]);
@@ -221,15 +283,18 @@ export function App() {
         companionResponse,
         tripResponse,
         equipmentResponse,
+        equipmentCategoryResponse,
         historyResponse,
         linkResponse,
       ] = await Promise.allSettled([
         apiClient.getCompanions(),
         apiClient.getTrips(),
         apiClient.getEquipment(),
+        apiClient.getEquipmentCategories(),
         apiClient.getHistory(),
         apiClient.getLinks(),
       ]);
+      const startupWarnings: string[] = [];
 
       if (tripResponse.status === "rejected") {
         throw tripResponse.reason;
@@ -249,6 +314,12 @@ export function App() {
 
       setTrips(tripResponse.value.items);
       setEquipment(equipmentResponse.value);
+      setEquipmentCategories(
+        equipmentCategoryResponse.status === "fulfilled"
+          ? equipmentCategoryResponse.value
+          : cloneEquipmentCategories(),
+      );
+      setCategoryLabelDrafts(createEmptyCategoryLabelDrafts());
       setHistory(historyResponse.value.items);
       setLinks(linkResponse.value.items);
       setSelectedTripId(
@@ -262,12 +333,27 @@ export function App() {
         setCompanions(companionResponse.value.items);
       } else {
         setCompanions([]);
-        setOperationState({
-          title: "동행자 목록 로딩 경고",
-          tone: "warning",
-          description: `동행자 목록을 불러오지 못했습니다. ${getErrorMessage(
+        startupWarnings.push(
+          `동행자 목록을 불러오지 못했습니다. ${getErrorMessage(
             companionResponse.reason,
           )}`,
+        );
+      }
+
+      if (equipmentCategoryResponse.status === "rejected") {
+        startupWarnings.push(
+          `장비 카테고리를 불러오지 못했습니다. 기본 카테고리로 계속 진행합니다. ${getErrorMessage(
+            equipmentCategoryResponse.reason,
+          )}`,
+        );
+      }
+
+      if (startupWarnings.length > 0) {
+        setOperationState({
+          title: "초기 로딩 경고",
+          tone: "warning",
+          description: "일부 데이터를 기본값 또는 빈 상태로 불러왔습니다.",
+          items: startupWarnings,
         });
       }
     } catch (error) {
@@ -275,6 +361,30 @@ export function App() {
     } finally {
       setAppLoading(false);
     }
+  }
+
+  async function refreshEquipmentState() {
+    const [catalogResponse, categoriesResponse] = await Promise.allSettled([
+      apiClient.getEquipment(),
+      apiClient.getEquipmentCategories(),
+    ]);
+    const warnings: string[] = [];
+
+    if (catalogResponse.status === "fulfilled") {
+      setEquipment(catalogResponse.value);
+    } else {
+      warnings.push(`장비 목록 동기화 실패: ${getErrorMessage(catalogResponse.reason)}`);
+    }
+
+    if (categoriesResponse.status === "fulfilled") {
+      setEquipmentCategories(categoriesResponse.value);
+    } else {
+      warnings.push(
+        `장비 카테고리 동기화 실패: ${getErrorMessage(categoriesResponse.reason)}`,
+      );
+    }
+
+    return warnings;
   }
 
   function beginCreateTrip() {
@@ -714,11 +824,11 @@ export function App() {
         }
       }
 
-      setEquipment(await apiClient.getEquipment());
+      const syncWarnings = await refreshEquipmentState();
       setOperationState({
         title: "AI 제안 반영 완료",
-        tone: "success",
-        description: action.title,
+        tone: syncWarnings.length > 0 ? "warning" : "success",
+        description: appendSyncWarnings(action.title, syncWarnings),
       });
     } catch (error) {
       setOperationState({
@@ -733,24 +843,45 @@ export function App() {
     try {
       if (section === "durable") {
         await apiClient.createEquipmentItem(section, durableDraft);
-        setDurableDraft(createEmptyDurableItem());
+        setDurableDraft((current) => ({
+          ...createEmptyDurableItem(),
+          category: resolveCategorySelection(
+            current.category,
+            equipmentCategories.durable,
+          ),
+        }));
       }
 
       if (section === "consumables") {
         await apiClient.createEquipmentItem(section, consumableDraft);
-        setConsumableDraft(createEmptyConsumableItem());
+        setConsumableDraft((current) => ({
+          ...createEmptyConsumableItem(),
+          category: resolveCategorySelection(
+            current.category,
+            equipmentCategories.consumables,
+          ),
+        }));
       }
 
       if (section === "precheck") {
         await apiClient.createEquipmentItem(section, precheckDraft);
-        setPrecheckDraft(createEmptyPrecheckItem());
+        setPrecheckDraft((current) => ({
+          ...createEmptyPrecheckItem(),
+          category: resolveCategorySelection(
+            current.category,
+            equipmentCategories.precheck,
+          ),
+        }));
       }
 
-      setEquipment(await apiClient.getEquipment());
+      const syncWarnings = await refreshEquipmentState();
       setOperationState({
         title: "장비 항목 추가 완료",
-        tone: "success",
-        description: `${section} 섹션에 새 항목을 추가했습니다.`,
+        tone: syncWarnings.length > 0 ? "warning" : "success",
+        description: appendSyncWarnings(
+          `${section} 섹션에 새 항목을 추가했습니다.`,
+          syncWarnings,
+        ),
       });
     } catch (error) {
       setOperationState({
@@ -793,11 +924,11 @@ export function App() {
         }
       }
 
-      setEquipment(await apiClient.getEquipment());
+      const syncWarnings = await refreshEquipmentState();
       setOperationState({
         title: "장비 저장 완료",
-        tone: "success",
-        description: itemId,
+        tone: syncWarnings.length > 0 ? "warning" : "success",
+        description: appendSyncWarnings(itemId, syncWarnings),
       });
     } catch (error) {
       setOperationState({
@@ -816,15 +947,121 @@ export function App() {
 
     try {
       await apiClient.deleteEquipmentItem(section, itemId);
-      setEquipment(await apiClient.getEquipment());
+      const syncWarnings = await refreshEquipmentState();
       setOperationState({
         title: "장비 삭제 완료",
-        tone: "success",
-        description: itemId,
+        tone: syncWarnings.length > 0 ? "warning" : "success",
+        description: appendSyncWarnings(itemId, syncWarnings),
       });
     } catch (error) {
       setOperationState({
         title: "장비 삭제 실패",
+        tone: "error",
+        description: getErrorMessage(error),
+      });
+    }
+  }
+
+  async function handleCreateEquipmentCategory(section: EquipmentSection) {
+    const draft = categoryDrafts[section];
+
+    try {
+      const response = await apiClient.createEquipmentCategory(section, {
+        ...draft,
+        label: draft.label.trim(),
+      });
+      setEquipmentCategories((current) => ({
+        ...current,
+        [section]: [...current[section], response.item].sort(sortEquipmentCategories),
+      }));
+      setCategoryDrafts((current) => ({
+        ...current,
+        [section]: createEmptyEquipmentCategoryDraft(),
+      }));
+      setOperationState({
+        title: "장비 카테고리 추가 완료",
+        tone: "success",
+        description: `${EQUIPMENT_SECTION_LABELS[section]} / ${response.item.label}`,
+      });
+    } catch (error) {
+      setOperationState({
+        title: "장비 카테고리 추가 실패",
+        tone: "error",
+        description: getErrorMessage(error),
+      });
+    }
+  }
+
+  async function handleSaveEquipmentCategory(
+    section: EquipmentSection,
+    categoryId: string,
+  ) {
+    const category = equipmentCategories[section].find((item) => item.id === categoryId);
+
+    if (!category) {
+      return;
+    }
+
+    try {
+      const nextLabel = (
+        categoryLabelDrafts[section][categoryId] ?? category.label
+      ).trim();
+      const response = await apiClient.updateEquipmentCategory(section, categoryId, {
+        ...category,
+        label: nextLabel,
+      });
+      setEquipmentCategories((current) => ({
+        ...current,
+        [section]: current[section]
+          .map((item) => (item.id === categoryId ? response.item : item))
+          .sort(sortEquipmentCategories),
+      }));
+      setCategoryLabelDrafts((current) => ({
+        ...current,
+        [section]: omitDraftLabel(current[section], categoryId),
+      }));
+      setOperationState({
+        title: "장비 카테고리 저장 완료",
+        tone: "success",
+        description: `${EQUIPMENT_SECTION_LABELS[section]} / ${response.item.label}`,
+      });
+    } catch (error) {
+      setOperationState({
+        title: "장비 카테고리 저장 실패",
+        tone: "error",
+        description: getErrorMessage(error),
+      });
+    }
+  }
+
+  async function handleDeleteEquipmentCategory(
+    section: EquipmentSection,
+    categoryId: string,
+  ) {
+    if (
+      !confirmDeletion(`장비 카테고리를 삭제할까요?\n${EQUIPMENT_SECTION_LABELS[section]} / ${categoryId}`)
+    ) {
+      return;
+    }
+
+    try {
+      await apiClient.deleteEquipmentCategory(section, categoryId);
+      setEquipmentCategories((current) => ({
+        ...current,
+        [section]: current[section].filter((item) => item.id !== categoryId),
+      }));
+      setCategoryLabelDrafts((current) => ({
+        ...current,
+        [section]: omitDraftLabel(current[section], categoryId),
+      }));
+      setOperationState({
+        title: "장비 카테고리 삭제 완료",
+        tone: "success",
+        description: `${EQUIPMENT_SECTION_LABELS[section]} / ${categoryId}`,
+      });
+    } catch (error) {
+      setOperationState({
+        title: "장비 카테고리 삭제 실패",
         tone: "error",
         description: getErrorMessage(error),
       });
@@ -1020,6 +1257,7 @@ export function App() {
           tone={operationState.tone}
           title={operationState.title}
           description={operationState.description}
+          items={operationState.items}
         />
       ) : null}
 
@@ -1061,6 +1299,13 @@ export function App() {
               type="button"
             >
               외부 링크
+            </button>
+            <button
+              className={navButtonClass(activePage === "management")}
+              onClick={() => setActivePage("management")}
+              type="button"
+            >
+              관리 설정
             </button>
           </nav>
           <div className="nav-actions">
@@ -1184,6 +1429,7 @@ export function App() {
 
                 {equipmentSection === "durable" ? (
                   <EquipmentList
+                    categories={equipmentCategories.durable}
                     items={equipment?.durable.items ?? []}
                     onDelete={(itemId) => handleDeleteEquipmentItem("durable", itemId)}
                     onSave={(itemId) => handleSaveEquipmentItem("durable", itemId)}
@@ -1207,6 +1453,7 @@ export function App() {
 
                 {equipmentSection === "consumables" ? (
                   <ConsumableList
+                    categories={equipmentCategories.consumables}
                     items={equipment?.consumables.items ?? []}
                     onDelete={(itemId) =>
                       handleDeleteEquipmentItem("consumables", itemId)
@@ -1234,6 +1481,7 @@ export function App() {
 
                 {equipmentSection === "precheck" ? (
                   <PrecheckList
+                    categories={equipmentCategories.precheck}
                     items={equipment?.precheck.items ?? []}
                     onDelete={(itemId) => handleDeleteEquipmentItem("precheck", itemId)}
                     onSave={(itemId) => handleSaveEquipmentItem("precheck", itemId)}
@@ -1263,54 +1511,63 @@ export function App() {
                 </div>
                 {equipmentSection === "durable" ? (
                   <div className="form-grid">
-                    <input
-                      placeholder="장비명"
-                      value={durableDraft.name}
-                      onChange={(event) =>
-                        setDurableDraft((current) => ({
-                          ...current,
-                          name: event.target.value,
-                        }))
-                      }
-                    />
-                    <input
-                      placeholder="카테고리"
-                      value={durableDraft.category}
-                      onChange={(event) =>
-                        setDurableDraft((current) => ({
-                          ...current,
-                          category: event.target.value,
-                        }))
-                      }
-                    />
-                    <input
-                      type="number"
-                      min="1"
-                      placeholder="수량"
-                      value={durableDraft.quantity}
-                      onChange={(event) =>
-                        setDurableDraft((current) => ({
-                          ...current,
-                          quantity: Number(event.target.value) || 1,
-                        }))
-                      }
-                    />
-                    <select
-                      value={durableDraft.status}
-                      onChange={(event) =>
-                        setDurableDraft((current) => ({
-                          ...current,
-                          status: event.target.value as DurableEquipmentItem["status"],
-                        }))
-                      }
-                    >
-                      <option value="ok">ok</option>
-                      <option value="low">low</option>
-                      <option value="needs_check">needs_check</option>
-                      <option value="needs_repair">needs_repair</option>
-                    </select>
+                    <FormField label="장비명">
+                      <input
+                        placeholder="예: 3계절 침낭"
+                        value={durableDraft.name}
+                        onChange={(event) =>
+                          setDurableDraft((current) => ({
+                            ...current,
+                            name: event.target.value,
+                          }))
+                        }
+                      />
+                    </FormField>
+                    <FormField label="카테고리">
+                      <EquipmentCategorySelect
+                        categories={equipmentCategories.durable}
+                        value={durableDraft.category}
+                        onChange={(value) =>
+                          setDurableDraft((current) => ({
+                            ...current,
+                            category: value,
+                          }))
+                        }
+                      />
+                    </FormField>
+                    <FormField label="수량">
+                      <input
+                        type="number"
+                        min="1"
+                        placeholder="1"
+                        value={durableDraft.quantity}
+                        onChange={(event) =>
+                          setDurableDraft((current) => ({
+                            ...current,
+                            quantity: Number(event.target.value) || 1,
+                          }))
+                        }
+                      />
+                    </FormField>
+                    <FormField label="상태">
+                      <select
+                        value={durableDraft.status}
+                        onChange={(event) =>
+                          setDurableDraft((current) => ({
+                            ...current,
+                            status: event.target.value as DurableEquipmentItem["status"],
+                          }))
+                        }
+                      >
+                        {Object.entries(DURABLE_STATUS_LABELS).map(([value, label]) => (
+                          <option key={value} value={value}>
+                            {label}
+                          </option>
+                        ))}
+                      </select>
+                    </FormField>
                     <button
-                      className="button button--primary"
+                      className="button button--primary form-grid__full"
                       onClick={() => handleCreateEquipmentItem("durable")}
                       type="button"
                     >
@@ -1321,75 +1578,89 @@ export function App() {
 
                 {equipmentSection === "consumables" ? (
                   <div className="form-grid">
-                    <input
-                      placeholder="소모품명"
-                      value={consumableDraft.name}
-                      onChange={(event) =>
-                        setConsumableDraft((current) => ({
-                          ...current,
-                          name: event.target.value,
-                        }))
-                      }
-                    />
-                    <input
-                      placeholder="카테고리"
-                      value={consumableDraft.category}
-                      onChange={(event) =>
-                        setConsumableDraft((current) => ({
-                          ...current,
-                          category: event.target.value,
-                        }))
-                      }
-                    />
-                    <input
-                      placeholder="단위"
-                      value={consumableDraft.unit}
-                      onChange={(event) =>
-                        setConsumableDraft((current) => ({
-                          ...current,
-                          unit: event.target.value,
-                        }))
-                      }
-                    />
-                    <input
-                      type="number"
-                      min="0"
-                      placeholder="현재 수량"
-                      value={consumableDraft.quantity_on_hand}
-                      onChange={(event) =>
-                        setConsumableDraft((current) => ({
-                          ...current,
-                          quantity_on_hand: Number(event.target.value) || 0,
-                        }))
-                      }
-                    />
-                    <input
-                      type="number"
-                      min="0"
-                      placeholder="부족 기준"
-                      value={consumableDraft.low_stock_threshold ?? ""}
-                      onChange={(event) =>
-                        setConsumableDraft((current) => ({
-                          ...current,
-                          low_stock_threshold: parseInteger(event.target.value),
-                        }))
-                      }
-                    />
-                    <select
-                      value={consumableDraft.status}
-                      onChange={(event) =>
-                        setConsumableDraft((current) => ({
-                          ...current,
-                          status: event.target.value as ConsumableEquipmentItem["status"],
-                        }))
-                      }
-                    >
-                      <option value="ok">ok</option>
-                      <option value="low">low</option>
-                      <option value="empty">empty</option>
-                    </select>
+                    <FormField label="소모품명">
+                      <input
+                        placeholder="예: 가스 캔"
+                        value={consumableDraft.name}
+                        onChange={(event) =>
+                          setConsumableDraft((current) => ({
+                            ...current,
+                            name: event.target.value,
+                          }))
+                        }
+                      />
+                    </FormField>
+                    <FormField label="카테고리">
+                      <EquipmentCategorySelect
+                        categories={equipmentCategories.consumables}
+                        value={consumableDraft.category}
+                        onChange={(value) =>
+                          setConsumableDraft((current) => ({
+                            ...current,
+                            category: value,
+                          }))
+                        }
+                      />
+                    </FormField>
+                    <FormField label="단위">
+                      <input
+                        placeholder="예: pack"
+                        value={consumableDraft.unit}
+                        onChange={(event) =>
+                          setConsumableDraft((current) => ({
+                            ...current,
+                            unit: event.target.value,
+                          }))
+                        }
+                      />
+                    </FormField>
+                    <FormField label="현재 수량">
+                      <input
+                        type="number"
+                        min="0"
+                        placeholder="0"
+                        value={consumableDraft.quantity_on_hand}
+                        onChange={(event) =>
+                          setConsumableDraft((current) => ({
+                            ...current,
+                            quantity_on_hand: Number(event.target.value) || 0,
+                          }))
+                        }
+                      />
+                    </FormField>
+                    <FormField label="부족 기준">
+                      <input
+                        type="number"
+                        min="0"
+                        placeholder="예: 2"
+                        value={consumableDraft.low_stock_threshold ?? ""}
+                        onChange={(event) =>
+                          setConsumableDraft((current) => ({
+                            ...current,
+                            low_stock_threshold: parseInteger(event.target.value),
+                          }))
+                        }
+                      />
+                    </FormField>
+                    <FormField label="상태">
+                      <select
+                        value={consumableDraft.status}
+                        onChange={(event) =>
+                          setConsumableDraft((current) => ({
+                            ...current,
+                            status: event.target.value as ConsumableEquipmentItem["status"],
+                          }))
+                        }
+                      >
+                        {Object.entries(CONSUMABLE_STATUS_LABELS).map(([value, label]) => (
+                          <option key={value} value={value}>
+                            {label}
+                          </option>
+                        ))}
+                      </select>
+                    </FormField>
                     <button
-                      className="button button--primary"
+                      className="button button--primary form-grid__full"
                       onClick={() => handleCreateEquipmentItem("consumables")}
                       type="button"
                     >
@@ -1400,41 +1671,49 @@ export function App() {
 
                 {equipmentSection === "precheck" ? (
                   <div className="form-grid">
-                    <input
-                      placeholder="점검 항목명"
-                      value={precheckDraft.name}
-                      onChange={(event) =>
-                        setPrecheckDraft((current) => ({
-                          ...current,
-                          name: event.target.value,
-                        }))
-                      }
-                    />
-                    <input
-                      placeholder="카테고리"
-                      value={precheckDraft.category}
-                      onChange={(event) =>
-                        setPrecheckDraft((current) => ({
-                          ...current,
-                          category: event.target.value,
-                        }))
-                      }
-                    />
-                    <select
-                      value={precheckDraft.status}
-                      onChange={(event) =>
-                        setPrecheckDraft((current) => ({
-                          ...current,
-                          status: event.target.value as PrecheckItem["status"],
-                        }))
-                      }
-                    >
-                      <option value="ok">ok</option>
-                      <option value="needs_check">needs_check</option>
-                      <option value="needs_repair">needs_repair</option>
-                    </select>
+                    <FormField label="점검 항목명">
+                      <input
+                        placeholder="예: 랜턴 배터리"
+                        value={precheckDraft.name}
+                        onChange={(event) =>
+                          setPrecheckDraft((current) => ({
+                            ...current,
+                            name: event.target.value,
+                          }))
+                        }
+                      />
+                    </FormField>
+                    <FormField label="카테고리">
+                      <EquipmentCategorySelect
+                        categories={equipmentCategories.precheck}
+                        value={precheckDraft.category}
+                        onChange={(value) =>
+                          setPrecheckDraft((current) => ({
+                            ...current,
+                            category: value,
+                          }))
+                        }
+                      />
+                    </FormField>
+                    <FormField label="상태">
+                      <select
+                        value={precheckDraft.status}
+                        onChange={(event) =>
+                          setPrecheckDraft((current) => ({
+                            ...current,
+                            status: event.target.value as PrecheckItem["status"],
+                          }))
+                        }
+                      >
+                        {Object.entries(PRECHECK_STATUS_LABELS).map(([value, label]) => (
+                          <option key={value} value={value}>
+                            {label}
+                          </option>
+                        ))}
+                      </select>
+                    </FormField>
                     <button
-                      className="button button--primary"
+                      className="button button--primary form-grid__full"
                       onClick={() => handleCreateEquipmentItem("precheck")}
                       type="button"
                     >
@@ -1442,6 +1721,156 @@ export function App() {
                     </button>
                   </div>
                 ) : null}
+              </section>
+            </section>
+          ) : null}
+
+          {!appLoading && activePage === "management" ? (
+            <section className="page-grid page-grid--two">
+              <section className="panel">
+                <div className="panel__eyebrow">Categories</div>
+                <div className="panel__header">
+                  <h2>장비 카테고리 관리</h2>
+                  <span className="pill">{currentEquipmentCategories.length}개</span>
+                </div>
+                <p className="panel__copy">
+                  장비 섹션별 카테고리를 여기서 관리합니다. 장비 화면에서는 이 목록만
+                  선택할 수 있고, 카테고리 코드는 내부 식별값으로 유지됩니다.
+                </p>
+                <div className="segmented-row">
+                  <button
+                    className={segmentClass(equipmentSection === "durable")}
+                    onClick={() => setEquipmentSection("durable")}
+                    type="button"
+                  >
+                    반복 장비
+                  </button>
+                  <button
+                    className={segmentClass(equipmentSection === "consumables")}
+                    onClick={() => setEquipmentSection("consumables")}
+                    type="button"
+                  >
+                    소모품
+                  </button>
+                  <button
+                    className={segmentClass(equipmentSection === "precheck")}
+                    onClick={() => setEquipmentSection("precheck")}
+                    type="button"
+                  >
+                    출발 전 점검
+                  </button>
+                </div>
+                {currentEquipmentCategories.length === 0 ? (
+                  <div className="empty-state">이 섹션에 등록된 카테고리가 없습니다.</div>
+                ) : (
+                  <div className="stack-list">
+                    {currentEquipmentCategories.map((category) => (
+                      <article className="edit-card" key={category.id}>
+                        <div className="panel__header">
+                          <h3>
+                            {categoryLabelDrafts[equipmentSection][category.id] ??
+                              category.label}
+                          </h3>
+                          <code>{category.id}</code>
+                        </div>
+                        <div className="form-grid">
+                          <FormField label="표시 이름">
+                            <input
+                              placeholder="카테고리 표시 이름"
+                              value={
+                                categoryLabelDrafts[equipmentSection][category.id] ??
+                                category.label
+                              }
+                              onChange={(event) =>
+                                setCategoryLabelDrafts((current) => ({
+                                  ...current,
+                                  [equipmentSection]: {
+                                    ...current[equipmentSection],
+                                    [category.id]: event.target.value,
+                                  },
+                                }))
+                              }
+                            />
+                          </FormField>
+                          <FormField label="카테고리 코드">
+                            <input value={category.id} readOnly />
+                          </FormField>
+                        </div>
+                        <div className="button-row">
+                          <button
+                            className="button"
+                            onClick={() =>
+                              void handleSaveEquipmentCategory(
+                                equipmentSection,
+                                category.id,
+                              )
+                            }
+                            type="button"
+                          >
+                            저장
+                          </button>
+                          <button
+                            className="button"
+                            onClick={() =>
+                              void handleDeleteEquipmentCategory(
+                                equipmentSection,
+                                category.id,
+                              )
+                            }
+                            type="button"
+                          >
+                            삭제
+                          </button>
+                        </div>
+                      </article>
+                    ))}
+                  </div>
+                )}
+              </section>
+
+              <section className="panel">
+                <div className="panel__eyebrow">Create</div>
+                <div className="panel__header">
+                  <h2>새 카테고리 추가</h2>
+                </div>
+                <p className="panel__copy">
+                  표시 이름을 입력하면 카테고리 코드는 자동 생성됩니다.
+                </p>
+                <div className="form-grid">
+                  <FormField label="적용 섹션">
+                    <input value={EQUIPMENT_SECTION_LABELS[equipmentSection]} readOnly />
+                  </FormField>
+                  <FormField label="자동 생성 코드">
+                    <input
+                      placeholder="표시 이름을 입력하면 자동 생성"
+                      value={categoryDraftPreviewId}
+                      readOnly
+                    />
+                  </FormField>
+                  <FormField full label="표시 이름">
+                    <input
+                      className="form-grid__full"
+                      placeholder="예: 수납"
+                      value={categoryDrafts[equipmentSection].label}
+                      onChange={(event) =>
+                        setCategoryDrafts((current) => ({
+                          ...current,
+                          [equipmentSection]: {
+                            ...current[equipmentSection],
+                            label: event.target.value,
+                          },
+                        }))
+                      }
+                    />
+                  </FormField>
+                  <button
+                    className="button button--primary form-grid__full"
+                    onClick={() => void handleCreateEquipmentCategory(equipmentSection)}
+                    type="button"
+                  >
+                    카테고리 추가
+                  </button>
+                </div>
               </section>
             </section>
           ) : null}
@@ -1489,251 +1918,285 @@ export function App() {
                 {!detailLoading && tripDraft ? (
                   <>
                     <div className="form-grid">
-                      <input
-                        placeholder="계획 제목"
-                        value={tripDraft.title}
-                        onChange={(event) =>
-                          updateTripDraft((current) => ({
-                            ...current,
-                            title: event.target.value,
-                          }))
-                        }
-                      />
-                      <input
-                        type="date"
-                        value={tripDraft.date?.start ?? ""}
-                        onChange={(event) =>
-                          updateTripDraft((current) => ({
-                            ...current,
-                            date: {
-                              ...current.date,
-                              start: event.target.value || undefined,
-                            },
-                          }))
-                        }
-                      />
-                      <input
-                        type="date"
-                        value={tripDraft.date?.end ?? ""}
-                        onChange={(event) =>
-                          updateTripDraft((current) => ({
-                            ...current,
-                            date: {
-                              ...current.date,
-                              end: event.target.value || undefined,
-                            },
-                          }))
-                        }
-                      />
-                      <input
-                        placeholder="캠핑장 이름"
-                        value={tripDraft.location?.campsite_name ?? ""}
-                        onChange={(event) =>
-                          updateTripDraft((current) => ({
-                            ...current,
-                            location: {
-                              ...current.location,
-                              campsite_name: event.target.value || undefined,
-                            },
-                          }))
-                        }
-                      />
-                      <input
-                        placeholder="지역"
-                        value={tripDraft.location?.region ?? ""}
-                        onChange={(event) =>
-                          updateTripDraft((current) => ({
-                            ...current,
-                            location: {
-                              ...current.location,
-                              region: event.target.value || undefined,
-                            },
-                          }))
-                        }
-                      />
-                      <input
-                        placeholder="출발 지역"
-                        value={tripDraft.departure?.region ?? ""}
-                        onChange={(event) =>
-                          updateTripDraft((current) => ({
-                            ...current,
-                            departure: {
-                              ...current.departure,
-                              region: event.target.value || undefined,
-                            },
-                          }))
-                        }
-                      />
-                      <input
-                        placeholder="동행자 ID, 콤마 구분 (예: self, child-1)"
-                        value={commaInputs.companionIds}
-                        onChange={(event) => {
-                          setCommaInputs((current) => ({
-                            ...current,
-                            companionIds: event.target.value,
-                          }));
-                          updateTripDraft((current) => ({
-                            ...current,
-                            party: {
-                              companion_ids: splitCommaList(event.target.value),
-                            },
-                          }));
-                        }}
-                      />
-                      <input
-                        placeholder="차량 ID"
-                        value={tripDraft.vehicle?.id ?? ""}
-                        onChange={(event) =>
-                          updateTripDraft((current) => ({
-                            ...current,
-                            vehicle: {
-                              ...current.vehicle,
-                              id: event.target.value || undefined,
-                            },
-                          }))
-                        }
-                      />
-                      <input
-                        type="number"
-                        placeholder="적재량 kg"
-                        value={tripDraft.vehicle?.load_capacity_kg ?? ""}
-                        onChange={(event) =>
-                          updateTripDraft((current) => ({
-                            ...current,
-                            vehicle: {
-                              ...current.vehicle,
-                              load_capacity_kg: parseNumber(event.target.value),
-                            },
-                          }))
-                        }
-                      />
-                      <input
-                        type="number"
-                        placeholder="탑승 인원"
-                        value={tripDraft.vehicle?.passenger_capacity ?? ""}
-                        onChange={(event) =>
-                          updateTripDraft((current) => ({
-                            ...current,
-                            vehicle: {
-                              ...current.vehicle,
-                              passenger_capacity: parseInteger(event.target.value),
-                            },
-                          }))
-                        }
-                      />
-                      <input
-                        placeholder="날씨 요약"
-                        value={tripDraft.conditions?.expected_weather?.summary ?? ""}
-                        onChange={(event) =>
-                          updateTripDraft((current) => ({
-                            ...current,
-                            conditions: {
-                              ...current.conditions,
-                              expected_weather: {
-                                ...current.conditions?.expected_weather,
-                                summary: event.target.value || undefined,
-                              },
-                            },
-                          }))
-                        }
-                      />
-                      <input
-                        placeholder="강수 정보"
-                        value={tripDraft.conditions?.expected_weather?.precipitation ?? ""}
-                        onChange={(event) =>
-                          updateTripDraft((current) => ({
-                            ...current,
-                            conditions: {
-                              ...current.conditions,
-                              expected_weather: {
-                                ...current.conditions?.expected_weather,
-                                precipitation: event.target.value || undefined,
-                              },
-                            },
-                          }))
-                        }
-                      />
-                      <label className="checkbox-row">
+                      <FormField label="계획 제목">
                         <input
-                          checked={tripDraft.conditions?.electricity_available ?? false}
+                          placeholder="새 캠핑 계획"
+                          value={tripDraft.title}
+                          onChange={(event) =>
+                            updateTripDraft((current) => ({
+                              ...current,
+                              title: event.target.value,
+                            }))
+                          }
+                        />
+                      </FormField>
+                      <FormField label="시작일">
+                        <input
+                          type="date"
+                          value={tripDraft.date?.start ?? ""}
+                          onChange={(event) =>
+                            updateTripDraft((current) => ({
+                              ...current,
+                              date: {
+                                ...current.date,
+                                start: event.target.value || undefined,
+                              },
+                            }))
+                          }
+                        />
+                      </FormField>
+                      <FormField label="종료일">
+                        <input
+                          type="date"
+                          value={tripDraft.date?.end ?? ""}
+                          onChange={(event) =>
+                            updateTripDraft((current) => ({
+                              ...current,
+                              date: {
+                                ...current.date,
+                                end: event.target.value || undefined,
+                              },
+                            }))
+                          }
+                        />
+                      </FormField>
+                      <FormField label="캠핑장 이름">
+                        <input
+                          placeholder="예: 솔숲 캠핑장"
+                          value={tripDraft.location?.campsite_name ?? ""}
+                          onChange={(event) =>
+                            updateTripDraft((current) => ({
+                              ...current,
+                              location: {
+                                ...current.location,
+                                campsite_name: event.target.value || undefined,
+                              },
+                            }))
+                          }
+                        />
+                      </FormField>
+                      <FormField label="지역">
+                        <input
+                          placeholder="예: 강원 속초"
+                          value={tripDraft.location?.region ?? ""}
+                          onChange={(event) =>
+                            updateTripDraft((current) => ({
+                              ...current,
+                              location: {
+                                ...current.location,
+                                region: event.target.value || undefined,
+                              },
+                            }))
+                          }
+                        />
+                      </FormField>
+                      <FormField label="출발 지역">
+                        <input
+                          placeholder="예: 서울 마포"
+                          value={tripDraft.departure?.region ?? ""}
+                          onChange={(event) =>
+                            updateTripDraft((current) => ({
+                              ...current,
+                              departure: {
+                                ...current.departure,
+                                region: event.target.value || undefined,
+                              },
+                            }))
+                          }
+                        />
+                      </FormField>
+                      <FormField label="동행자 ID">
+                        <input
+                          placeholder="콤마로 구분 (예: self, child-1)"
+                          value={commaInputs.companionIds}
+                          onChange={(event) => {
+                            setCommaInputs((current) => ({
+                              ...current,
+                              companionIds: event.target.value,
+                            }));
+                            updateTripDraft((current) => ({
+                              ...current,
+                              party: {
+                                companion_ids: splitCommaList(event.target.value),
+                              },
+                            }));
+                          }}
+                        />
+                      </FormField>
+                      <FormField label="차량 ID">
+                        <input
+                          placeholder="예: carnival-01"
+                          value={tripDraft.vehicle?.id ?? ""}
+                          onChange={(event) =>
+                            updateTripDraft((current) => ({
+                              ...current,
+                              vehicle: {
+                                ...current.vehicle,
+                                id: event.target.value || undefined,
+                              },
+                            }))
+                          }
+                        />
+                      </FormField>
+                      <FormField label="적재량 (kg)">
+                        <input
+                          type="number"
+                          placeholder="예: 150"
+                          value={tripDraft.vehicle?.load_capacity_kg ?? ""}
+                          onChange={(event) =>
+                            updateTripDraft((current) => ({
+                              ...current,
+                              vehicle: {
+                                ...current.vehicle,
+                                load_capacity_kg: parseNumber(event.target.value),
+                              },
+                            }))
+                          }
+                        />
+                      </FormField>
+                      <FormField label="탑승 인원">
+                        <input
+                          type="number"
+                          placeholder="예: 4"
+                          value={tripDraft.vehicle?.passenger_capacity ?? ""}
+                          onChange={(event) =>
+                            updateTripDraft((current) => ({
+                              ...current,
+                              vehicle: {
+                                ...current.vehicle,
+                                passenger_capacity: parseInteger(event.target.value),
+                              },
+                            }))
+                          }
+                        />
+                      </FormField>
+                      <FormField label="날씨 요약">
+                        <input
+                          placeholder="예: 흐리고 바람 강함"
+                          value={tripDraft.conditions?.expected_weather?.summary ?? ""}
                           onChange={(event) =>
                             updateTripDraft((current) => ({
                               ...current,
                               conditions: {
                                 ...current.conditions,
-                                electricity_available: event.target.checked,
+                                expected_weather: {
+                                  ...current.conditions?.expected_weather,
+                                  summary: event.target.value || undefined,
+                                },
                               },
                             }))
                           }
-                          type="checkbox"
                         />
-                        전기 사용 가능
-                      </label>
-                      <label className="checkbox-row">
+                      </FormField>
+                      <FormField label="강수 정보">
                         <input
-                          checked={tripDraft.conditions?.cooking_allowed ?? false}
+                          placeholder="예: 오후 비 예보"
+                          value={tripDraft.conditions?.expected_weather?.precipitation ?? ""}
                           onChange={(event) =>
                             updateTripDraft((current) => ({
                               ...current,
                               conditions: {
                                 ...current.conditions,
-                                cooking_allowed: event.target.checked,
+                                expected_weather: {
+                                  ...current.conditions?.expected_weather,
+                                  precipitation: event.target.value || undefined,
+                                },
                               },
                             }))
                           }
-                          type="checkbox"
                         />
-                        취사 가능
-                      </label>
-                      <input
-                        placeholder="요청 메뉴, 콤마 구분"
-                        value={commaInputs.requestedDishes}
-                        onChange={(event) => {
-                          setCommaInputs((current) => ({
-                            ...current,
-                            requestedDishes: event.target.value,
-                          }));
-                          updateTripDraft((current) => ({
-                            ...current,
-                            meal_plan: {
-                              ...current.meal_plan,
-                              use_ai_recommendation:
-                                current.meal_plan?.use_ai_recommendation ?? true,
-                              requested_dishes: splitCommaList(event.target.value),
-                            },
-                          }));
-                        }}
-                      />
-                      <input
-                        placeholder="경유 희망지, 콤마 구분"
-                        value={commaInputs.requestedStops}
-                        onChange={(event) => {
-                          setCommaInputs((current) => ({
-                            ...current,
-                            requestedStops: event.target.value,
-                          }));
-                          updateTripDraft((current) => ({
-                            ...current,
-                            travel_plan: {
-                              ...current.travel_plan,
-                              use_ai_recommendation:
-                                current.travel_plan?.use_ai_recommendation ?? true,
-                              requested_stops: splitCommaList(event.target.value),
-                            },
-                          }));
-                        }}
-                      />
-                      <textarea
-                        className="form-grid__full"
-                        placeholder="메모를 줄 단위로 입력"
-                        value={joinLineList(tripDraft.notes)}
-                        onChange={(event) =>
-                          updateTripDraft((current) => ({
-                            ...current,
-                            notes: splitLineList(event.target.value),
-                          }))
-                        }
-                      />
+                      </FormField>
+                      <FormField label="전기 사용">
+                        <label className="checkbox-row">
+                          <input
+                            checked={tripDraft.conditions?.electricity_available ?? false}
+                            onChange={(event) =>
+                              updateTripDraft((current) => ({
+                                ...current,
+                                conditions: {
+                                  ...current.conditions,
+                                  electricity_available: event.target.checked,
+                                },
+                              }))
+                            }
+                            type="checkbox"
+                          />
+                          전기 사용 가능
+                        </label>
+                      </FormField>
+                      <FormField label="취사 가능 여부">
+                        <label className="checkbox-row">
+                          <input
+                            checked={tripDraft.conditions?.cooking_allowed ?? false}
+                            onChange={(event) =>
+                              updateTripDraft((current) => ({
+                                ...current,
+                                conditions: {
+                                  ...current.conditions,
+                                  cooking_allowed: event.target.checked,
+                                },
+                              }))
+                            }
+                            type="checkbox"
+                          />
+                          취사 가능
+                        </label>
+                      </FormField>
+                      <FormField label="요청 메뉴">
+                        <input
+                          placeholder="콤마로 구분 (예: 바비큐, 어묵탕)"
+                          value={commaInputs.requestedDishes}
+                          onChange={(event) => {
+                            setCommaInputs((current) => ({
+                              ...current,
+                              requestedDishes: event.target.value,
+                            }));
+                            updateTripDraft((current) => ({
+                              ...current,
+                              meal_plan: {
+                                ...current.meal_plan,
+                                use_ai_recommendation:
+                                  current.meal_plan?.use_ai_recommendation ?? true,
+                                requested_dishes: splitCommaList(event.target.value),
+                              },
+                            }));
+                          }}
+                        />
+                      </FormField>
+                      <FormField label="경유 희망지">
+                        <input
+                          placeholder="콤마로 구분 (예: 휴게소, 시장)"
+                          value={commaInputs.requestedStops}
+                          onChange={(event) => {
+                            setCommaInputs((current) => ({
+                              ...current,
+                              requestedStops: event.target.value,
+                            }));
+                            updateTripDraft((current) => ({
+                              ...current,
+                              travel_plan: {
+                                ...current.travel_plan,
+                                use_ai_recommendation:
+                                  current.travel_plan?.use_ai_recommendation ?? true,
+                                requested_stops: splitCommaList(event.target.value),
+                              },
+                            }));
+                          }}
+                        />
+                      </FormField>
+                      <FormField full label="메모">
+                        <textarea
+                          className="form-grid__full"
+                          placeholder="메모를 줄 단위로 입력"
+                          value={joinLineList(tripDraft.notes)}
+                          onChange={(event) =>
+                            updateTripDraft((current) => ({
+                              ...current,
+                              notes: splitLineList(event.target.value),
+                            }))
+                          }
+                        />
+                      </FormField>
                     </div>
 
                     <section className="companion-panel">
@@ -1858,77 +2321,89 @@ export function App() {
                           <h3>{editingCompanionId ? "동행자 수정" : "동행자 추가"}</h3>
                         </div>
                         <div className="form-grid">
-                          <input
-                            placeholder="동행자 ID (예: child-2)"
-                            value={companionDraft.id}
-                            disabled={Boolean(editingCompanionId)}
-                            onChange={(event) =>
-                              setCompanionDraft((current) => ({
-                                ...current,
-                                id: event.target.value,
-                              }))
-                            }
-                          />
-                          <input
-                            placeholder="이름"
-                            value={companionDraft.name}
-                            onChange={(event) =>
-                              setCompanionDraft((current) => ({
-                                ...current,
-                                name: event.target.value,
-                              }))
-                            }
-                          />
-                          <select
-                            value={companionDraft.age_group}
-                            onChange={(event) =>
-                              setCompanionDraft((current) => ({
-                                ...current,
-                                age_group: event.target.value as Companion["age_group"],
-                              }))
-                            }
-                          >
-                            {Object.entries(AGE_GROUP_LABELS).map(([value, label]) => (
-                              <option key={value} value={value}>
-                                {label}
-                              </option>
-                            ))}
-                          </select>
-                          <input
-                            type="number"
-                            min="1900"
-                            max="2100"
-                            placeholder="출생연도"
-                            value={companionDraft.birth_year ?? ""}
-                            onChange={(event) =>
-                              setCompanionDraft((current) => ({
-                                ...current,
-                                birth_year: parseInteger(event.target.value),
-                              }))
-                            }
-                          />
-                          <textarea
-                            className="form-grid__full"
-                            placeholder="건강 특이사항을 줄 단위로 입력"
-                            value={joinLineList(companionDraft.health_notes)}
-                            onChange={(event) =>
-                              setCompanionDraft((current) => ({
-                                ...current,
-                                health_notes: splitLineList(event.target.value),
-                              }))
-                            }
-                          />
-                          <textarea
-                            className="form-grid__full"
-                            placeholder="필수 복용약을 줄 단위로 입력"
-                            value={joinLineList(companionDraft.required_medications)}
-                            onChange={(event) =>
-                              setCompanionDraft((current) => ({
-                                ...current,
-                                required_medications: splitLineList(event.target.value),
-                              }))
-                            }
-                          />
+                          <FormField label="동행자 ID">
+                            <input
+                              placeholder="예: child-2"
+                              value={companionDraft.id}
+                              disabled={Boolean(editingCompanionId)}
+                              onChange={(event) =>
+                                setCompanionDraft((current) => ({
+                                  ...current,
+                                  id: event.target.value,
+                                }))
+                              }
+                            />
+                          </FormField>
+                          <FormField label="이름">
+                            <input
+                              placeholder="이름"
+                              value={companionDraft.name}
+                              onChange={(event) =>
+                                setCompanionDraft((current) => ({
+                                  ...current,
+                                  name: event.target.value,
+                                }))
+                              }
+                            />
+                          </FormField>
+                          <FormField label="연령대">
+                            <select
+                              value={companionDraft.age_group}
+                              onChange={(event) =>
+                                setCompanionDraft((current) => ({
+                                  ...current,
+                                  age_group: event.target.value as Companion["age_group"],
+                                }))
+                              }
+                            >
+                              {Object.entries(AGE_GROUP_LABELS).map(([value, label]) => (
+                                <option key={value} value={value}>
+                                  {label}
+                                </option>
+                              ))}
+                            </select>
+                          </FormField>
+                          <FormField label="출생연도">
+                            <input
+                              type="number"
+                              min="1900"
+                              max="2100"
+                              placeholder="예: 2018"
+                              value={companionDraft.birth_year ?? ""}
+                              onChange={(event) =>
+                                setCompanionDraft((current) => ({
+                                  ...current,
+                                  birth_year: parseInteger(event.target.value),
+                                }))
+                              }
+                            />
+                          </FormField>
+                          <FormField full label="건강 특이사항">
+                            <textarea
+                              className="form-grid__full"
+                              placeholder="줄 단위로 입력"
+                              value={joinLineList(companionDraft.health_notes)}
+                              onChange={(event) =>
+                                setCompanionDraft((current) => ({
+                                  ...current,
+                                  health_notes: splitLineList(event.target.value),
+                                }))
+                              }
+                            />
+                          </FormField>
+                          <FormField full label="필수 복용약">
+                            <textarea
+                              className="form-grid__full"
+                              placeholder="줄 단위로 입력"
+                              value={joinLineList(companionDraft.required_medications)}
+                              onChange={(event) =>
+                                setCompanionDraft((current) => ({
+                                  ...current,
+                                  required_medications: splitLineList(event.target.value),
+                                }))
+                              }
+                            />
+                          </FormField>
                           <label className="checkbox-row">
                             <input
                               checked={companionDraft.traits.cold_sensitive ?? false}
@@ -2197,39 +2672,47 @@ export function App() {
                 </div>
                 {selectedHistory ? (
                   <div className="form-grid">
-                    <input
-                      value={selectedHistory.title}
-                      onChange={(event) =>
-                        setHistory((current) =>
-                          current.map((item) =>
-                            item.history_id === selectedHistory.history_id
-                              ? { ...item, title: event.target.value }
-                              : item,
-                          ),
-                        )
-                      }
-                    />
-                    <input
-                      type="number"
-                      min="0"
-                      value={
-                        selectedHistory.attendee_count ??
-                        selectedHistory.companion_ids.length
-                      }
-                      onChange={(event) =>
-                        setHistory((current) =>
-                          current.map((item) =>
-                            item.history_id === selectedHistory.history_id
-                              ? {
-                                  ...item,
-                                  attendee_count: parseInteger(event.target.value) ?? 0,
-                                }
-                              : item,
-                          ),
-                        )
-                      }
-                    />
-                    <input value={selectedHistory.archived_at} readOnly />
+                    <FormField label="히스토리 제목">
+                      <input
+                        placeholder="히스토리 제목"
+                        value={selectedHistory.title}
+                        onChange={(event) =>
+                          setHistory((current) =>
+                            current.map((item) =>
+                              item.history_id === selectedHistory.history_id
+                                ? { ...item, title: event.target.value }
+                                : item,
+                            ),
+                          )
+                        }
+                      />
+                    </FormField>
+                    <FormField label="참석 인원">
+                      <input
+                        type="number"
+                        min="0"
+                        placeholder="예: 4"
+                        value={
+                          selectedHistory.attendee_count ??
+                          selectedHistory.companion_ids.length
+                        }
+                        onChange={(event) =>
+                          setHistory((current) =>
+                            current.map((item) =>
+                              item.history_id === selectedHistory.history_id
+                                ? {
+                                    ...item,
+                                    attendee_count: parseInteger(event.target.value) ?? 0,
+                                  }
+                                : item,
+                            ),
+                          )
+                        }
+                      />
+                    </FormField>
+                    <FormField label="보관 시각">
+                      <input value={selectedHistory.archived_at} readOnly />
+                    </FormField>
                     <div className="form-grid__full history-output-card">
                       <div className="history-output-card__header">
                         <div>
@@ -2269,22 +2752,25 @@ export function App() {
                         </article>
                       ) : null}
                     </div>
-                    <textarea
-                      className="form-grid__full"
-                      value={joinLineList(selectedHistory.notes)}
-                      onChange={(event) =>
-                        setHistory((current) =>
-                          current.map((item) =>
-                            item.history_id === selectedHistory.history_id
-                              ? {
-                                  ...item,
-                                  notes: splitLineList(event.target.value),
-                                }
-                              : item,
-                          ),
-                        )
-                      }
-                    />
+                    <FormField full label="메모">
+                      <textarea
+                        className="form-grid__full"
+                        placeholder="히스토리 메모를 줄 단위로 입력"
+                        value={joinLineList(selectedHistory.notes)}
+                        onChange={(event) =>
+                          setHistory((current) =>
+                            current.map((item) =>
+                              item.history_id === selectedHistory.history_id
+                                ? {
+                                    ...item,
+                                    notes: splitLineList(event.target.value),
+                                  }
+                                : item,
+                            ),
+                          )
+                        }
+                      />
+                    </FormField>
                     <div className="button-row">
                       <button className="button" onClick={handleSaveHistory} type="button">
                         히스토리 저장
@@ -2325,66 +2811,78 @@ export function App() {
                         <div className="stack-list">
                           {group.items.map((link) => (
                             <div className="link-card" key={link.id}>
-                              <input
-                                value={link.name}
-                                onChange={(event) =>
-                                  setLinks((current) =>
-                                    current.map((item) =>
-                                      item.id === link.id
-                                        ? { ...item, name: event.target.value }
-                                        : item,
+                              <FormField label="링크 이름">
+                                <input
+                                  placeholder="링크 이름"
+                                  value={link.name}
+                                  onChange={(event) =>
+                                    setLinks((current) =>
+                                      current.map((item) =>
+                                        item.id === link.id
+                                          ? { ...item, name: event.target.value }
+                                          : item,
+                                      ),
+                                    )
+                                  }
+                                />
+                              </FormField>
+                              <FormField label="URL">
+                                <input
+                                  placeholder="https://..."
+                                  value={link.url}
+                                  onChange={(event) =>
+                                    setLinks((current) =>
+                                      current.map((item) =>
+                                        item.id === link.id
+                                          ? { ...item, url: event.target.value }
+                                          : item,
+                                      ),
+                                    )
+                                  }
+                                />
+                              </FormField>
+                              <FormField label="카테고리">
+                                <select
+                                  value={link.category}
+                                  onChange={(event) =>
+                                    setLinks((current) =>
+                                      current.map((item) =>
+                                        item.id === link.id
+                                          ? {
+                                              ...item,
+                                              category:
+                                                event.target.value as ExternalLinkCategory,
+                                            }
+                                          : item,
+                                      ),
+                                    )
+                                  }
+                                >
+                                  {Object.entries(EXTERNAL_LINK_CATEGORY_LABELS).map(
+                                    ([value, label]) => (
+                                      <option key={value} value={value}>
+                                        {label}
+                                      </option>
                                     ),
-                                  )
-                                }
-                              />
-                              <input
-                                value={link.url}
-                                onChange={(event) =>
-                                  setLinks((current) =>
-                                    current.map((item) =>
-                                      item.id === link.id
-                                        ? { ...item, url: event.target.value }
-                                        : item,
-                                    ),
-                                  )
-                                }
-                              />
-                              <select
-                                value={link.category}
-                                onChange={(event) =>
-                                  setLinks((current) =>
-                                    current.map((item) =>
-                                      item.id === link.id
-                                        ? {
-                                            ...item,
-                                            category:
-                                              event.target.value as ExternalLinkCategory,
-                                          }
-                                        : item,
-                                    ),
-                                  )
-                                }
-                              >
-                                {Object.entries(EXTERNAL_LINK_CATEGORY_LABELS).map(
-                                  ([value, label]) => (
-                                    <option key={value} value={value}>
-                                      {label}
-                                    </option>
-                                  ),
-                                )}
-                              </select>
-                              <textarea
-                                value={link.notes ?? ""}
-                                onChange={(event) =>
-                                  setLinks((current) =>
-                                    current.map((item) =>
-                                      item.id === link.id
-                                        ? { ...item, notes: event.target.value }
-                                        : item,
-                                    ),
-                                  )
-                                }
-                              />
+                                  )}
+                                </select>
+                              </FormField>
+                              <FormField full label="메모">
+                                <textarea
+                                  className="form-grid__full"
+                                  placeholder="링크 메모"
+                                  value={link.notes ?? ""}
+                                  onChange={(event) =>
+                                    setLinks((current) =>
+                                      current.map((item) =>
+                                        item.id === link.id
+                                          ? { ...item, notes: event.target.value }
+                                          : item,
+                                      ),
+                                    )
+                                  }
+                                />
+                              </FormField>
                               <div className="button-row">
                                 <a
                                   className="button"
@@ -2424,53 +2922,65 @@ export function App() {
                   <h2>새 외부 링크</h2>
                 </div>
                 <div className="form-grid">
-                  <input
-                    placeholder="링크 이름"
-                    value={linkDraft.name}
-                    onChange={(event) =>
-                      setLinkDraft((current) => ({
-                        ...current,
-                        name: event.target.value,
-                      }))
-                    }
-                  />
-                  <input
-                    placeholder="https://..."
-                    value={linkDraft.url}
-                    onChange={(event) =>
-                      setLinkDraft((current) => ({
-                        ...current,
-                        url: event.target.value,
-                      }))
-                    }
-                  />
-                  <select
-                    value={linkDraft.category}
-                    onChange={(event) =>
-                      setLinkDraft((current) => ({
-                        ...current,
-                        category: event.target.value as ExternalLinkCategory,
-                      }))
-                    }
+                  <FormField label="링크 이름">
+                    <input
+                      placeholder="예: 주말 날씨"
+                      value={linkDraft.name}
+                      onChange={(event) =>
+                        setLinkDraft((current) => ({
+                          ...current,
+                          name: event.target.value,
+                        }))
+                      }
+                    />
+                  </FormField>
+                  <FormField label="URL">
+                    <input
+                      placeholder="https://..."
+                      value={linkDraft.url}
+                      onChange={(event) =>
+                        setLinkDraft((current) => ({
+                          ...current,
+                          url: event.target.value,
+                        }))
+                      }
+                    />
+                  </FormField>
+                  <FormField label="카테고리">
+                    <select
+                      value={linkDraft.category}
+                      onChange={(event) =>
+                        setLinkDraft((current) => ({
+                          ...current,
+                          category: event.target.value as ExternalLinkCategory,
+                        }))
+                      }
+                    >
+                      {Object.entries(EXTERNAL_LINK_CATEGORY_LABELS).map(([value, label]) => (
+                        <option key={value} value={value}>
+                          {label}
+                        </option>
+                      ))}
+                    </select>
+                  </FormField>
+                  <FormField full label="메모">
+                    <textarea
+                      className="form-grid__full"
+                      placeholder="링크 메모"
+                      value={linkDraft.notes ?? ""}
+                      onChange={(event) =>
+                        setLinkDraft((current) => ({
+                          ...current,
+                          notes: event.target.value,
+                        }))
+                      }
+                    />
+                  </FormField>
+                  <button
+                    className="button button--primary form-grid__full"
+                    onClick={handleCreateLink}
+                    type="button"
                   >
-                    {Object.entries(EXTERNAL_LINK_CATEGORY_LABELS).map(([value, label]) => (
-                      <option key={value} value={value}>
-                        {label}
-                      </option>
-                    ))}
-                  </select>
-                  <textarea
-                    className="form-grid__full"
-                    placeholder="링크 메모"
-                    value={linkDraft.notes ?? ""}
-                    onChange={(event) =>
-                      setLinkDraft((current) => ({
-                        ...current,
-                        notes: event.target.value,
-                      }))
-                    }
-                  />
-                  <button className="button button--primary" onClick={handleCreateLink} type="button">
                     링크 추가
                   </button>
                 </div>
@@ -2494,7 +3004,7 @@ function segmentClass(active: boolean) {
 function createEmptyTripDraft(): TripDraft {
   return {
     version: 1,
-    title: "새 캠핑 계획",
+    title: "",
     party: {
       companion_ids: [],
     },
@@ -2574,12 +3084,43 @@ function createEmptyLink(): ExternalLinkInput {
   };
 }
 
+function createEmptyEquipmentCategoryDraft(): EquipmentCategoryInput {
+  return {
+    label: "",
+  };
+}
+
+function createEmptyCategoryDrafts(): CategoryDrafts {
+  return {
+    durable: createEmptyEquipmentCategoryDraft(),
+    consumables: createEmptyEquipmentCategoryDraft(),
+    precheck: createEmptyEquipmentCategoryDraft(),
+  };
+}
+
+function createEmptyCategoryLabelDrafts(): CategoryLabelDrafts {
+  return {
+    durable: {},
+    consumables: {},
+    precheck: {},
+  };
+}
+
 function createCommaSeparatedInputs(draft?: TripDraft | null): CommaSeparatedInputs {
   return {
     companionIds: joinCommaList(draft?.party?.companion_ids),
     requestedDishes: joinCommaList(draft?.meal_plan?.requested_dishes),
     requestedStops: joinCommaList(draft?.travel_plan?.requested_stops),
   };
+}
+
+function FormField(props: { children: ReactNode; full?: boolean; label: string }) {
+  return (
+    <div className={props.full ? "field form-grid__full" : "field"}>
+      <span className="field__label">{props.label}</span>
+      {props.children}
+    </div>
+  );
 }
 
 function MetricCard(props: { label: string; value: string }) {
@@ -2591,7 +3132,30 @@ function MetricCard(props: { label: string; value: string }) {
   );
 }
 
+function EquipmentCategorySelect(props: {
+  categories: EquipmentCategory[];
+  value: string;
+  onChange: (value: string) => void;
+}) {
+  const options = buildEquipmentCategoryOptions(props.categories, props.value);
+
+  return (
+    <select
+      aria-label="카테고리"
+      value={resolveCategorySelection(props.value, options)}
+      onChange={(event) => props.onChange(event.target.value)}
+    >
+      {options.map((category) => (
+        <option key={category.id} value={category.id}>
+          {category.label}
+        </option>
+      ))}
+    </select>
+  );
+}
+
 function EquipmentList(props: {
+  categories: EquipmentCategory[];
   items: DurableEquipmentItem[];
   onChange: (itemId: string, updater: (item: DurableEquipmentItem) => DurableEquipmentItem) => void;
   onSave: (itemId: string) => void;
@@ -2601,46 +3165,63 @@ function EquipmentList(props: {
     <div className="stack-list">
       {props.items.map((item) => (
         <div className="edit-card" key={item.id}>
-          <input
-            value={item.name}
-            onChange={(event) =>
-              props.onChange(item.id, (current) => ({ ...current, name: event.target.value }))
-            }
-          />
-          <input
-            value={item.category}
-            onChange={(event) =>
-              props.onChange(item.id, (current) => ({
-                ...current,
-                category: event.target.value,
-              }))
-            }
-          />
-          <input
-            type="number"
-            min="1"
-            value={item.quantity}
-            onChange={(event) =>
-              props.onChange(item.id, (current) => ({
-                ...current,
-                quantity: Number(event.target.value) || 1,
-              }))
-            }
-          />
-          <select
-            value={item.status}
-            onChange={(event) =>
-              props.onChange(item.id, (current) => ({
-                ...current,
-                status: event.target.value as DurableEquipmentItem["status"],
-              }))
-            }
-          >
-            <option value="ok">ok</option>
-            <option value="low">low</option>
-            <option value="needs_check">needs_check</option>
-            <option value="needs_repair">needs_repair</option>
-          </select>
+          <div className="form-grid">
+            <FormField label="장비명">
+              <input
+                placeholder="장비명"
+                value={item.name}
+                onChange={(event) =>
+                  props.onChange(item.id, (current) => ({
+                    ...current,
+                    name: event.target.value,
+                  }))
+                }
+              />
+            </FormField>
+            <FormField label="카테고리">
+              <EquipmentCategorySelect
+                categories={props.categories}
+                value={item.category}
+                onChange={(value) =>
+                  props.onChange(item.id, (current) => ({
+                    ...current,
+                    category: value,
+                  }))
+                }
+              />
+            </FormField>
+            <FormField label="수량">
+              <input
+                type="number"
+                min="1"
+                placeholder="1"
+                value={item.quantity}
+                onChange={(event) =>
+                  props.onChange(item.id, (current) => ({
+                    ...current,
+                    quantity: Number(event.target.value) || 1,
+                  }))
+                }
+              />
+            </FormField>
+            <FormField label="상태">
+              <select
+                value={item.status}
+                onChange={(event) =>
+                  props.onChange(item.id, (current) => ({
+                    ...current,
+                    status: event.target.value as DurableEquipmentItem["status"],
+                  }))
+                }
+              >
+                {Object.entries(DURABLE_STATUS_LABELS).map(([value, label]) => (
+                  <option key={value} value={value}>
+                    {label}
+                  </option>
+                ))}
+              </select>
+            </FormField>
+          </div>
           <div className="button-row">
             <button className="button" onClick={() => props.onSave(item.id)} type="button">
               저장
@@ -2656,6 +3237,7 @@ function EquipmentList(props: {
 }
 
 function ConsumableList(props: {
+  categories: EquipmentCategory[];
   items: ConsumableEquipmentItem[];
   onChange: (
     itemId: string,
@@ -2668,63 +3250,89 @@ function ConsumableList(props: {
     <div className="stack-list">
       {props.items.map((item) => (
         <div className="edit-card" key={item.id}>
-          <input
-            value={item.name}
-            onChange={(event) =>
-              props.onChange(item.id, (current) => ({ ...current, name: event.target.value }))
-            }
-          />
-          <input
-            value={item.category}
-            onChange={(event) =>
-              props.onChange(item.id, (current) => ({
-                ...current,
-                category: event.target.value,
-              }))
-            }
-          />
-          <input
-            type="number"
-            min="0"
-            value={item.quantity_on_hand}
-            onChange={(event) =>
-              props.onChange(item.id, (current) => ({
-                ...current,
-                quantity_on_hand: Number(event.target.value) || 0,
-              }))
-            }
-          />
-          <input
-            value={item.unit}
-            onChange={(event) =>
-              props.onChange(item.id, (current) => ({ ...current, unit: event.target.value }))
-            }
-          />
-          <input
-            type="number"
-            min="0"
-            placeholder="부족 기준"
-            value={item.low_stock_threshold ?? ""}
-            onChange={(event) =>
-              props.onChange(item.id, (current) => ({
-                ...current,
-                low_stock_threshold: parseInteger(event.target.value),
-              }))
-            }
-          />
-          <select
-            value={item.status}
-            onChange={(event) =>
-              props.onChange(item.id, (current) => ({
-                ...current,
-                status: event.target.value as ConsumableEquipmentItem["status"],
-              }))
-            }
-          >
-            <option value="ok">ok</option>
-            <option value="low">low</option>
-            <option value="empty">empty</option>
-          </select>
+          <div className="form-grid">
+            <FormField label="소모품명">
+              <input
+                placeholder="소모품명"
+                value={item.name}
+                onChange={(event) =>
+                  props.onChange(item.id, (current) => ({
+                    ...current,
+                    name: event.target.value,
+                  }))
+                }
+              />
+            </FormField>
+            <FormField label="카테고리">
+              <EquipmentCategorySelect
+                categories={props.categories}
+                value={item.category}
+                onChange={(value) =>
+                  props.onChange(item.id, (current) => ({
+                    ...current,
+                    category: value,
+                  }))
+                }
+              />
+            </FormField>
+            <FormField label="현재 수량">
+              <input
+                type="number"
+                min="0"
+                placeholder="0"
+                value={item.quantity_on_hand}
+                onChange={(event) =>
+                  props.onChange(item.id, (current) => ({
+                    ...current,
+                    quantity_on_hand: Number(event.target.value) || 0,
+                  }))
+                }
+              />
+            </FormField>
+            <FormField label="단위">
+              <input
+                placeholder="단위"
+                value={item.unit}
+                onChange={(event) =>
+                  props.onChange(item.id, (current) => ({
+                    ...current,
+                    unit: event.target.value,
+                  }))
+                }
+              />
+            </FormField>
+            <FormField label="부족 기준">
+              <input
+                type="number"
+                min="0"
+                placeholder="예: 2"
+                value={item.low_stock_threshold ?? ""}
+                onChange={(event) =>
+                  props.onChange(item.id, (current) => ({
+                    ...current,
+                    low_stock_threshold: parseInteger(event.target.value),
+                  }))
+                }
+              />
+            </FormField>
+            <FormField label="상태">
+              <select
+                value={item.status}
+                onChange={(event) =>
+                  props.onChange(item.id, (current) => ({
+                    ...current,
+                    status: event.target.value as ConsumableEquipmentItem["status"],
+                  }))
+                }
+              >
+                {Object.entries(CONSUMABLE_STATUS_LABELS).map(([value, label]) => (
+                  <option key={value} value={value}>
+                    {label}
+                  </option>
+                ))}
+              </select>
+            </FormField>
+          </div>
           <div className="button-row">
             <button className="button" onClick={() => props.onSave(item.id)} type="button">
               저장
@@ -2740,6 +3348,7 @@ function ConsumableList(props: {
 }
 
 function PrecheckList(props: {
+  categories: EquipmentCategory[];
   items: PrecheckItem[];
   onChange: (itemId: string, updater: (item: PrecheckItem) => PrecheckItem) => void;
   onSave: (itemId: string) => void;
@@ -2749,34 +3358,49 @@ function PrecheckList(props: {
     <div className="stack-list">
       {props.items.map((item) => (
         <div className="edit-card" key={item.id}>
-          <input
-            value={item.name}
-            onChange={(event) =>
-              props.onChange(item.id, (current) => ({ ...current, name: event.target.value }))
-            }
-          />
-          <input
-            value={item.category}
-            onChange={(event) =>
-              props.onChange(item.id, (current) => ({
-                ...current,
-                category: event.target.value,
-              }))
-            }
-          />
-          <select
-            value={item.status}
-            onChange={(event) =>
-              props.onChange(item.id, (current) => ({
-                ...current,
-                status: event.target.value as PrecheckItem["status"],
-              }))
-            }
-          >
-            <option value="ok">ok</option>
-            <option value="needs_check">needs_check</option>
-            <option value="needs_repair">needs_repair</option>
-          </select>
+          <div className="form-grid">
+            <FormField label="점검 항목명">
+              <input
+                placeholder="점검 항목명"
+                value={item.name}
+                onChange={(event) =>
+                  props.onChange(item.id, (current) => ({
+                    ...current,
+                    name: event.target.value,
+                  }))
+                }
+              />
+            </FormField>
+            <FormField label="카테고리">
+              <EquipmentCategorySelect
+                categories={props.categories}
+                value={item.category}
+                onChange={(value) =>
+                  props.onChange(item.id, (current) => ({
+                    ...current,
+                    category: value,
+                  }))
+                }
+              />
+            </FormField>
+            <FormField label="상태" full>
+              <select
+                value={item.status}
+                onChange={(event) =>
+                  props.onChange(item.id, (current) => ({
+                    ...current,
+                    status: event.target.value as PrecheckItem["status"],
+                  }))
+                }
+              >
+                {Object.entries(PRECHECK_STATUS_LABELS).map(([value, label]) => (
+                  <option key={value} value={value}>
+                    {label}
+                  </option>
+                ))}
+              </select>
+            </FormField>
+          </div>
           <div className="button-row">
             <button className="button" onClick={() => props.onSave(item.id)} type="button">
               저장
@@ -2827,8 +3451,66 @@ function joinLineList(values?: string[]) {
 function splitLineList(value: string) {
   return value
     .split("\n")
-    .map((item) => item.trim())
-    .filter(Boolean);
+    .filter((item) => item.trim().length > 0);
+}
+
+function resolveCategorySelection(
+  currentValue: string,
+  categories: EquipmentCategory[],
+): string {
+  if (categories.some((item) => item.id === currentValue)) {
+    return currentValue;
+  }
+
+  return categories[0]?.id ?? currentValue;
+}
+
+function buildEquipmentCategoryOptions(
+  categories: EquipmentCategory[],
+  currentValue?: string,
+) {
+  const merged = [...categories];
+
+  if (currentValue && !merged.some((item) => item.id === currentValue)) {
+    merged.push({
+      id: currentValue,
+      label: currentValue,
+      sort_order: Math.max(0, ...merged.map((item) => item.sort_order)) + 1,
+    });
+  }
+
+  return merged.sort(sortEquipmentCategories);
+}
+
+function sortEquipmentCategories(left: EquipmentCategory, right: EquipmentCategory) {
+  if (left.sort_order !== right.sort_order) {
+    return left.sort_order - right.sort_order;
+  }
+
+  return left.label.localeCompare(right.label, "ko");
+}
+
+function buildCategoryPreviewId(section: EquipmentSection, label: string) {
+  if (!label.trim()) {
+    return "";
+  }
+
+  const candidate = buildKebabId(section, [label]).replace(`${section}-`, "");
+  return !candidate || candidate === section ? "category" : candidate;
+}
+
+function appendSyncWarnings(base: string, warnings: string[]) {
+  if (warnings.length === 0) {
+    return base;
+  }
+
+  return `${base} / ${warnings.join(" / ")}`;
+}
+
+function omitDraftLabel(drafts: Record<string, string>, categoryId: string) {
+  const nextDrafts = { ...drafts };
+  delete nextDrafts[categoryId];
+  return nextDrafts;
 }
 
 function findEquipmentItem(

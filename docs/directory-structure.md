@@ -38,6 +38,7 @@
 ├── profile.yaml
 ├── companions.yaml
 ├── equipment/
+│   ├── categories.yaml
 │   ├── durable.yaml
 │   ├── consumables.yaml
 │   └── precheck.yaml
@@ -57,3 +58,4 @@
 - `history/`: 완료된 캠핑 히스토리
 - `outputs/`: 분석 결과 Markdown
 - `links.yaml`: 사용자 북마크 링크
+- `equipment/categories.yaml`: 장비 섹션별 카테고리 코드와 표시 이름

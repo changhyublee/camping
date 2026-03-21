@@ -6,6 +6,9 @@ import type {
   ConsumableEquipmentItemInput,
   DurableEquipmentItemInput,
   EquipmentCatalog,
+  EquipmentCategoriesData,
+  EquipmentCategory,
+  EquipmentCategoryInput,
   EquipmentSection,
   ExternalLink,
   ExternalLinkInput,
@@ -159,6 +162,36 @@ export const apiClient = {
   },
   async getEquipment(): Promise<EquipmentCatalog> {
     return request("/api/equipment");
+  },
+  async getEquipmentCategories(): Promise<EquipmentCategoriesData> {
+    return request("/api/equipment/categories");
+  },
+  async createEquipmentCategory(
+    section: EquipmentSection,
+    input: EquipmentCategoryInput,
+  ): Promise<{ item: EquipmentCategory }> {
+    return request(`/api/equipment/categories/${section}`, {
+      method: "POST",
+      body: JSON.stringify(input),
+    });
+  },
+  async updateEquipmentCategory(
+    section: EquipmentSection,
+    categoryId: string,
+    input: EquipmentCategoryInput,
+  ): Promise<{ item: EquipmentCategory }> {
+    return request(`/api/equipment/categories/${section}/${categoryId}`, {
+      method: "PUT",
+      body: JSON.stringify(input),
+    });
+  },
+  async deleteEquipmentCategory(
+    section: EquipmentSection,
+    categoryId: string,
+  ): Promise<{ status: "deleted" }> {
+    return request(`/api/equipment/categories/${section}/${categoryId}`, {
+      method: "DELETE",
+    });
   },
   async createEquipmentItem(
     section: EquipmentSection,

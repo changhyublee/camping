@@ -42,6 +42,10 @@
 ### 장비 관리
 
 - `GET /api/equipment`
+- `GET /api/equipment/categories`
+- `POST /api/equipment/categories/:section`
+- `PUT /api/equipment/categories/:section/:categoryId`
+- `DELETE /api/equipment/categories/:section/:categoryId`
 - `POST /api/equipment/:section/items`
 - `PUT /api/equipment/:section/items/:itemId`
 - `DELETE /api/equipment/:section/items/:itemId`
@@ -124,6 +128,35 @@
   "durable": { "version": 1, "items": [] },
   "consumables": { "version": 1, "items": [] },
   "precheck": { "version": 1, "items": [] }
+}
+```
+
+### `GET /api/equipment/categories`
+
+```json
+{
+  "version": 1,
+  "durable": [
+    {
+      "id": "shelter",
+      "label": "쉘터/텐트",
+      "sort_order": 1
+    }
+  ],
+  "consumables": [
+    {
+      "id": "fuel",
+      "label": "연료",
+      "sort_order": 1
+    }
+  ],
+  "precheck": [
+    {
+      "id": "battery",
+      "label": "배터리",
+      "sort_order": 1
+    }
+  ]
 }
 ```
 

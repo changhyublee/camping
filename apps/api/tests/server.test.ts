@@ -235,6 +235,41 @@ describe("API server", () => {
     await app.close();
   });
 
+  it("returns field-level details when trip creation validation fails", async () => {
+    const dataDir = await createSeededDataDir();
+    const app = await buildServer({
+      dataDir,
+      projectRoot,
+      modelClient: new MockAnalysisClient("# sample"),
+    });
+
+    const response = await app.inject({
+      method: "POST",
+      url: "/api/trips",
+      payload: {
+        version: 1,
+        title: "",
+        party: {
+          companion_ids: [],
+        },
+        notes: [],
+      },
+    });
+
+    expect(response.statusCode).toBe(400);
+    expect(response.json()).toEqual(
+      expect.objectContaining({
+        status: "failed",
+        error: expect.objectContaining({
+          code: "TRIP_INVALID",
+          message: expect.stringContaining("title: 값을 입력해야 합니다."),
+        }),
+      }),
+    );
+
+    await app.close();
+  });
+
   it("rejects a trip file when the file name and internal trip_id do not match", async () => {
     const dataDir = await createSeededDataDir();
     const tripPath = path.join(dataDir, "trips", "2026-04-18-gapyeong.yaml");
@@ -553,6 +588,21 @@ describe("API server", () => {
     expect(createEquipmentResponse.statusCode).toBe(200);
     const createdEquipmentId = createEquipmentResponse.json().item.id as string;
 
+    const categoriesResponse = await app.inject({
+      method: "GET",
+      url: "/api/equipment/categories",
+    });
+
+    expect(categoriesResponse.statusCode).toBe(200);
+    expect(categoriesResponse.json().durable).toEqual(
+      expect.arrayContaining([
+        expect.objectContaining({
+          id: "storage",
+          label: "storage",
+        }),
+      ]),
+    );
+
     const updateEquipmentResponse = await app.inject({
       method: "PUT",
       url: `/api/equipment/durable/items/${createdEquipmentId}`,
@@ -567,6 +617,28 @@ describe("API server", () => {
 
     expect(updateEquipmentResponse.statusCode).toBe(200);
     expect(updateEquipmentResponse.json().item.quantity).toBe(2);
+
+    const createCategoryResponse = await app.inject({
+      method: "POST",
+      url: "/api/equipment/categories/durable",
+      payload: {
+        label: "수납",
+      },
+    });
+
+    expect(createCategoryResponse.statusCode).toBe(200);
+    const createdCategoryId = createCategoryResponse.json().item.id as string;
+
+    const updateCategoryResponse = await app.inject({
+      method: "PUT",
+      url: `/api/equipment/categories/durable/${createdCategoryId}`,
+      payload: {
+        label: "수납함",
+      },
+    });
+
+    expect(updateCategoryResponse.statusCode).toBe(200);
+    expect(updateCategoryResponse.json().item.label).toBe("수납함");
 
     const createLinkResponse = await app.inject({
       method: "POST",
@@ -588,6 +660,13 @@ describe("API server", () => {
     });
 
     expect(deleteEquipmentResponse.statusCode).toBe(200);
+
+    const deleteCategoryResponse = await app.inject({
+      method: "DELETE",
+      url: `/api/equipment/categories/durable/${createdCategoryId}`,
+    });
+
+    expect(deleteCategoryResponse.statusCode).toBe(200);
 
     await app.close();
   });
@@ -713,6 +792,37 @@ describe("API server", () => {
         status: "failed",
         error: expect.objectContaining({
           code: "INVALID_TRIP_ID_FORMAT",
+        }),
+      }),
+    );
+
+    await app.close();
+  });
+
+  it("keeps analyze-trip body validation errors as TRIP_INVALID when non-trip fields are wrong", async () => {
+    const dataDir = await createSeededDataDir();
+    const app = await buildServer({
+      dataDir,
+      projectRoot,
+      modelClient: new MockAnalysisClient("# sample"),
+    });
+
+    const response = await app.inject({
+      method: "POST",
+      url: "/api/analyze-trip",
+      payload: {
+        trip_id: "2026-04-18-gapyeong",
+        save_output: "yes",
+      },
+    });
+
+    expect(response.statusCode).toBe(400);
+    expect(response.json()).toEqual(
+      expect.objectContaining({
+        status: "failed",
+        error: expect.objectContaining({
+          code: "TRIP_INVALID",
+          message: expect.stringContaining("save_output"),
         }),
       }),
     );

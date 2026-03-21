@@ -1,12 +1,14 @@
-import { render, screen, waitFor } from "@testing-library/react";
+import { render, screen, waitFor, within } from "@testing-library/react";
 import userEvent from "@testing-library/user-event";
 import { afterEach, beforeEach, describe, expect, it, vi } from "vitest";
 import type {
   AnalyzeTripResponse,
   Companion,
   EquipmentCatalog,
+  EquipmentCategoriesData,
   GetOutputResponse,
   HistoryRecord,
+  TripDraft,
   TripData,
   TripSummary,
   ValidateTripResponse,
@@ -41,6 +43,7 @@ type MockState = {
   >;
   analysis: ApiResponse<AnalyzeTripResponse>;
   equipment: EquipmentCatalog;
+  equipmentCategories: EquipmentCategoriesData;
   history: HistoryRecord[];
   links: Array<{
     id: string;
@@ -150,6 +153,19 @@ function readEquipmentDeleteParams(pathname: string) {
   };
 }
 
+function readEquipmentCategoryParams(pathname: string) {
+  const match = pathname.match(/^\/api\/equipment\/categories\/([^/]+)(?:\/([^/]+))?$/u);
+
+  if (!match) {
+    return null;
+  }
+
+  return {
+    section: match[1] as "durable" | "consumables" | "precheck",
+    categoryId: match[2] ?? null,
+  };
+}
+
 function mockFetch(input: RequestInfo | URL, init?: RequestInit) {
   const rawUrl = typeof input === "string" ? input : input.toString();
   const pathname = new URL(rawUrl, "http://localhost").pathname;
@@ -163,6 +179,37 @@ function mockFetch(input: RequestInfo | URL, init?: RequestInit) {
     return jsonResponse({ items: state.companions });
   }
 
+  if (pathname === "/api/trips" && method === "POST") {
+    const body = parseBody(init) as TripDraft;
+
+    if (!body.title?.trim()) {
+      return jsonResponse(
+        {
+          status: "failed",
+          warnings: [],
+          error: {
+            code: "TRIP_INVALID",
+            message: "trip 생성 요청 형식이 올바르지 않습니다. title: 값을 입력해야 합니다.",
+          },
+        },
+        400,
+      );
+    }
+
+    const trip = {
+      ...body,
+      trip_id: "2026-05-01-new-trip",
+    } satisfies TripData;
+
+    state.tripDetails[trip.trip_id] = trip;
+    updateTripSummary(trip);
+
+    return jsonResponse({
+      trip_id: trip.trip_id,
+      data: trip,
+    });
+  }
+
   if (pathname === "/api/companions" && method === "POST") {
     const body = parseBody(init) as Companion;
 
@@ -174,6 +221,10 @@ function mockFetch(input: RequestInfo | URL, init?: RequestInit) {
 
   if (pathname === "/api/equipment" && method === "GET") {
     return jsonResponse(state.equipment);
+  }
+
+  if (pathname === "/api/equipment/categories" && method === "GET") {
+    return jsonResponse(state.equipmentCategories);
   }
 
   const companionIdFromPath = readCompanionIdFromPath(pathname);
@@ -196,6 +247,64 @@ function mockFetch(input: RequestInfo | URL, init?: RequestInit) {
   }
 
   const equipmentDeleteParams = readEquipmentDeleteParams(pathname);
+  const equipmentCategoryParams = readEquipmentCategoryParams(pathname);
+
+  if (equipmentCategoryParams && !equipmentCategoryParams.categoryId && method === "POST") {
+    const body = parseBody(init) as { label: string };
+    const item = {
+      id: body.label.toLowerCase().replace(/\s+/gu, "-"),
+      label: body.label,
+      sort_order:
+        Math.max(
+          0,
+          ...state.equipmentCategories[equipmentCategoryParams.section].map(
+            (category) => category.sort_order,
+          ),
+        ) + 1,
+    };
+
+    state.equipmentCategories[equipmentCategoryParams.section].push(item);
+
+    return jsonResponse({ item });
+  }
+
+  if (equipmentCategoryParams?.categoryId && method === "PUT") {
+    const body = parseBody(init) as { label: string };
+
+    if (!body.label?.trim()) {
+      return jsonResponse(
+        {
+          status: "failed",
+          error: {
+            code: "TRIP_INVALID",
+            message:
+              "장비 카테고리 수정 요청 형식이 올바르지 않습니다. label: 값을 입력해야 합니다.",
+          },
+        },
+        400,
+      );
+    }
+
+    const categories = state.equipmentCategories[equipmentCategoryParams.section];
+    const index = categories.findIndex((item) => item.id === equipmentCategoryParams.categoryId);
+
+    if (index >= 0) {
+      categories[index] = {
+        ...categories[index],
+        label: body.label,
+      };
+    }
+
+    return jsonResponse({ item: categories[index] });
+  }
+
+  if (equipmentCategoryParams?.categoryId && method === "DELETE") {
+    state.equipmentCategories[equipmentCategoryParams.section] = state.equipmentCategories[
+      equipmentCategoryParams.section
+    ].filter((item) => item.id !== equipmentCategoryParams.categoryId);
+
+    return emptyResponse();
+  }
 
   if (equipmentDeleteParams && method === "DELETE") {
     const { section, itemId } = equipmentDeleteParams;
@@ -423,7 +532,10 @@ describe("App", () => {
 
     render(<App />);
 
-    expect(await screen.findByText("동행자 목록 로딩 경고")).toBeInTheDocument();
+    expect(await screen.findByText("초기 로딩 경고")).toBeInTheDocument();
+    expect(
+      screen.getByText("일부 데이터를 기본값 또는 빈 상태로 불러왔습니다."),
+    ).toBeInTheDocument();
     expect(
       screen.getByText(
         "동행자 목록을 불러오지 못했습니다. companions.yaml 형식이 올바르지 않습니다.",
@@ -431,6 +543,61 @@ describe("App", () => {
     ).toBeInTheDocument();
     expect(await screen.findByText("운영 현황")).toBeInTheDocument();
     expect(screen.queryByText("초기 로딩 실패")).not.toBeInTheDocument();
+  });
+
+  it("shows startup warnings together when companion and category loading both fail", async () => {
+    fetchMock.mockImplementation((input, init) => {
+      const rawUrl = typeof input === "string" ? input : input.toString();
+      const pathname = new URL(rawUrl, "http://localhost").pathname;
+      const method = init?.method?.toUpperCase() ?? "GET";
+
+      if (pathname === "/api/companions" && method === "GET") {
+        return jsonResponse(
+          {
+            status: "failed",
+            error: {
+              code: "TRIP_INVALID",
+              message: "companions.yaml 형식이 올바르지 않습니다.",
+            },
+          },
+          400,
+        );
+      }
+
+      if (pathname === "/api/equipment/categories" && method === "GET") {
+        return jsonResponse(
+          {
+            status: "failed",
+            error: {
+              code: "TRIP_INVALID",
+              message: "equipment/categories.yaml 형식이 올바르지 않습니다.",
+            },
+          },
+          400,
+        );
+      }
+
+      return mockFetch(input, init);
+    });
+
+    render(<App />);
+
+    expect(await screen.findByText("초기 로딩 경고")).toBeInTheDocument();
+    expect(
+      screen.getByText(
+        "일부 데이터를 기본값 또는 빈 상태로 불러왔습니다.",
+      ),
+    ).toBeInTheDocument();
+    expect(
+      screen.getByText(
+        "동행자 목록을 불러오지 못했습니다. companions.yaml 형식이 올바르지 않습니다.",
+      ),
+    ).toBeInTheDocument();
+    expect(
+      screen.getByText(
+        "장비 카테고리를 불러오지 못했습니다. 기본 카테고리로 계속 진행합니다. equipment/categories.yaml 형식이 올바르지 않습니다.",
+      ),
+    ).toBeInTheDocument();
   });
 
   it("keeps an invalid trip editable and saves it to the selected trip id", async () => {
@@ -505,7 +672,7 @@ describe("App", () => {
     await userEvent.click(await screen.findByRole("button", { name: "캠핑 계획" }));
 
     const companionInput = await screen.findByPlaceholderText(
-      "동행자 ID, 콤마 구분 (예: self, child-1)",
+      "콤마로 구분 (예: self, child-1)",
     );
 
     await userEvent.clear(companionInput);
@@ -535,7 +702,7 @@ describe("App", () => {
     await userEvent.click(await screen.findByRole("button", { name: "캠핑 계획" }));
 
     const companionInput = await screen.findByPlaceholderText(
-      "동행자 ID, 콤마 구분 (예: self, child-1)",
+      "콤마로 구분 (예: self, child-1)",
     );
 
     await userEvent.clear(companionInput);
@@ -561,6 +728,34 @@ describe("App", () => {
     );
   });
 
+  it("preserves spaces in trip notes while editing", async () => {
+    render(<App />);
+
+    await userEvent.click(await screen.findByRole("button", { name: "캠핑 계획" }));
+
+    const notesInput = screen.getByPlaceholderText("메모를 줄 단위로 입력");
+
+    await userEvent.clear(notesInput);
+    await userEvent.type(notesInput, "텐트 옆 공간 ");
+
+    expect(notesInput).toHaveValue("텐트 옆 공간 ");
+  });
+
+  it("shows which trip field failed validation when creating a trip", async () => {
+    render(<App />);
+
+    await userEvent.click(await screen.findByRole("button", { name: "캠핑 계획" }));
+    await userEvent.click(screen.getByRole("button", { name: "새 계획 작성" }));
+    await userEvent.click(screen.getByRole("button", { name: "계획 저장" }));
+
+    expect(await screen.findByText("캠핑 계획 저장 실패")).toBeInTheDocument();
+    expect(
+      screen.getByText(
+        "trip 생성 요청 형식이 올바르지 않습니다. title: 값을 입력해야 합니다.",
+      ),
+    ).toBeInTheDocument();
+  });
+
   it("shows low stock threshold and status controls for consumables", async () => {
     state.equipment.consumables.items = [
       {
@@ -579,8 +774,61 @@ describe("App", () => {
     await userEvent.click(await screen.findByRole("button", { name: "장비 관리" }));
     await userEvent.click(screen.getByRole("button", { name: "소모품" }));
 
-    expect(await screen.findAllByPlaceholderText("부족 기준")).toHaveLength(2);
-    expect(screen.getAllByRole("option", { name: "empty" }).length).toBeGreaterThan(0);
+    expect(await screen.findAllByText("부족 기준")).toHaveLength(2);
+    expect(screen.getAllByRole("option", { name: "없음" }).length).toBeGreaterThan(0);
+  });
+
+  it("renders equipment categories as selects and can add a managed category", async () => {
+    render(<App />);
+
+    await userEvent.click(await screen.findByRole("button", { name: "장비 관리" }));
+    expect(screen.getAllByRole("combobox", { name: "카테고리" }).length).toBeGreaterThan(0);
+
+    await userEvent.click(screen.getByRole("button", { name: "관리 설정" }));
+    await userEvent.type(screen.getByPlaceholderText("예: 수납"), "수납");
+    await userEvent.click(screen.getByRole("button", { name: "카테고리 추가" }));
+
+    expect(await screen.findByText("장비 카테고리 추가 완료")).toBeInTheDocument();
+    expect(screen.getAllByDisplayValue("수납").length).toBeGreaterThan(0);
+  });
+
+  it("keeps saved category labels in equipment selects until category save succeeds", async () => {
+    render(<App />);
+
+    await userEvent.click(await screen.findByRole("button", { name: "관리 설정" }));
+
+    const shelterCard = screen.getByText("shelter").closest("article");
+    expect(shelterCard).not.toBeNull();
+
+    const labelInput = within(shelterCard as HTMLElement).getByDisplayValue("쉘터/텐트");
+    await userEvent.clear(labelInput);
+    await userEvent.type(labelInput, "임시 라벨");
+
+    expect(labelInput).toHaveValue("임시 라벨");
+
+    await userEvent.click(screen.getByRole("button", { name: "장비 관리" }));
+
+    expect(screen.getAllByRole("option", { name: "쉘터/텐트" }).length).toBeGreaterThan(0);
+    expect(screen.queryAllByRole("option", { name: "임시 라벨" })).toHaveLength(0);
+
+    await userEvent.click(screen.getByRole("button", { name: "관리 설정" }));
+
+    const updatedShelterCard = screen.getByText("shelter").closest("article");
+    expect(updatedShelterCard).not.toBeNull();
+
+    const updatedInput = within(updatedShelterCard as HTMLElement).getByDisplayValue(
+      "임시 라벨",
+    );
+    await userEvent.clear(updatedInput);
+    await userEvent.click(
+      within(updatedShelterCard as HTMLElement).getByRole("button", { name: "저장" }),
+    );
+
+    expect(await screen.findByText("장비 카테고리 저장 실패")).toBeInTheDocument();
+
+    await userEvent.click(screen.getByRole("button", { name: "장비 관리" }));
+    expect(screen.getAllByRole("option", { name: "쉘터/텐트" }).length).toBeGreaterThan(0);
+    expect(screen.queryAllByRole("option", { name: "임시 라벨" })).toHaveLength(0);
   });
 
   it("deletes equipment successfully when the API returns 204", async () => {
@@ -608,6 +856,60 @@ describe("App", () => {
     expect(window.confirm).toHaveBeenCalledWith(
       "장비 항목을 삭제할까요?\ndurable / sleeping-bag-3season-adult",
     );
+    expect(screen.queryByDisplayValue("침낭")).not.toBeInTheDocument();
+  });
+
+  it("shows a sync warning instead of a failure when category refresh fails after delete", async () => {
+    state.equipment.durable.items = [
+      {
+        id: "sleeping-bag-3season-adult",
+        name: "침낭",
+        category: "sleeping",
+        quantity: 1,
+        status: "ok",
+      },
+    ];
+
+    let categoryGetCount = 0;
+    fetchMock.mockImplementation((input, init) => {
+      const rawUrl = typeof input === "string" ? input : input.toString();
+      const pathname = new URL(rawUrl, "http://localhost").pathname;
+      const method = init?.method?.toUpperCase() ?? "GET";
+
+      if (pathname === "/api/equipment/categories" && method === "GET") {
+        categoryGetCount += 1;
+
+        if (categoryGetCount >= 2) {
+          return jsonResponse(
+            {
+              status: "failed",
+              error: {
+                code: "TRIP_INVALID",
+                message: "equipment/categories.yaml 형식이 올바르지 않습니다.",
+              },
+            },
+            400,
+          );
+        }
+      }
+
+      return mockFetch(input, init);
+    });
+
+    render(<App />);
+
+    await userEvent.click(await screen.findByRole("button", { name: "장비 관리" }));
+    expect(await screen.findByDisplayValue("침낭")).toBeInTheDocument();
+
+    await userEvent.click(screen.getByRole("button", { name: "삭제" }));
+
+    expect(await screen.findByText("장비 삭제 완료")).toBeInTheDocument();
+    expect(
+      screen.getByText(
+        "sleeping-bag-3season-adult / 장비 카테고리 동기화 실패: equipment/categories.yaml 형식이 올바르지 않습니다.",
+      ),
+    ).toBeInTheDocument();
+    expect(screen.queryByText("장비 삭제 실패")).not.toBeInTheDocument();
     expect(screen.queryByDisplayValue("침낭")).not.toBeInTheDocument();
   });
 
@@ -944,6 +1246,21 @@ function createMockState(): MockState {
         version: 1,
         items: [],
       },
+    },
+    equipmentCategories: {
+      version: 1,
+      durable: [
+        { id: "shelter", label: "쉘터/텐트", sort_order: 1 },
+        { id: "sleeping", label: "침구", sort_order: 2 },
+      ],
+      consumables: [
+        { id: "fuel", label: "연료", sort_order: 1 },
+        { id: "ignition", label: "점화", sort_order: 2 },
+      ],
+      precheck: [
+        { id: "battery", label: "배터리", sort_order: 1 },
+        { id: "vehicle", label: "차량", sort_order: 2 },
+      ],
     },
     history: [],
     links: [],
