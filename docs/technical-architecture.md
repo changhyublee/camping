@@ -1,4 +1,4 @@
-# Technical Architecture
+# 기술 아키텍처
 
 ## 1. 문서 목적
 
@@ -19,7 +19,7 @@
 
 ## 3. 아키텍처 선택지 검토
 
-### 선택지 A. GitHub Repository를 운영 저장소로 사용
+### 선택지 A. GitHub 저장소를 운영 저장소로 사용
 
 구성:
 

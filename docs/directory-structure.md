@@ -1,4 +1,4 @@
-# Directory Structure
+# 디렉토리 구조
 
 ## 1. 문서 목적
 

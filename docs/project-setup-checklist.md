@@ -1,4 +1,4 @@
-# Project Setup Checklist
+# 프로젝트 세팅 체크리스트
 
 ## 1. 문서 목적
 
@@ -12,8 +12,9 @@
 
 ## 2. 세팅 우선순위
 
-### Phase 1. 문서 기준 확정
+### 1단계. 문서 기준 확정
 
+- [ ] 문서 한글 작성 원칙 확인
 - [ ] [`README.md`](/Users/leech/workspace/camping/camping/README.md) 방향 확정
 - [ ] [`requirements.md`](/Users/leech/workspace/camping/camping/docs/requirements.md) 요구사항 확정
 - [ ] [`technical-architecture.md`](/Users/leech/workspace/camping/camping/docs/technical-architecture.md) 구조 확정
@@ -21,20 +22,20 @@
 - [ ] [`trip-analysis-workflow.md`](/Users/leech/workspace/camping/camping/docs/trip-analysis-workflow.md) 흐름 확정
 - [ ] [`mvp-scope.md`](/Users/leech/workspace/camping/camping/docs/mvp-scope.md) 범위 확정
 
-### Phase 2. 저장소 뼈대 생성
+### 2단계. 저장소 뼈대 생성
 
 - [ ] `prompts/` 디렉토리 생성
 - [ ] `schemas/` 디렉토리 생성
 - [ ] `scripts/` 디렉토리 생성
 - [ ] `.gitignore` 에 `.camping-data/` 추가
 
-### Phase 3. 프롬프트 초안 생성
+### 3단계. 프롬프트 초안 생성
 
 - [ ] `prompts/system.md` 작성
 - [ ] `prompts/trip-analysis.md` 작성
 - [ ] 출력 포맷 규칙 초안 정리
 
-### Phase 4. 예시 데이터 세트 준비
+### 4단계. 예시 데이터 세트 준비
 
 - [ ] `docs/examples/profile.yaml` 검토
 - [ ] `docs/examples/companions.yaml` 검토
@@ -43,7 +44,7 @@
 - [ ] `docs/examples/trips/*.yaml` 검토
 - [ ] `docs/examples/outputs/*.md` 검토
 
-### Phase 5. 실제 로컬 데이터 세팅
+### 5단계. 실제 로컬 데이터 세팅
 
 - [ ] `.camping-data/` 생성
 - [ ] `profile.yaml` 생성
@@ -53,7 +54,7 @@
 - [ ] `trips/` 생성
 - [ ] `outputs/` 생성
 
-### Phase 6. 최소 실행 루프 확보
+### 6단계. 최소 실행 루프 확보
 
 - [ ] 예시 trip 파일 1개 준비
 - [ ] Codex CLI로 1회 분석 실행
@@ -61,7 +62,7 @@
 - [ ] 결과 품질 검토
 - [ ] 입력값 수정 후 재실행
 
-### Phase 7. 보조 자동화
+### 7단계. 보조 자동화
 
 - [ ] `scripts/validate-data` 초안 작성
 - [ ] `scripts/plan-trip` 초안 작성

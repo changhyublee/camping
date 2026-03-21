@@ -1,4 +1,4 @@
-# Prompt Design
+# 프롬프트 설계
 
 ## 1. 문서 목적
 
@@ -62,7 +62,7 @@ Codex CLI는 단순한 요약기가 아니라
 3. Input Data Bundle
 4. Output Format Rules
 
-## 4. System Prompt 초안
+## 4. 시스템 프롬프트 초안
 
 아래는 시스템 프롬프트 초안이다.
 
@@ -84,7 +84,7 @@ Codex CLI는 단순한 요약기가 아니라
 6. 결과는 사용자가 바로 준비에 활용할 수 있도록 체크리스트 형태를 포함하라.
 ```
 
-## 5. Analysis Rules 초안
+## 5. 분석 규칙 초안
 
 분석 규칙은 시스템 프롬프트와 별도로 유지하는 것을 권장한다.
 
@@ -103,7 +103,7 @@ Codex CLI는 단순한 요약기가 아니라
 - 차량 적재 여유가 적으면 우선순위가 낮은 장비를 제외 후보로 제안한다.
 ```
 
-## 6. Input Data Bundle 구성
+## 6. 입력 데이터 묶음 구성
 
 분석 시 입력되는 문맥은 아래 묶음으로 구성한다.
 
@@ -122,14 +122,14 @@ Codex CLI는 단순한 요약기가 아니라
 - `equipment/*.yaml`
 - `preferences/*.yaml`
 
-### trip 요청 데이터
+### 캠핑 요청 데이터
 
 - `trips/<trip-id>.yaml`
 
 ### 선택적 외부 데이터
 
-- weather cache
-- places cache
+- 날씨 캐시
+- 장소 캐시
 
 ## 7. 출력 형식 규칙
 
