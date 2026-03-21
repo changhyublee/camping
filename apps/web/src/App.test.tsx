@@ -386,6 +386,36 @@ describe("App", () => {
     );
   });
 
+  it("preserves trailing commas in companion input while saving parsed ids", async () => {
+    render(<App />);
+
+    await userEvent.click(await screen.findByRole("button", { name: "캠핑 계획" }));
+
+    const companionInput = await screen.findByPlaceholderText("동행자 ID, 콤마 구분");
+
+    await userEvent.clear(companionInput);
+    await userEvent.type(companionInput, "self,");
+
+    expect(companionInput).toHaveValue("self,");
+
+    await userEvent.click(screen.getByRole("button", { name: "계획 저장" }));
+
+    await waitFor(() => {
+      expect(state.updateTripCalls).toHaveLength(1);
+    });
+
+    expect(state.updateTripCalls[0]).toEqual(
+      expect.objectContaining({
+        tripId: "2026-04-18-gapyeong",
+        body: expect.objectContaining({
+          party: {
+            companion_ids: ["self"],
+          },
+        }),
+      }),
+    );
+  });
+
   it("shows low stock threshold and status controls for consumables", async () => {
     state.equipment.consumables.items = [
       {

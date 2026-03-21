@@ -32,6 +32,12 @@ type OperationState = {
   description: string;
 };
 
+type CommaSeparatedInputs = {
+  companionIds: string;
+  requestedDishes: string;
+  requestedStops: string;
+};
+
 export function App() {
   const [activePage, setActivePage] = useState<PageKey>("dashboard");
   const [trips, setTrips] = useState<TripSummary[]>([]);
@@ -71,6 +77,9 @@ export function App() {
     null,
   );
   const [loadError, setLoadError] = useState<string | null>(null);
+  const [commaInputs, setCommaInputs] = useState<CommaSeparatedInputs>(
+    createCommaSeparatedInputs(),
+  );
   const selectedHistoryIdRef = useRef<string | null>(null);
   const historyOutputRequestIdRef = useRef(0);
 
@@ -83,6 +92,7 @@ export function App() {
       if (!isCreatingTrip) {
         setTripDraft(null);
         setValidationWarnings([]);
+        setCommaInputs(createCommaSeparatedInputs());
       }
       return;
     }
@@ -92,6 +102,7 @@ export function App() {
     setLoadError(null);
     setTripDraft(null);
     setValidationWarnings([]);
+    setCommaInputs(createCommaSeparatedInputs());
     setAnalysisResponse(null);
     setAssistantResponse(null);
 
@@ -110,6 +121,7 @@ export function App() {
         }
 
         setTripDraft(tripResult.value.data);
+        setCommaInputs(createCommaSeparatedInputs(tripResult.value.data));
         setLoadError(null);
 
         if (validationResult.status === "fulfilled") {
@@ -215,10 +227,13 @@ export function App() {
   }
 
   function beginCreateTrip() {
+    const nextDraft = createEmptyTripDraft();
+
     setActivePage("planning");
     setIsCreatingTrip(true);
     setSelectedTripId(null);
-    setTripDraft(createEmptyTripDraft());
+    setTripDraft(nextDraft);
+    setCommaInputs(createCommaSeparatedInputs(nextDraft));
     setValidationWarnings([]);
     setAnalysisResponse(null);
     setAssistantResponse(null);
@@ -255,6 +270,7 @@ export function App() {
       setSelectedTripId(response.trip_id);
       setIsCreatingTrip(false);
       setTripDraft(response.data);
+      setCommaInputs(createCommaSeparatedInputs(response.data));
       const savedDescription = `${response.data.title} 계획을 저장했습니다.`;
 
       try {
@@ -296,6 +312,7 @@ export function App() {
       setTrips(response.items);
       setSelectedTripId(response.items[0]?.trip_id ?? null);
       setTripDraft(null);
+      setCommaInputs(createCommaSeparatedInputs());
       setAnalysisResponse(null);
       setAssistantResponse(null);
       setOperationState({
@@ -327,6 +344,7 @@ export function App() {
       setSelectedTripId(tripResponse.items[0]?.trip_id ?? null);
       setSelectedHistoryId(response.item.history_id);
       setTripDraft(null);
+      setCommaInputs(createCommaSeparatedInputs());
       setAnalysisResponse(null);
       setAssistantResponse(null);
       setActivePage("history");
@@ -1337,15 +1355,19 @@ export function App() {
                       />
                       <input
                         placeholder="동행자 ID, 콤마 구분"
-                        value={joinCommaList(tripDraft.party?.companion_ids)}
-                        onChange={(event) =>
+                        value={commaInputs.companionIds}
+                        onChange={(event) => {
+                          setCommaInputs((current) => ({
+                            ...current,
+                            companionIds: event.target.value,
+                          }));
                           updateTripDraft((current) => ({
                             ...current,
                             party: {
                               companion_ids: splitCommaList(event.target.value),
                             },
-                          }))
-                        }
+                          }));
+                        }}
                       />
                       <input
                         placeholder="차량 ID"
@@ -1454,8 +1476,12 @@ export function App() {
                       </label>
                       <input
                         placeholder="요청 메뉴, 콤마 구분"
-                        value={joinCommaList(tripDraft.meal_plan?.requested_dishes)}
-                        onChange={(event) =>
+                        value={commaInputs.requestedDishes}
+                        onChange={(event) => {
+                          setCommaInputs((current) => ({
+                            ...current,
+                            requestedDishes: event.target.value,
+                          }));
                           updateTripDraft((current) => ({
                             ...current,
                             meal_plan: {
@@ -1464,13 +1490,17 @@ export function App() {
                                 current.meal_plan?.use_ai_recommendation ?? true,
                               requested_dishes: splitCommaList(event.target.value),
                             },
-                          }))
-                        }
+                          }));
+                        }}
                       />
                       <input
                         placeholder="경유 희망지, 콤마 구분"
-                        value={joinCommaList(tripDraft.travel_plan?.requested_stops)}
-                        onChange={(event) =>
+                        value={commaInputs.requestedStops}
+                        onChange={(event) => {
+                          setCommaInputs((current) => ({
+                            ...current,
+                            requestedStops: event.target.value,
+                          }));
                           updateTripDraft((current) => ({
                             ...current,
                             travel_plan: {
@@ -1479,8 +1509,8 @@ export function App() {
                                 current.travel_plan?.use_ai_recommendation ?? true,
                               requested_stops: splitCommaList(event.target.value),
                             },
-                          }))
-                        }
+                          }));
+                        }}
                       />
                       <textarea
                         className="form-grid__full"
@@ -2046,6 +2076,14 @@ function createEmptyLink(): ExternalLinkInput {
     url: "https://",
     notes: "",
     sort_order: 0,
+  };
+}
+
+function createCommaSeparatedInputs(draft?: TripDraft | null): CommaSeparatedInputs {
+  return {
+    companionIds: joinCommaList(draft?.party?.companion_ids),
+    requestedDishes: joinCommaList(draft?.meal_plan?.requested_dishes),
+    requestedStops: joinCommaList(draft?.travel_plan?.requested_stops),
   };
 }
 
