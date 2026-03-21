@@ -1,0 +1,86 @@
+version: 1
+items:
+  - id: tunnel-tent-4p-khaki
+    kind: tunnel-tent-4p
+    name: 4인용 터널 텐트 카키
+    model: A사 패밀리 터널 4P
+    category: shelter
+    quantity: 1
+    capacity:
+      people: 4
+    season_support:
+      spring: true
+      summer: true
+      autumn: true
+      winter: false
+    tags:
+      - family
+      - rain_cover
+    status: ok
+  - id: tunnel-tent-4p-sand
+    kind: tunnel-tent-4p
+    name: 4인용 터널 텐트 샌드
+    model: B사 리빙쉘 4P
+    category: shelter
+    quantity: 1
+    capacity:
+      people: 4
+    season_support:
+      spring: true
+      summer: true
+      autumn: true
+      winter: false
+    tags:
+      - family
+      - rain_cover
+    status: ok
+  - id: sleeping-bag-3season-adult
+    kind: sleeping-bag-3season
+    name: 3계절 침낭 어른용
+    model: 머미형 800g
+    category: sleeping
+    quantity: 1
+    season_support:
+      spring: true
+      summer: true
+      autumn: true
+      winter: false
+    tags:
+      - family
+      - adult
+    status: ok
+  - id: sleeping-bag-3season-kid
+    kind: sleeping-bag-3season
+    name: 3계절 침낭 키즈용
+    model: 키즈형
+    category: sleeping
+    quantity: 1
+    season_support:
+      spring: true
+      summer: true
+      autumn: true
+      winter: false
+    tags:
+      - family
+      - kid
+    status: ok
+  - id: folding-table
+    name: 접이식 테이블
+    category: furniture
+    quantity: 1
+    status: ok
+  - id: lantern-led
+    name: LED 랜턴
+    category: lighting
+    quantity: 2
+    status: ok
+  - id: firepit-basic
+    name: 화로대
+    category: cooking_fire
+    quantity: 1
+    status: ok
+  - id: butane-stove
+    name: 부탄 스토브
+    category: cooking
+    quantity: 1
+    status: ok

@@ -1,0 +1,17 @@
+version: 1
+items:
+  - id: lantern-battery
+    name: 랜턴 배터리
+    category: battery
+    status: needs_check
+    last_checked_at: 2026-03-20
+    notes: 충전식 랜턴 2개
+  - id: powerbank-charge
+    name: 보조배터리 충전 상태
+    category: battery
+    status: ok
+    last_checked_at: 2026-03-21
+  - id: vehicle-load-space
+    name: 차량 적재 가능 상태
+    category: vehicle
+    status: needs_check

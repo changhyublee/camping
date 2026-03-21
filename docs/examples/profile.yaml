@@ -1,0 +1,10 @@
+version: 1
+owner:
+  name: leech
+home_region: seoul
+default_vehicle_id: family-suv
+default_party_size: 2
+units:
+  temperature: celsius
+  distance: km
+  weight: kg

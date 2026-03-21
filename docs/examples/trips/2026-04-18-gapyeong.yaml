@@ -1,0 +1,40 @@
+version: 1
+trip_id: 2026-04-18-gapyeong
+title: 4월 가평 가족 캠핑
+date:
+  start: 2026-04-18
+  end: 2026-04-19
+location:
+  campsite_name: 자라섬 캠핑장
+  region: gapyeong
+  coordinates:
+    lat: 37.818
+    lng: 127.521
+departure:
+  region: seoul
+party:
+  companion_ids:
+    - self
+    - child-1
+vehicle:
+  id: family-suv
+  load_capacity_kg: 400
+  passenger_capacity: 5
+conditions:
+  electricity_available: true
+  cooking_allowed: true
+  expected_weather:
+    source: manual
+    summary: 낮에는 따뜻하고 밤에는 쌀쌀함
+    min_temp_c: 8
+    max_temp_c: 19
+    precipitation: none
+meal_plan:
+  use_ai_recommendation: true
+  requested_dishes:
+    - bbq
+travel_plan:
+  use_ai_recommendation: true
+  requested_stops: []
+notes:
+  - 아이와 함께 가는 첫 봄 캠핑
