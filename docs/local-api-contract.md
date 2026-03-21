@@ -7,13 +7,13 @@
 목표:
 
 - UI 구현 전에 요청/응답 형식을 고정
-- 파일 읽기, OpenAI 호출, 저장 책임을 API 계층에 모음
+- 파일 읽기, AI 백엔드 호출, 저장 책임을 API 계층에 모음
 - 브라우저가 OpenAI API 키를 직접 다루지 않도록 경계를 분명히 함
 
 ## 2. 기본 원칙
 
 - 모든 API는 로컬 환경에서만 실행한다
-- OpenAI 호출은 API 서버만 수행한다
+- AI 백엔드 호출은 API 서버만 수행한다
 - UI는 `trip_id` 와 사용자 액션 중심으로 요청한다
 - 운영 데이터는 계속 `.camping-data/` 에 저장한다
 - `trip_id` 는 데이터 모델의 파일명 규칙과 동일한 소문자 kebab-case를 따른다
@@ -39,7 +39,12 @@
 
 ```json
 {
-  "status": "ok"
+  "status": "ok",
+  "backend": "codex-cli",
+  "ready": true,
+  "auth_status": "ok",
+  "model": "gpt-5.4",
+  "message": "Logged in using ChatGPT"
 }
 ```
 
@@ -252,7 +257,8 @@ type AnalyzeTripResponse = {
 
 ## 7. 보안 규칙
 
-- `OPENAI_API_KEY` 는 로컬 API 프로세스 환경변수로만 주입한다
+- 기본 인증은 로컬 `codex login` 세션을 사용한다
+- `OPENAI_API_KEY` 는 fallback OpenAI 백엔드를 사용할 때만 로컬 API 프로세스 환경변수로 주입한다
 - 브라우저 번들에 키를 포함하지 않는다
 - API 응답에 키나 내부 프롬프트 전체를 노출하지 않는다
 

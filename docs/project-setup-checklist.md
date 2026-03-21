@@ -38,7 +38,8 @@
 ### 3단계. 환경 변수와 런타임 세팅
 
 - [ ] `.env.example` 작성
-- [ ] `OPENAI_API_KEY` 키 사용 방식 정리
+- [ ] `codex login` 기반 인증 방식 정리
+- [ ] fallback 용 `OPENAI_API_KEY` 사용 방식 정리
 - [ ] 기본 모델명을 환경변수 또는 로컬 설정으로 분리
 - [ ] 패키지 매니저와 Node 런타임 버전 기준 확정
 
@@ -105,7 +106,7 @@
 2. `apps/web`, `apps/api`, `shared` 디렉토리 생성
 3. `prompts/` 디렉토리 생성
 4. `docs/examples/` 기준으로 `.camping-data/` 샘플 생성
-5. 로컬 API에서 OpenAI 호출 1회 연결
+5. 로컬 API에서 Codex CLI 호출 1회 연결
 
 ## 4. 세팅 완료 기준
 

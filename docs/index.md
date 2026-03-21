@@ -51,7 +51,7 @@
 - [`trip-analysis-workflow.md`](trip-analysis-workflow.md)
   - UI 입력부터 결과 출력까지의 워크플로우
 - [`prompt-design.md`](prompt-design.md)
-  - OpenAI 응답 생성에 사용하는 프롬프트 설계
+  - AI 응답 생성에 사용하는 프롬프트 설계
 
 ### 범위와 착수
 
@@ -79,4 +79,4 @@
 1. `apps/web/` 와 `apps/api/` 뼈대를 만든다
 2. `prompts/` 와 `schemas/` 디렉토리를 만든다
 3. `docs/examples/` 기준으로 실제 `.camping-data/` 샘플을 만든다
-4. 로컬 API에서 OpenAI 응답 호출과 결과 저장을 연결한다
+4. 로컬 API에서 AI 응답 호출과 결과 저장을 연결한다

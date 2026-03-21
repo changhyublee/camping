@@ -2,9 +2,15 @@
 
 로컬 브라우저 UI가 위치할 경로다.
 
-예상 책임:
+현재 책임:
 
 - trip 목록/상세 화면
 - 분석 실행 버튼과 상태 표시
 - 결과 Markdown 렌더링
 - 로컬 API 호출 클라이언트
+
+실행:
+
+```bash
+pnpm --filter @camping/web run dev
+```
