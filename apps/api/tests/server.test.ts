@@ -227,6 +227,31 @@ describe("API server", () => {
     await app.close();
   });
 
+  it("reads a saved markdown output by trip id", async () => {
+    const dataDir = await createSeededDataDir();
+    const app = await buildServer({
+      dataDir,
+      projectRoot,
+      modelClient: new MockAnalysisClient("# sample"),
+    });
+
+    const response = await app.inject({
+      method: "GET",
+      url: "/api/outputs/2026-04-18-gapyeong",
+    });
+
+    expect(response.statusCode).toBe(200);
+    expect(response.json()).toEqual(
+      expect.objectContaining({
+        trip_id: "2026-04-18-gapyeong",
+        output_path: ".camping-data/outputs/2026-04-18-gapyeong-plan.md",
+      }),
+    );
+    expect(response.json().markdown).toContain("가평");
+
+    await app.close();
+  });
+
   it("creates, updates, and deletes a trip through CRUD endpoints", async () => {
     const dataDir = await createSeededDataDir();
     const app = await buildServer({

@@ -11,6 +11,7 @@ import type {
   ExternalLink,
   ExternalLinkCategory,
   ExternalLinkInput,
+  GetOutputResponse,
   HistoryRecord,
   PlanningAssistantAction,
   PlanningAssistantResponse,
@@ -49,6 +50,9 @@ export function App() {
     useState<EquipmentSection>("durable");
   const [history, setHistory] = useState<HistoryRecord[]>([]);
   const [selectedHistoryId, setSelectedHistoryId] = useState<string | null>(null);
+  const [historyOutput, setHistoryOutput] = useState<GetOutputResponse | null>(null);
+  const [historyOutputLoading, setHistoryOutputLoading] = useState(false);
+  const [historyOutputError, setHistoryOutputError] = useState<string | null>(null);
   const [links, setLinks] = useState<ExternalLink[]>([]);
   const [linkDraft, setLinkDraft] = useState<ExternalLinkInput>(createEmptyLink());
   const [durableDraft, setDurableDraft] =
@@ -128,6 +132,24 @@ export function App() {
     () => history.find((item) => item.history_id === selectedHistoryId) ?? null,
     [history, selectedHistoryId],
   );
+
+  const linkGroups = useMemo(
+    () =>
+      Object.entries(EXTERNAL_LINK_CATEGORY_LABELS)
+        .map(([category, label]) => ({
+          category: category as ExternalLinkCategory,
+          label,
+          items: links.filter((item) => item.category === category).sort(sortLinks),
+        }))
+        .filter((group) => group.items.length > 0),
+    [links],
+  );
+
+  useEffect(() => {
+    setHistoryOutput(null);
+    setHistoryOutputError(null);
+    setHistoryOutputLoading(false);
+  }, [selectedHistoryId]);
 
   const tripCountLabel = useMemo(() => {
     if (isCreatingTrip) {
@@ -605,6 +627,34 @@ export function App() {
         tone: "error",
         description: getErrorMessage(error),
       });
+    }
+  }
+
+  async function handleOpenHistoryOutput() {
+    if (!selectedHistory?.output_path) return;
+
+    setHistoryOutputLoading(true);
+    setHistoryOutputError(null);
+
+    try {
+      const response = await apiClient.getOutput(selectedHistory.source_trip_id);
+      setHistoryOutput(response);
+      setOperationState({
+        title: "히스토리 결과 불러오기 완료",
+        tone: "success",
+        description: response.output_path,
+      });
+    } catch (error) {
+      setHistoryOutput(null);
+      const message = getErrorMessage(error);
+      setHistoryOutputError(message);
+      setOperationState({
+        title: "히스토리 결과 불러오기 실패",
+        tone: "error",
+        description: message,
+      });
+    } finally {
+      setHistoryOutputLoading(false);
     }
   }
 
@@ -1645,6 +1695,45 @@ export function App() {
                       }
                     />
                     <input value={selectedHistory.archived_at} readOnly />
+                    <div className="form-grid__full history-output-card">
+                      <div className="history-output-card__header">
+                        <div>
+                          <strong>저장된 분석 결과</strong>
+                          <p>
+                            {selectedHistory.output_path
+                              ? "아카이브 당시 저장된 Markdown 결과를 다시 열 수 있습니다."
+                              : "이 히스토리에는 저장된 분석 결과 경로가 없습니다."}
+                          </p>
+                        </div>
+                        <button
+                          className="button"
+                          disabled={!selectedHistory.output_path || historyOutputLoading}
+                          onClick={handleOpenHistoryOutput}
+                          type="button"
+                        >
+                          {historyOutputLoading ? "불러오는 중..." : "결과 열기"}
+                        </button>
+                      </div>
+                      {selectedHistory.output_path ? (
+                        <code className="output-path">{selectedHistory.output_path}</code>
+                      ) : (
+                        <div className="empty-state empty-state--compact">
+                          저장된 결과 문서가 없으면 여기서 다시 열 수 없습니다.
+                        </div>
+                      )}
+                      {historyOutputError ? (
+                        <StatusBanner
+                          tone="error"
+                          title="결과 문서를 불러오지 못했습니다."
+                          description={historyOutputError}
+                        />
+                      ) : null}
+                      {historyOutput ? (
+                        <article className="markdown-pane markdown-pane--compact">
+                          <ReactMarkdown>{historyOutput.markdown}</ReactMarkdown>
+                        </article>
+                      ) : null}
+                    </div>
                     <textarea
                       className="form-grid__full"
                       value={joinLineList(selectedHistory.notes)}
@@ -1692,80 +1781,103 @@ export function App() {
                   <div className="empty-state">등록된 외부 링크가 없습니다.</div>
                 ) : (
                   <div className="stack-list">
-                    {links.map((link) => (
-                      <div className="link-card" key={link.id}>
-                        <input
-                          value={link.name}
-                          onChange={(event) =>
-                            setLinks((current) =>
-                              current.map((item) =>
-                                item.id === link.id
-                                  ? { ...item, name: event.target.value }
-                                  : item,
-                              ),
-                            )
-                          }
-                        />
-                        <input
-                          value={link.url}
-                          onChange={(event) =>
-                            setLinks((current) =>
-                              current.map((item) =>
-                                item.id === link.id
-                                  ? { ...item, url: event.target.value }
-                                  : item,
-                              ),
-                            )
-                          }
-                        />
-                        <select
-                          value={link.category}
-                          onChange={(event) =>
-                            setLinks((current) =>
-                              current.map((item) =>
-                                item.id === link.id
-                                  ? {
-                                      ...item,
-                                      category:
-                                        event.target.value as ExternalLinkCategory,
-                                    }
-                                  : item,
-                              ),
-                            )
-                          }
-                        >
-                          {Object.entries(EXTERNAL_LINK_CATEGORY_LABELS).map(
-                            ([value, label]) => (
-                              <option key={value} value={value}>
-                                {label}
-                              </option>
-                            ),
-                          )}
-                        </select>
-                        <textarea
-                          value={link.notes ?? ""}
-                          onChange={(event) =>
-                            setLinks((current) =>
-                              current.map((item) =>
-                                item.id === link.id
-                                  ? { ...item, notes: event.target.value }
-                                  : item,
-                              ),
-                            )
-                          }
-                        />
-                        <div className="button-row">
-                          <a className="button" href={link.url} rel="noreferrer" target="_blank">
-                            링크 열기
-                          </a>
-                          <button className="button" onClick={() => handleSaveLink(link)} type="button">
-                            저장
-                          </button>
-                          <button className="button" onClick={() => handleDeleteLink(link.id)} type="button">
-                            삭제
-                          </button>
+                    {linkGroups.map((group) => (
+                      <section className="link-group" key={group.category}>
+                        <div className="link-group__header">
+                          <h3>{group.label}</h3>
+                          <span>{group.items.length}개</span>
                         </div>
-                      </div>
+                        <div className="stack-list">
+                          {group.items.map((link) => (
+                            <div className="link-card" key={link.id}>
+                              <input
+                                value={link.name}
+                                onChange={(event) =>
+                                  setLinks((current) =>
+                                    current.map((item) =>
+                                      item.id === link.id
+                                        ? { ...item, name: event.target.value }
+                                        : item,
+                                    ),
+                                  )
+                                }
+                              />
+                              <input
+                                value={link.url}
+                                onChange={(event) =>
+                                  setLinks((current) =>
+                                    current.map((item) =>
+                                      item.id === link.id
+                                        ? { ...item, url: event.target.value }
+                                        : item,
+                                    ),
+                                  )
+                                }
+                              />
+                              <select
+                                value={link.category}
+                                onChange={(event) =>
+                                  setLinks((current) =>
+                                    current.map((item) =>
+                                      item.id === link.id
+                                        ? {
+                                            ...item,
+                                            category:
+                                              event.target.value as ExternalLinkCategory,
+                                          }
+                                        : item,
+                                    ),
+                                  )
+                                }
+                              >
+                                {Object.entries(EXTERNAL_LINK_CATEGORY_LABELS).map(
+                                  ([value, label]) => (
+                                    <option key={value} value={value}>
+                                      {label}
+                                    </option>
+                                  ),
+                                )}
+                              </select>
+                              <textarea
+                                value={link.notes ?? ""}
+                                onChange={(event) =>
+                                  setLinks((current) =>
+                                    current.map((item) =>
+                                      item.id === link.id
+                                        ? { ...item, notes: event.target.value }
+                                        : item,
+                                    ),
+                                  )
+                                }
+                              />
+                              <div className="button-row">
+                                <a
+                                  className="button"
+                                  href={link.url}
+                                  rel="noreferrer"
+                                  target="_blank"
+                                >
+                                  링크 열기
+                                </a>
+                                <button
+                                  className="button"
+                                  onClick={() => handleSaveLink(link)}
+                                  type="button"
+                                >
+                                  저장
+                                </button>
+                                <button
+                                  className="button"
+                                  onClick={() => handleDeleteLink(link.id)}
+                                  type="button"
+                                >
+                                  삭제
+                                </button>
+                              </div>
+                            </div>
+                          ))}
+                        </div>
+                      </section>
                     ))}
                   </div>
                 )}

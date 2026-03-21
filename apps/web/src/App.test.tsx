@@ -4,6 +4,7 @@ import { afterEach, beforeEach, describe, expect, it, vi } from "vitest";
 import type {
   AnalyzeTripResponse,
   EquipmentCatalog,
+  GetOutputResponse,
   HistoryRecord,
   TripData,
   TripSummary,
@@ -47,6 +48,7 @@ type MockState = {
     notes?: string;
     sort_order: number;
   }>;
+  outputs: Record<string, GetOutputResponse>;
   updateTripCalls: Array<{
     tripId: string;
     body: TripData;
@@ -105,6 +107,11 @@ function updateTripSummary(trip: TripData) {
 
 function readTripIdFromPath(pathname: string) {
   const match = pathname.match(/^\/api\/trips\/([^/]+)$/u);
+  return match?.[1] ?? null;
+}
+
+function readOutputTripIdFromPath(pathname: string) {
+  const match = pathname.match(/^\/api\/outputs\/([^/]+)$/u);
   return match?.[1] ?? null;
 }
 
@@ -191,6 +198,27 @@ function mockFetch(input: RequestInfo | URL, init?: RequestInit) {
       status: "saved",
       output_path: ".camping-data/outputs/2026-04-18-gapyeong-plan.md",
     });
+  }
+
+  const outputTripIdFromPath = readOutputTripIdFromPath(pathname);
+
+  if (outputTripIdFromPath && method === "GET") {
+    const output = state.outputs[outputTripIdFromPath];
+
+    if (!output) {
+      return jsonResponse(
+        {
+          status: "failed",
+          error: {
+            code: "RESOURCE_NOT_FOUND",
+            message: `분석 결과 파일을 찾을 수 없습니다: ${outputTripIdFromPath}`,
+          },
+        },
+        404,
+      );
+    }
+
+    return jsonResponse(output);
   }
 
   const assistantMatch = pathname.match(/^\/api\/trips\/([^/]+)\/assistant$/u);
@@ -379,6 +407,93 @@ describe("App", () => {
     expect(await screen.findAllByPlaceholderText("부족 기준")).toHaveLength(2);
     expect(screen.getAllByRole("option", { name: "empty" }).length).toBeGreaterThan(0);
   });
+
+  it("opens archived output markdown from history detail", async () => {
+    state.history = [
+      {
+        version: 1,
+        history_id: "2026-03-08-yangpyeong",
+        source_trip_id: "2026-03-08-yangpyeong",
+        title: "3월 양평 주말 캠핑",
+        date: {
+          start: "2026-03-08",
+          end: "2026-03-09",
+        },
+        location: {
+          region: "yangpyeong",
+        },
+        companion_ids: ["self", "child-1"],
+        attendee_count: 2,
+        notes: ["비 예보가 있어 타프를 추가함"],
+        archived_at: "2026-03-10T09:00:00.000Z",
+        output_path: ".camping-data/outputs/2026-03-08-yangpyeong-plan.md",
+        trip_snapshot: {
+          version: 1,
+          trip_id: "2026-03-08-yangpyeong",
+          title: "3월 양평 주말 캠핑",
+          date: {
+            start: "2026-03-08",
+            end: "2026-03-09",
+          },
+          location: {
+            region: "yangpyeong",
+          },
+          party: {
+            companion_ids: ["self", "child-1"],
+          },
+          notes: [],
+        },
+      },
+    ];
+    state.outputs["2026-03-08-yangpyeong"] = {
+      trip_id: "2026-03-08-yangpyeong",
+      output_path: ".camping-data/outputs/2026-03-08-yangpyeong-plan.md",
+      markdown: "# 양평 히스토리 결과\n\n- 타프와 난방 장비 확인",
+    };
+
+    render(<App />);
+
+    await userEvent.click(await screen.findByRole("button", { name: "캠핑 히스토리" }));
+
+    expect(
+      await screen.findByText(".camping-data/outputs/2026-03-08-yangpyeong-plan.md"),
+    ).toBeInTheDocument();
+
+    await userEvent.click(screen.getByRole("button", { name: "결과 열기" }));
+
+    expect(await screen.findByText("양평 히스토리 결과")).toBeInTheDocument();
+    expect(screen.getByText("타프와 난방 장비 확인")).toBeInTheDocument();
+  });
+
+  it("renders external links grouped by category", async () => {
+    state.links = [
+      {
+        id: "weather-kma",
+        category: "weather",
+        name: "기상청",
+        url: "https://weather.go.kr",
+        notes: "예보 확인",
+        sort_order: 1,
+      },
+      {
+        id: "food-map",
+        category: "food",
+        name: "맛집 지도",
+        url: "https://example.com/food",
+        notes: "근처 맛집",
+        sort_order: 2,
+      },
+    ];
+
+    render(<App />);
+
+    await userEvent.click(await screen.findByRole("button", { name: "외부 링크" }));
+
+    expect(await screen.findByRole("heading", { name: "날씨" })).toBeInTheDocument();
+    expect(screen.getByRole("heading", { name: "맛집" })).toBeInTheDocument();
+    expect(screen.getByDisplayValue("기상청")).toBeInTheDocument();
+    expect(screen.getByDisplayValue("맛집 지도")).toBeInTheDocument();
+  });
 });
 
 function createMockState(): MockState {
@@ -454,6 +569,7 @@ function createMockState(): MockState {
     },
     history: [],
     links: [],
+    outputs: {},
     updateTripCalls: [],
   };
 }

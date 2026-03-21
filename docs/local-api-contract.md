@@ -29,6 +29,7 @@
 - `POST /api/trips/:tripId/assistant`
 - `POST /api/validate-trip`
 - `POST /api/analyze-trip`
+- `GET /api/outputs/:tripId`
 - `POST /api/outputs`
 
 ### 장비 관리
@@ -115,6 +116,16 @@
       "title": "3월 양평 주말 캠핑"
     }
   ]
+}
+```
+
+### `GET /api/outputs/:tripId`
+
+```json
+{
+  "trip_id": "2026-04-18-gapyeong",
+  "output_path": ".camping-data/outputs/2026-04-18-gapyeong-plan.md",
+  "markdown": "# 4월 가평 가족 캠핑 분석 결과"
 }
 ```
 

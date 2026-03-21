@@ -7,6 +7,7 @@ import type {
   EquipmentSection,
   ExternalLink,
   ExternalLinkInput,
+  GetOutputResponse,
   HistoryRecord,
   PlanningAssistantResponse,
   PrecheckItemInput,
@@ -120,6 +121,9 @@ export const apiClient = {
       method: "POST",
       body: JSON.stringify(input),
     });
+  },
+  async getOutput(tripId: string): Promise<GetOutputResponse> {
+    return request(`/api/outputs/${tripId}`);
   },
   async getEquipment(): Promise<EquipmentCatalog> {
     return request("/api/equipment");

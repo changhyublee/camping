@@ -351,6 +351,38 @@ code {
   background: rgba(255, 255, 255, 0.48);
 }
 
+.history-output-card,
+.link-group {
+  display: grid;
+  gap: 12px;
+}
+
+.history-output-card__header,
+.link-group__header {
+  display: flex;
+  align-items: center;
+  justify-content: space-between;
+  gap: 12px;
+}
+
+.history-output-card__header p,
+.link-group__header span {
+  margin: 6px 0 0;
+  color: var(--muted);
+}
+
+.link-group {
+  padding: 16px;
+  border: 1px solid var(--line);
+  border-radius: 24px;
+  background: rgba(255, 255, 255, 0.28);
+}
+
+.link-group__header h3 {
+  margin: 0;
+  font-size: 1.1rem;
+}
+
 .action-card p {
   margin: 10px 0 0;
   color: var(--muted);
@@ -434,6 +466,10 @@ textarea {
   text-align: center;
   line-height: 1.6;
   background: rgba(255, 255, 255, 0.32);
+}
+
+.empty-state--compact {
+  min-height: 96px;
 }
 
 .markdown-pane {

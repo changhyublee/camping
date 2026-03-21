@@ -390,6 +390,12 @@ export const saveOutputResponseSchema = z.object({
   output_path: z.string(),
 });
 
+export const getOutputResponseSchema = z.object({
+  trip_id: tripIdSchema,
+  output_path: z.string(),
+  markdown: z.string(),
+});
+
 export const analysisBackendSchema = z.enum(["codex-cli", "openai"]);
 
 export const backendHealthSchema = z.object({

@@ -34,6 +34,7 @@ import {
   type ExternalLink,
   type ExternalLinkInput,
   type ExternalLinksData,
+  type GetOutputResponse,
   type HistoryRecord,
   type PrecheckData,
   type PrecheckItem,
@@ -491,6 +492,18 @@ export class CampingRepository {
     }
   }
 
+  async readOutput(tripId: TripId): Promise<GetOutputResponse> {
+    return {
+      trip_id: tripId,
+      output_path: getTripOutputRelativePath(tripId),
+      markdown: await this.readTextFile(
+        this.getTripOutputPath(tripId),
+        "RESOURCE_NOT_FOUND",
+        `분석 결과 파일을 찾을 수 없습니다: ${tripId}`,
+      ),
+    };
+  }
+
   private async createDurableItem(
     input: DurableEquipmentItemInput,
   ): Promise<DurableEquipmentItem> {
@@ -802,7 +815,7 @@ export class CampingRepository {
 
   private async readTextFile(
     filePath: string,
-    errorCode: "DEPENDENCY_MISSING" | "TRIP_NOT_FOUND",
+    errorCode: "DEPENDENCY_MISSING" | "TRIP_NOT_FOUND" | "RESOURCE_NOT_FOUND",
     notFoundMessage: string,
   ): Promise<string> {
     try {
@@ -812,7 +825,7 @@ export class CampingRepository {
       throw new AppError(
         errorCode,
         notFoundMessage,
-        errorCode === "TRIP_NOT_FOUND" ? 404 : 500,
+        errorCode === "DEPENDENCY_MISSING" ? 500 : 404,
       );
     }
   }

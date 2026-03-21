@@ -7,6 +7,7 @@ import type {
   EquipmentSection,
   ExternalLink,
   ExternalLinkInput,
+  GetOutputResponse,
   HistoryRecord,
   PlanningAssistantResponse,
   PrecheckItemInput,
@@ -218,5 +219,9 @@ export class AnalysisService {
       status: "saved",
       output_path: outputPath,
     };
+  }
+
+  async getOutput(tripId: TripId): Promise<GetOutputResponse> {
+    return this.repository.readOutput(tripId);
   }
 }

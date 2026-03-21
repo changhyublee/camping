@@ -21,6 +21,7 @@ import type {
   externalLinkSchema,
   externalLinksSchema,
   foodPreferencesSchema,
+  getOutputResponseSchema,
   historyRecordSchema,
   planningAssistantActionSchema,
   planningAssistantRequestSchema,
@@ -99,6 +100,7 @@ export type ValidateTripRequest = z.infer<typeof validateTripRequestSchema>;
 export type ValidateTripResponse = z.infer<typeof validateTripResponseSchema>;
 export type SaveOutputRequest = z.infer<typeof saveOutputRequestSchema>;
 export type SaveOutputResponse = z.infer<typeof saveOutputResponseSchema>;
+export type GetOutputResponse = z.infer<typeof getOutputResponseSchema>;
 export type ApiError = z.infer<typeof apiErrorSchema>;
 export type AnalysisBackend = z.infer<typeof analysisBackendSchema>;
 export type BackendHealth = z.infer<typeof backendHealthSchema>;

@@ -190,6 +190,15 @@ export async function registerApiRoutes(
     return analysisService.analyzeTrip(parsed.data);
   });
 
+  app.get("/api/outputs/:tripId", async (request) => {
+    const tripId = readIdParam(
+      (request.params as { tripId?: unknown }).tripId,
+      "trip_id",
+    );
+
+    return analysisService.getOutput(tripId);
+  });
+
   app.post("/api/outputs", async (request) => {
     const parsed = saveOutputRequestSchema.safeParse(request.body);
 
