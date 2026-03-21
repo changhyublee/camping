@@ -112,15 +112,14 @@ shared/
 
 ### `prompts/`
 
-- OpenAI 분석용 프롬프트 소스
+- 로컬 Codex CLI 또는 OpenAI fallback 분석용 프롬프트 소스
 
 권장 파일:
 
 ```text
 prompts/
 ├── system.md
-├── trip-analysis.md
-└── output-format.md
+└── trip-analysis.md
 ```
 
 ### `schemas/`
