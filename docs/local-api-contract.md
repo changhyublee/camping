@@ -22,6 +22,7 @@
 
 - `trip_id` 는 `2026-04-18-gapyeong` 같은 소문자 kebab-case만 허용한다
 - `trip_id` 에 `/`, `\\`, `.`, `..` 같은 경로 문자는 허용하지 않는다
+- `trips/<trip-id>.yaml` 파일명과 YAML 내부 `trip_id` 는 반드시 같아야 한다
 - 분석 요청은 날짜와 장소가 모두 비어 있으면 실패로 처리한다
 - 날짜만 있거나 장소만 있는 경우는 경고와 함께 분석을 계속할 수 있다
 - 동행자 정보가 비어 있으면 분석을 중단한다
@@ -69,6 +70,12 @@
   ]
 }
 ```
+
+저장 옵션 관련 규칙:
+
+- `save_output: true` 분석에서 저장만 실패하면 HTTP 200으로 응답할 수 있다
+- 이 경우 `status: "failed"` 와 `error.code: "OUTPUT_SAVE_FAILED"` 를 함께 내려주고, 생성된 `markdown` 본문은 유지한다
+- UI는 이 응답을 치명적 분석 실패가 아니라 `결과는 생성됐지만 저장은 실패한 상태`로 처리해야 한다
 
 ### `GET /api/trips/:tripId`
 
@@ -259,6 +266,7 @@ type AnalyzeTripResponse = {
 
 - 기본 인증은 로컬 `codex login` 세션을 사용한다
 - `OPENAI_API_KEY` 는 fallback OpenAI 백엔드를 사용할 때만 로컬 API 프로세스 환경변수로 주입한다
+- 로컬 실행 시 루트 `.env` 파일을 읽어 API와 web 설정을 공유할 수 있다
 - 브라우저 번들에 키를 포함하지 않는다
 - API 응답에 키나 내부 프롬프트 전체를 노출하지 않는다
 

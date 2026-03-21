@@ -120,6 +120,7 @@ export function App() {
         save_output: saveOutput,
       });
       setAnalysisResponse(response);
+      setAnalysisError(response.error?.message ?? null);
 
       if (response.output_path) {
         setSaveMessage(`결과를 ${response.output_path} 에 저장했다.`);
@@ -135,6 +136,7 @@ export function App() {
     if (!analysisResponse?.markdown || !selectedTripId) return;
 
     setSaving(true);
+    setAnalysisError(null);
     setSaveMessage(null);
 
     try {
@@ -147,6 +149,8 @@ export function App() {
         current
           ? {
               ...current,
+              status: "completed",
+              error: undefined,
               output_path: response.output_path,
             }
           : current,

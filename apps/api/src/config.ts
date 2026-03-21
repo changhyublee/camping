@@ -1,4 +1,5 @@
 import path from "node:path";
+import process from "node:process";
 import { fileURLToPath } from "node:url";
 
 const __dirname = path.dirname(fileURLToPath(import.meta.url));
@@ -22,6 +23,8 @@ export function resolveConfig(overrides: ConfigOverrides = {}): AppConfig {
   const projectRoot =
     overrides.projectRoot ?? path.resolve(__dirname, "../../..");
 
+  loadProjectEnvFile(projectRoot);
+
   return {
     apiPort: overrides.apiPort ?? Number(process.env.API_PORT ?? 8787),
     aiBackend:
@@ -38,4 +41,23 @@ export function resolveConfig(overrides: ConfigOverrides = {}): AppConfig {
     dataDir: overrides.dataDir ?? path.join(projectRoot, ".camping-data"),
     promptsDir: overrides.promptsDir ?? path.join(projectRoot, "prompts"),
   };
+}
+
+function loadProjectEnvFile(projectRoot: string) {
+  try {
+    process.loadEnvFile(path.join(projectRoot, ".env"));
+  } catch (error) {
+    if (!isMissingFileError(error)) {
+      throw error;
+    }
+  }
+}
+
+function isMissingFileError(error: unknown): boolean {
+  return (
+    typeof error === "object" &&
+    error !== null &&
+    "code" in error &&
+    error.code === "ENOENT"
+  );
 }

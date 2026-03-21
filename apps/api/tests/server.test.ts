@@ -115,6 +115,47 @@ describe("API server", () => {
     await app.close();
   });
 
+  it("rejects a trip file when the file name and internal trip_id do not match", async () => {
+    const dataDir = await createSeededDataDir();
+    const tripPath = path.join(dataDir, "trips", "2026-04-18-gapyeong.yaml");
+    const trip = parse(await readFile(tripPath, "utf8")) as Record<string, unknown>;
+
+    trip.trip_id = "2026-04-19-gapyeong";
+
+    await writeFile(tripPath, stringify(trip), "utf8");
+
+    const app = await buildServer({
+      dataDir,
+      projectRoot,
+      modelClient: new MockAnalysisClient("# sample"),
+    });
+
+    const listResponse = await app.inject({
+      method: "GET",
+      url: "/api/trips",
+    });
+
+    expect(listResponse.statusCode).toBe(200);
+    expect(listResponse.json().items).toEqual([]);
+
+    const detailResponse = await app.inject({
+      method: "GET",
+      url: "/api/trips/2026-04-18-gapyeong",
+    });
+
+    expect(detailResponse.statusCode).toBe(400);
+    expect(detailResponse.json()).toEqual(
+      expect.objectContaining({
+        status: "failed",
+        error: expect.objectContaining({
+          code: "TRIP_INVALID",
+        }),
+      }),
+    );
+
+    await app.close();
+  });
+
   it("validates a trip and returns warnings", async () => {
     const dataDir = await createSeededDataDir();
     const tripPath = path.join(dataDir, "trips", "2026-04-18-gapyeong.yaml");
@@ -182,6 +223,79 @@ describe("API server", () => {
       "utf8",
     );
     expect(saved).toBe(markdown);
+
+    await app.close();
+  });
+
+  it("returns markdown with OUTPUT_SAVE_FAILED when analyze-trip save_output cannot write the file", async () => {
+    const dataDir = await createSeededDataDir();
+    const outputsPath = path.join(dataDir, "outputs");
+    const markdown = "# 테스트 분석 결과";
+
+    await rm(outputsPath, { recursive: true, force: true });
+    await writeFile(outputsPath, "blocked", "utf8");
+
+    const app = await buildServer({
+      dataDir,
+      projectRoot,
+      modelClient: new MockAnalysisClient(markdown),
+    });
+
+    const response = await app.inject({
+      method: "POST",
+      url: "/api/analyze-trip",
+      payload: {
+        trip_id: "2026-04-18-gapyeong",
+        save_output: true,
+      },
+    });
+
+    expect(response.statusCode).toBe(200);
+    expect(response.json()).toEqual(
+      expect.objectContaining({
+        trip_id: "2026-04-18-gapyeong",
+        status: "failed",
+        markdown,
+        output_path: null,
+        error: expect.objectContaining({
+          code: "OUTPUT_SAVE_FAILED",
+        }),
+      }),
+    );
+
+    await app.close();
+  });
+
+  it("returns OUTPUT_SAVE_FAILED when the save endpoint cannot write the file", async () => {
+    const dataDir = await createSeededDataDir();
+    const outputsPath = path.join(dataDir, "outputs");
+    const app = await buildServer({
+      dataDir,
+      projectRoot,
+      modelClient: new MockAnalysisClient("# sample"),
+    });
+
+    await rm(outputsPath, { recursive: true, force: true });
+    await writeFile(outputsPath, "blocked", "utf8");
+
+    const response = await app.inject({
+      method: "POST",
+      url: "/api/outputs",
+      payload: {
+        trip_id: "2026-04-18-gapyeong",
+        markdown: "# sample",
+      },
+    });
+
+    expect(response.statusCode).toBe(500);
+    expect(response.json()).toEqual(
+      expect.objectContaining({
+        status: "failed",
+        error: expect.objectContaining({
+          code: "OUTPUT_SAVE_FAILED",
+        }),
+      }),
+    );
 
     await app.close();
   });

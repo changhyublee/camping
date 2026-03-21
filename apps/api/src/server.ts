@@ -43,6 +43,7 @@ export async function buildServer(
         error.code === "INVALID_TRIP_ID_FORMAT" ||
         error.code === "TRIP_NOT_FOUND" ||
         error.code === "DEPENDENCY_MISSING" ||
+        error.code === "OUTPUT_SAVE_FAILED" ||
         error.code === "OPENAI_REQUEST_FAILED"
       ) {
         return reply.status(status).send({

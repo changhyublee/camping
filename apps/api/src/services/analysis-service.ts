@@ -9,6 +9,7 @@ import type {
 import { buildAnalysisPrompt } from "./prompt-builder";
 import type { CampingRepository } from "../file-store/camping-repository";
 import { validateTripBundle } from "./trip-validation";
+import { isAppError, toApiError } from "./app-error";
 import type { AnalysisModelClient } from "./openai-client";
 
 export class AnalysisService {
@@ -62,17 +63,40 @@ export class AnalysisService {
       userPrompt,
     });
 
-    const outputPath = input.save_output
-      ? await this.repository.saveOutput(input.trip_id, markdown)
-      : null;
+    if (!input.save_output) {
+      return {
+        trip_id: input.trip_id,
+        status: "completed",
+        warnings,
+        markdown,
+        output_path: null,
+      };
+    }
 
-    return {
-      trip_id: input.trip_id,
-      status: "completed",
-      warnings,
-      markdown,
-      output_path: outputPath,
-    };
+    try {
+      const outputPath = await this.repository.saveOutput(input.trip_id, markdown);
+
+      return {
+        trip_id: input.trip_id,
+        status: "completed",
+        warnings,
+        markdown,
+        output_path: outputPath,
+      };
+    } catch (error) {
+      if (isAppError(error) && error.code === "OUTPUT_SAVE_FAILED") {
+        return {
+          trip_id: input.trip_id,
+          status: "failed",
+          warnings,
+          markdown,
+          output_path: null,
+          error: toApiError(error),
+        };
+      }
+
+      throw error;
+    }
   }
 
   async saveOutput(input: SaveOutputRequest): Promise<SaveOutputResponse> {

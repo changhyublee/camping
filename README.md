@@ -69,6 +69,8 @@ pnpm dev:api
 pnpm dev:web
 ```
 
+루트 `.env` 는 로컬 API와 web 개발 서버가 함께 읽는다.
+
 기본 주소:
 
 - web: `http://localhost:5173`

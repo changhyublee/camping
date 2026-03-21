@@ -131,4 +131,59 @@ describe("App", () => {
       ).toBeInTheDocument();
     });
   });
+
+  it("keeps the markdown visible when auto-save fails after analysis", async () => {
+    fetchMock
+      .mockImplementationOnce(() =>
+        jsonResponse({
+          items: [
+            {
+              trip_id: "2026-04-18-gapyeong",
+              title: "4월 가평 가족 캠핑",
+            },
+          ],
+        }),
+      )
+      .mockImplementationOnce(() =>
+        jsonResponse({
+          trip_id: "2026-04-18-gapyeong",
+          data: {
+            version: 1,
+            trip_id: "2026-04-18-gapyeong",
+            title: "4월 가평 가족 캠핑",
+            party: { companion_ids: ["self"] },
+          },
+        }),
+      )
+      .mockImplementationOnce(() =>
+        jsonResponse({
+          status: "ok",
+          warnings: [],
+        }),
+      )
+      .mockImplementationOnce(() =>
+        jsonResponse({
+          trip_id: "2026-04-18-gapyeong",
+          status: "failed",
+          warnings: [],
+          markdown: "# 분석은 완료됨\n\n- 저장만 실패",
+          output_path: null,
+          error: {
+            code: "OUTPUT_SAVE_FAILED",
+            message: "분석 결과를 저장하지 못했습니다: 2026-04-18-gapyeong",
+          },
+        }),
+      );
+
+    render(<App />);
+
+    await userEvent.click(
+      await screen.findByRole("button", { name: "분석 실행" }),
+    );
+
+    expect(
+      await screen.findByText("분석 결과를 저장하지 못했습니다: 2026-04-18-gapyeong"),
+    ).toBeInTheDocument();
+    expect(screen.getByText("저장만 실패")).toBeInTheDocument();
+  });
 });

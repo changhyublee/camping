@@ -197,6 +197,7 @@ v1에서는 아래 두 방식 모두 허용한다.
 로컬 API는 분석 전에 아래를 점검해야 한다.
 
 - `trip_id` 가 데이터 모델 규칙에 맞는가
+- trip 파일명과 내부 `trip_id` 가 일치하는가
 - trip 파일에 날짜가 있는가
 - 장소 정보가 있는가
 - companion ID가 `companions.yaml` 에 존재하는가
@@ -232,9 +233,9 @@ v1에서는 아래 두 방식 모두 허용한다.
 8. 나머지 로컬 사용자 데이터
 9. 필요한 경우 캐시 파일
 
-### 6.6 6단계: OpenAI 분석 수행
+### 6.6 6단계: 로컬 codex CLI 또는 fallback AI 백엔드 분석 수행
 
-로컬 API는 아래 항목을 묶어서 Responses API 요청을 구성한다.
+로컬 API는 아래 항목을 묶어서 기본적으로 `codex exec` 요청을 구성하고, 필요하면 fallback 으로 OpenAI Responses API를 사용할 수 있다.
 
 #### A. 캠핑 장비 분석
 

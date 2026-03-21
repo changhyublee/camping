@@ -50,12 +50,12 @@ export class CampingRepository {
 
         try {
           const trip = await this.readTrip(tripId);
-          return toTripSummary(trip);
-        } catch {
           return {
+            ...toTripSummary(trip),
             trip_id: tripId,
-            title: `${tripId} (검증 필요)`,
           };
+        } catch {
+          return null;
         }
       }),
     );
@@ -64,7 +64,7 @@ export class CampingRepository {
   }
 
   async readTrip(tripId: TripId): Promise<TripData> {
-    return this.readYamlFile(
+    const trip = await this.readYamlFile(
       path.join(this.config.dataDir, "trips", `${tripId}.yaml`),
       tripSchema,
       "TRIP_NOT_FOUND",
@@ -72,6 +72,16 @@ export class CampingRepository {
       "TRIP_INVALID",
       `trip 파일 형식이 올바르지 않습니다: ${tripId}`,
     );
+
+    if (trip.trip_id !== tripId) {
+      throw new AppError(
+        "TRIP_INVALID",
+        `trip 파일 내부 trip_id 와 파일명이 일치하지 않습니다: ${tripId}`,
+        400,
+      );
+    }
+
+    return trip;
   }
 
   async loadTripBundle(tripId: TripId): Promise<TripBundle> {
@@ -195,9 +205,18 @@ export class CampingRepository {
       "outputs",
       getTripOutputFilename(tripId),
     );
-    await mkdir(path.dirname(outputPath), { recursive: true });
-    await writeFile(outputPath, markdown, "utf8");
-    return getTripOutputRelativePath(tripId);
+
+    try {
+      await mkdir(path.dirname(outputPath), { recursive: true });
+      await writeFile(outputPath, markdown, "utf8");
+      return getTripOutputRelativePath(tripId);
+    } catch {
+      throw new AppError(
+        "OUTPUT_SAVE_FAILED",
+        `분석 결과를 저장하지 못했습니다: ${tripId}`,
+        500,
+      );
+    }
   }
 
   private async listTripFiles(): Promise<string[]> {
