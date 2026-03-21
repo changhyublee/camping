@@ -7,21 +7,24 @@
 ## 권장 읽기 순서
 
 1. [`README.md`](/Users/leech/workspace/camping/camping/README.md)
-2. [`technical-architecture.md`](/Users/leech/workspace/camping/camping/docs/technical-architecture.md)
-3. [`data-model.md`](/Users/leech/workspace/camping/camping/docs/data-model.md)
-4. [`trip-analysis-workflow.md`](/Users/leech/workspace/camping/camping/docs/trip-analysis-workflow.md)
-5. [`mvp-scope.md`](/Users/leech/workspace/camping/camping/docs/mvp-scope.md)
-6. [`directory-structure.md`](/Users/leech/workspace/camping/camping/docs/directory-structure.md)
-7. [`prompt-design.md`](/Users/leech/workspace/camping/camping/docs/prompt-design.md)
-8. [`example-files.md`](/Users/leech/workspace/camping/camping/docs/example-files.md)
-9. [`project-setup-checklist.md`](/Users/leech/workspace/camping/camping/docs/project-setup-checklist.md)
+2. [`requirements.md`](/Users/leech/workspace/camping/camping/docs/requirements.md)
+3. [`technical-architecture.md`](/Users/leech/workspace/camping/camping/docs/technical-architecture.md)
+4. [`data-model.md`](/Users/leech/workspace/camping/camping/docs/data-model.md)
+5. [`trip-analysis-workflow.md`](/Users/leech/workspace/camping/camping/docs/trip-analysis-workflow.md)
+6. [`mvp-scope.md`](/Users/leech/workspace/camping/camping/docs/mvp-scope.md)
+7. [`directory-structure.md`](/Users/leech/workspace/camping/camping/docs/directory-structure.md)
+8. [`prompt-design.md`](/Users/leech/workspace/camping/camping/docs/prompt-design.md)
+9. [`example-files.md`](/Users/leech/workspace/camping/camping/docs/example-files.md)
+10. [`project-setup-checklist.md`](/Users/leech/workspace/camping/camping/docs/project-setup-checklist.md)
 
 ## 문서별 역할
 
 ### 제품/방향
 
 - [`README.md`](/Users/leech/workspace/camping/camping/README.md)
-  - 프로젝트 목적과 컨셉
+  - 프로젝트 소개와 현재 상태
+- [`requirements.md`](/Users/leech/workspace/camping/camping/docs/requirements.md)
+  - 제품 요구사항과 컨셉 원문
 
 ### 기술 설계
 

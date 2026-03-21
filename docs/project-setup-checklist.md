@@ -15,6 +15,7 @@
 ### Phase 1. 문서 기준 확정
 
 - [ ] [`README.md`](/Users/leech/workspace/camping/camping/README.md) 방향 확정
+- [ ] [`requirements.md`](/Users/leech/workspace/camping/camping/docs/requirements.md) 요구사항 확정
 - [ ] [`technical-architecture.md`](/Users/leech/workspace/camping/camping/docs/technical-architecture.md) 구조 확정
 - [ ] [`data-model.md`](/Users/leech/workspace/camping/camping/docs/data-model.md) 필드 확정
 - [ ] [`trip-analysis-workflow.md`](/Users/leech/workspace/camping/camping/docs/trip-analysis-workflow.md) 흐름 확정

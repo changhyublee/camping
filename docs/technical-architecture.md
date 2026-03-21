@@ -2,7 +2,7 @@
 
 ## 1. 문서 목적
 
-이 문서는 `README.md` 에 정리된 캠핑 추천 컨셉을 실제로 구현하기 위한
+이 문서는 [`requirements.md`](/Users/leech/workspace/camping/camping/docs/requirements.md) 에 정리된 캠핑 추천 요구사항을 실제로 구현하기 위한
 초기 기술 방향을 정리한다.
 
 현재 목표는 별도 서버를 개발하지 않고도,

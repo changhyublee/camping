@@ -110,6 +110,7 @@ Codex CLI는 단순한 요약기가 아니라
 ### 문서 규칙
 
 - `README.md`
+- `docs/requirements.md`
 - `docs/technical-architecture.md`
 - `docs/data-model.md`
 - `docs/trip-analysis-workflow.md`
@@ -186,7 +187,7 @@ v1에서는 프롬프트를 최소 2개로 나누는 것을 권장한다.
 ### 방식 A. 직접 요청
 
 ```text
-README.md, docs/*.md, .camping-data/trips/2026-04-18-gapyeong.yaml,
+README.md, docs/requirements.md, docs/*.md, .camping-data/trips/2026-04-18-gapyeong.yaml,
 .camping-data/companions.yaml, .camping-data/equipment/*,
 .camping-data/preferences/* 파일을 읽고
 이번 캠핑에 대한 장비, 연령대별 개인 준비물, 요리, 이동 중 추천 장소,

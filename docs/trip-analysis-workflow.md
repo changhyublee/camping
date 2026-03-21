@@ -28,6 +28,7 @@ Codex CLI가 이를 읽어 분석한 뒤,
 - [`technical-architecture.md`](/Users/leech/workspace/camping/camping/docs/technical-architecture.md)
 - [`data-model.md`](/Users/leech/workspace/camping/camping/docs/data-model.md)
 - [`README.md`](/Users/leech/workspace/camping/camping/README.md)
+- [`requirements.md`](/Users/leech/workspace/camping/camping/docs/requirements.md)
 
 ## 3. 워크플로우의 핵심 원칙
 
@@ -97,6 +98,7 @@ v1에서는 아래 두 방식 모두 허용한다.
 분석 시 읽는 기본 파일:
 
 - `README.md`
+- `docs/requirements.md`
 - `docs/technical-architecture.md`
 - `docs/data-model.md`
 - `.camping-data/profile.yaml`
@@ -166,7 +168,7 @@ v1에서는 아래 두 방식 모두 허용한다.
 
 사용자가 Codex CLI에 다음과 같이 요청한다.
 
-- `README.md`, `docs/*.md`, `.camping-data/...` 파일을 읽고
+- `README.md`, `docs/requirements.md`, `docs/*.md`, `.camping-data/...` 파일을 읽고
 - 특정 trip에 대한 추천 결과를 생성해달라고 요청
 
 이 방식은 구현이 가장 빠르다.
@@ -207,11 +209,12 @@ Codex CLI는 분석용 컨텍스트를 아래 순서로 조합한다.
 권장 읽기 우선순위:
 
 1. `README.md`
-2. `docs/technical-architecture.md`
-3. `docs/data-model.md`
-4. `.camping-data/trips/<trip-id>.yaml`
-5. 나머지 로컬 사용자 데이터
-6. 필요한 경우 캐시 파일
+2. `docs/requirements.md`
+3. `docs/technical-architecture.md`
+4. `docs/data-model.md`
+5. `.camping-data/trips/<trip-id>.yaml`
+6. 나머지 로컬 사용자 데이터
+7. 필요한 경우 캐시 파일
 
 이 순서를 쓰는 이유:
 
