@@ -31,7 +31,11 @@ export async function buildServer(
     logger: options.logger ?? false,
   });
 
-  await app.register(cors, { origin: true });
+  await app.register(cors, {
+    origin: true,
+    methods: ["GET", "HEAD", "POST", "PUT", "PATCH", "DELETE", "OPTIONS"],
+    allowedHeaders: ["Content-Type"],
+  });
   await registerApiRoutes(app, analysisService);
 
   app.setErrorHandler((error, request, reply) => {

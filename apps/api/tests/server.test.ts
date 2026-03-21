@@ -74,6 +74,33 @@ describe("API server", () => {
     await app.close();
   });
 
+  it("allows DELETE equipment preflight requests through CORS", async () => {
+    const dataDir = await createSeededDataDir();
+    const app = await buildServer({
+      dataDir,
+      projectRoot,
+      modelClient: new MockAnalysisClient("# sample"),
+    });
+
+    const response = await app.inject({
+      method: "OPTIONS",
+      url: "/api/equipment/durable/items/sleeping-bag-3season-adult",
+      headers: {
+        origin: "http://localhost:5173",
+        "access-control-request-method": "DELETE",
+        "access-control-request-headers": "content-type",
+      },
+    });
+
+    expect(response.statusCode).toBe(204);
+    expect(response.headers["access-control-allow-methods"]).toContain("DELETE");
+    expect(response.headers["access-control-allow-headers"]).toContain(
+      "Content-Type",
+    );
+
+    await app.close();
+  });
+
   it("lists trips and returns trip detail", async () => {
     const dataDir = await createSeededDataDir();
     const app = await buildServer({

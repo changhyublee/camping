@@ -67,11 +67,25 @@ afterEach(() => {
 });
 
 function jsonResponse(body: unknown, status = 200) {
+  const text = typeof body === "string" ? body : JSON.stringify(body);
+
   return Promise.resolve({
     ok: status >= 200 && status < 300,
     status,
     json: async () => body,
+    text: async () => text,
   } as Response);
+}
+
+function emptyResponse(status = 204) {
+  return Promise.resolve({
+    ok: status >= 200 && status < 300,
+    status,
+    json: async () => {
+      throw new Error("No JSON body");
+    },
+    text: async () => "",
+  } as unknown as Response);
 }
 
 function parseBody(init?: RequestInit) {
@@ -115,6 +129,19 @@ function readOutputTripIdFromPath(pathname: string) {
   return match?.[1] ?? null;
 }
 
+function readEquipmentDeleteParams(pathname: string) {
+  const match = pathname.match(/^\/api\/equipment\/([^/]+)\/items\/([^/]+)$/u);
+
+  if (!match) {
+    return null;
+  }
+
+  return {
+    section: match[1] as "durable" | "consumables" | "precheck",
+    itemId: match[2],
+  };
+}
+
 function mockFetch(input: RequestInfo | URL, init?: RequestInit) {
   const rawUrl = typeof input === "string" ? input : input.toString();
   const pathname = new URL(rawUrl, "http://localhost").pathname;
@@ -126,6 +153,18 @@ function mockFetch(input: RequestInfo | URL, init?: RequestInit) {
 
   if (pathname === "/api/equipment" && method === "GET") {
     return jsonResponse(state.equipment);
+  }
+
+  const equipmentDeleteParams = readEquipmentDeleteParams(pathname);
+
+  if (equipmentDeleteParams && method === "DELETE") {
+    const { section, itemId } = equipmentDeleteParams;
+
+    state.equipment[section].items = state.equipment[section].items.filter(
+      (item) => item.id !== itemId,
+    );
+
+    return emptyResponse();
   }
 
   if (pathname === "/api/history" && method === "GET") {
@@ -436,6 +475,31 @@ describe("App", () => {
 
     expect(await screen.findAllByPlaceholderText("부족 기준")).toHaveLength(2);
     expect(screen.getAllByRole("option", { name: "empty" }).length).toBeGreaterThan(0);
+  });
+
+  it("deletes equipment successfully when the API returns 204", async () => {
+    state.equipment.durable.items = [
+      {
+        id: "sleeping-bag-3season-adult",
+        name: "침낭",
+        category: "sleep",
+        quantity: 1,
+        status: "ok",
+      },
+    ];
+
+    render(<App />);
+
+    await userEvent.click(await screen.findByRole("button", { name: "장비 관리" }));
+
+    expect(await screen.findByDisplayValue("침낭")).toBeInTheDocument();
+
+    await userEvent.click(screen.getByRole("button", { name: "삭제" }));
+
+    await waitFor(() => {
+      expect(screen.getByText("장비 삭제 완료")).toBeInTheDocument();
+    });
+    expect(screen.queryByDisplayValue("침낭")).not.toBeInTheDocument();
   });
 
   it("opens archived output markdown from history detail", async () => {

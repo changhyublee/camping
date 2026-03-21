@@ -44,14 +44,21 @@ export class ApiClientError extends Error {
 }
 
 async function request<T>(path: string, init?: RequestInit): Promise<T> {
+  const headers = new Headers(init?.headers);
+
+  if (init?.body && !headers.has("Content-Type")) {
+    headers.set("Content-Type", "application/json");
+  }
+
   const response = await fetch(`${API_BASE_URL}${path}`, {
-    headers: {
-      "Content-Type": "application/json",
-    },
+    headers,
     ...init,
   });
 
-  const data = (await response.json()) as T & ApiErrorPayload;
+  const rawBody = response.status === 204 ? "" : await response.text();
+  const data = rawBody
+    ? (JSON.parse(rawBody) as T & ApiErrorPayload)
+    : ({} as T & ApiErrorPayload);
 
   if (!response.ok) {
     throw new ApiClientError(
