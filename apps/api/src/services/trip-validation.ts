@@ -6,8 +6,7 @@ export type ValidationResult = {
 };
 
 export function validateTripBundle(bundle: TripBundle): ValidationResult {
-  const warnings: string[] = [];
-  const { trip, companions, caches } = bundle;
+  const { trip, companions } = bundle;
 
   const hasDate = Boolean(trip.date?.start || trip.date?.end);
   const hasLocation = Boolean(
@@ -47,16 +46,48 @@ export function validateTripBundle(bundle: TripBundle): ValidationResult {
     );
   }
 
+  return {
+    warnings: collectTripWarnings(bundle),
+  };
+}
+
+export function collectPlanningWarnings(bundle: TripBundle): ValidationResult {
+  return {
+    warnings: collectTripWarnings(bundle, { allowIncomplete: true }),
+  };
+}
+
+function collectTripWarnings(
+  bundle: TripBundle,
+  options: { allowIncomplete?: boolean } = {},
+): string[] {
+  const warnings: string[] = [];
+  const { trip, caches } = bundle;
+  const hasDate = Boolean(trip.date?.start || trip.date?.end);
+  const hasLocation = Boolean(
+    trip.location?.campsite_name ||
+      trip.location?.region ||
+      trip.location?.coordinates,
+  );
+
   if (!hasDate) {
     warnings.push(
-      "날짜 정보가 없어 계절성과 기온 기반 판단 정확도가 제한될 수 있습니다.",
+      options.allowIncomplete
+        ? "아직 날짜가 없어 계절과 온도 중심 계획을 확정하기 어렵습니다."
+        : "날짜 정보가 없어 계절성과 기온 기반 판단 정확도가 제한될 수 있습니다.",
     );
   }
 
   if (!hasLocation) {
     warnings.push(
-      "장소 정보가 없어 지역 특화 추천과 주변 추천 정확도가 제한될 수 있습니다.",
+      options.allowIncomplete
+        ? "아직 장소가 없어 지역 특화 추천과 주변 동선을 고정하기 어렵습니다."
+        : "장소 정보가 없어 지역 특화 추천과 주변 추천 정확도가 제한될 수 있습니다.",
     );
+  }
+
+  if (trip.party.companion_ids.length === 0) {
+    warnings.push("동행자가 아직 선택되지 않아 인원 기준 장비 추천 정확도가 낮습니다.");
   }
 
   if (!trip.conditions?.expected_weather) {
@@ -90,5 +121,5 @@ export function validateTripBundle(bundle: TripBundle): ValidationResult {
     );
   }
 
-  return { warnings };
+  return warnings;
 }

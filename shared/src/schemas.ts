@@ -1,5 +1,9 @@
 import { z } from "zod";
 
+export const baseIdSchema = z
+  .string()
+  .regex(/^[a-z0-9]+(?:-[a-z0-9]+)*$/, "id must be lowercase kebab-case");
+
 export const ageGroupSchema = z.enum([
   "adult",
   "preschooler",
@@ -17,9 +21,21 @@ export const generalStatusSchema = z.enum([
   "needs_repair",
 ]);
 
-export const tripIdSchema = z
-  .string()
-  .regex(/^[a-z0-9]+(?:-[a-z0-9]+)*$/, "trip_id must be lowercase kebab-case");
+export const tripIdSchema = baseIdSchema;
+export const historyIdSchema = baseIdSchema;
+export const externalLinkIdSchema = baseIdSchema;
+export const equipmentSectionSchema = z.enum([
+  "durable",
+  "consumables",
+  "precheck",
+]);
+export const externalLinkCategorySchema = z.enum([
+  "weather",
+  "place",
+  "food",
+  "shopping",
+  "general",
+]);
 
 export const profileSchema = z.object({
   version: z.number().int().positive(),
@@ -84,6 +100,10 @@ export const durableEquipmentItemSchema = z.object({
   notes: z.string().optional(),
 });
 
+export const durableEquipmentItemInputSchema = durableEquipmentItemSchema.extend({
+  id: z.string().min(1).optional(),
+});
+
 export const durableEquipmentSchema = z.object({
   version: z.number().int().positive(),
   items: z.array(durableEquipmentItemSchema),
@@ -99,6 +119,11 @@ export const consumableEquipmentItemSchema = z.object({
   status: generalStatusSchema,
 });
 
+export const consumableEquipmentItemInputSchema =
+  consumableEquipmentItemSchema.extend({
+    id: z.string().min(1).optional(),
+  });
+
 export const consumableEquipmentSchema = z.object({
   version: z.number().int().positive(),
   items: z.array(consumableEquipmentItemSchema),
@@ -113,9 +138,19 @@ export const precheckItemSchema = z.object({
   notes: z.string().optional(),
 });
 
+export const precheckItemInputSchema = precheckItemSchema.extend({
+  id: z.string().min(1).optional(),
+});
+
 export const precheckSchema = z.object({
   version: z.number().int().positive(),
   items: z.array(precheckItemSchema),
+});
+
+export const equipmentCatalogSchema = z.object({
+  durable: durableEquipmentSchema,
+  consumables: consumableEquipmentSchema,
+  precheck: precheckSchema,
 });
 
 export const travelPreferencesSchema = z.object({
@@ -223,12 +258,75 @@ export const tripSchema = z.object({
   notes: z.array(z.string()).default([]).optional(),
 });
 
+export const tripDraftSchema = tripSchema.extend({
+  trip_id: tripIdSchema.optional(),
+});
+
 export const tripSummarySchema = z.object({
   trip_id: tripIdSchema,
   title: z.string().min(1),
   start_date: z.string().optional(),
   end_date: z.string().optional(),
   region: z.string().optional(),
+  companion_count: z.number().int().nonnegative().optional(),
+});
+
+export const historyRecordSchema = z.object({
+  version: z.number().int().positive(),
+  history_id: historyIdSchema,
+  source_trip_id: tripIdSchema,
+  title: z.string().min(1),
+  date: z
+    .object({
+      start: z.string().optional(),
+      end: z.string().optional(),
+    })
+    .optional(),
+  location: z
+    .object({
+      campsite_name: z.string().optional(),
+      region: z.string().optional(),
+    })
+    .optional(),
+  companion_ids: z.array(z.string()).default([]),
+  attendee_count: z.number().int().nonnegative().optional(),
+  notes: z.array(z.string()).default([]),
+  archived_at: z.string().min(1),
+  output_path: z.string().nullable().optional(),
+  trip_snapshot: tripSchema,
+});
+
+export const historyUpdateSchema = historyRecordSchema;
+
+export const externalLinkSchema = z.object({
+  id: externalLinkIdSchema,
+  category: externalLinkCategorySchema,
+  name: z.string().min(1),
+  url: z.string().url(),
+  notes: z.string().optional(),
+  sort_order: z.number().int().nonnegative().default(0),
+});
+
+export const externalLinkInputSchema = externalLinkSchema.extend({
+  id: externalLinkIdSchema.optional(),
+});
+
+export const externalLinksSchema = z.object({
+  version: z.number().int().positive(),
+  items: z.array(externalLinkSchema).default([]),
+});
+
+export const planningAssistantActionSchema = z.object({
+  id: z.string().min(1),
+  section: equipmentSectionSchema,
+  action: z.enum(["increase_quantity", "add_item", "mark_needs_check"]),
+  title: z.string().min(1),
+  reason: z.string().min(1),
+  item_id: z.string().min(1).optional(),
+  quantity_delta: z.number().int().positive().optional(),
+  durable_item: durableEquipmentItemSchema.optional(),
+  consumable_item: consumableEquipmentItemSchema.optional(),
+  precheck_item: precheckItemSchema.optional(),
 });
 
 export const analyzeTripRequestSchema = z.object({
@@ -246,6 +344,17 @@ export const validateTripRequestSchema = z.object({
   trip_id: tripIdSchema,
 });
 
+export const planningAssistantRequestSchema = z.object({
+  message: z.string().min(1),
+});
+
+export const planningAssistantResponseSchema = z.object({
+  trip_id: tripIdSchema,
+  warnings: z.array(z.string()).default([]),
+  assistant_message: z.string().min(1),
+  actions: z.array(planningAssistantActionSchema).default([]),
+});
+
 export const apiErrorSchema = z.object({
   code: z.enum([
     "INVALID_TRIP_ID_FORMAT",
@@ -254,6 +363,8 @@ export const apiErrorSchema = z.object({
     "DEPENDENCY_MISSING",
     "OPENAI_REQUEST_FAILED",
     "OUTPUT_SAVE_FAILED",
+    "RESOURCE_NOT_FOUND",
+    "CONFLICT",
     "INTERNAL_ERROR",
   ]),
   message: z.string(),
@@ -277,6 +388,12 @@ export const validateTripResponseSchema = z.object({
 export const saveOutputResponseSchema = z.object({
   status: z.literal("saved"),
   output_path: z.string(),
+});
+
+export const getOutputResponseSchema = z.object({
+  trip_id: tripIdSchema,
+  output_path: z.string(),
+  markdown: z.string(),
 });
 
 export const analysisBackendSchema = z.enum(["codex-cli", "openai"]);
