@@ -1,4 +1,4 @@
-import { useEffect, useMemo, useState } from "react";
+import { useEffect, useMemo, useRef, useState } from "react";
 import ReactMarkdown from "react-markdown";
 import type {
   AnalyzeTripResponse,
@@ -71,6 +71,8 @@ export function App() {
     null,
   );
   const [loadError, setLoadError] = useState<string | null>(null);
+  const selectedHistoryIdRef = useRef<string | null>(null);
+  const historyOutputRequestIdRef = useRef(0);
 
   useEffect(() => {
     void loadInitialData();
@@ -146,6 +148,7 @@ export function App() {
   );
 
   useEffect(() => {
+    selectedHistoryIdRef.current = selectedHistoryId;
     setHistoryOutput(null);
     setHistoryOutputError(null);
     setHistoryOutputLoading(false);
@@ -633,11 +636,23 @@ export function App() {
   async function handleOpenHistoryOutput() {
     if (!selectedHistory?.output_path) return;
 
+    const requestedHistoryId = selectedHistory.history_id;
+    const requestId = historyOutputRequestIdRef.current + 1;
+
+    historyOutputRequestIdRef.current = requestId;
     setHistoryOutputLoading(true);
     setHistoryOutputError(null);
 
     try {
       const response = await apiClient.getOutput(selectedHistory.source_trip_id);
+
+      if (
+        selectedHistoryIdRef.current !== requestedHistoryId ||
+        historyOutputRequestIdRef.current !== requestId
+      ) {
+        return;
+      }
+
       setHistoryOutput(response);
       setOperationState({
         title: "히스토리 결과 불러오기 완료",
@@ -645,6 +660,13 @@ export function App() {
         description: response.output_path,
       });
     } catch (error) {
+      if (
+        selectedHistoryIdRef.current !== requestedHistoryId ||
+        historyOutputRequestIdRef.current !== requestId
+      ) {
+        return;
+      }
+
       setHistoryOutput(null);
       const message = getErrorMessage(error);
       setHistoryOutputError(message);
@@ -654,6 +676,13 @@ export function App() {
         description: message,
       });
     } finally {
+      if (
+        selectedHistoryIdRef.current !== requestedHistoryId ||
+        historyOutputRequestIdRef.current !== requestId
+      ) {
+        return;
+      }
+
       setHistoryOutputLoading(false);
     }
   }

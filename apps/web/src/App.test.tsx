@@ -465,6 +465,126 @@ describe("App", () => {
     expect(screen.getByText("타프와 난방 장비 확인")).toBeInTheDocument();
   });
 
+  it("ignores stale history output responses after selection changes", async () => {
+    state.history = [
+      {
+        version: 1,
+        history_id: "2026-03-08-yangpyeong",
+        source_trip_id: "2026-03-08-yangpyeong",
+        title: "3월 양평 주말 캠핑",
+        date: {
+          start: "2026-03-08",
+          end: "2026-03-09",
+        },
+        location: {
+          region: "yangpyeong",
+        },
+        companion_ids: ["self", "child-1"],
+        attendee_count: 2,
+        notes: [],
+        archived_at: "2026-03-10T09:00:00.000Z",
+        output_path: ".camping-data/outputs/2026-03-08-yangpyeong-plan.md",
+        trip_snapshot: {
+          version: 1,
+          trip_id: "2026-03-08-yangpyeong",
+          title: "3월 양평 주말 캠핑",
+          date: {
+            start: "2026-03-08",
+            end: "2026-03-09",
+          },
+          location: {
+            region: "yangpyeong",
+          },
+          party: {
+            companion_ids: ["self", "child-1"],
+          },
+          notes: [],
+        },
+      },
+      {
+        version: 1,
+        history_id: "2026-04-12-sokcho",
+        source_trip_id: "2026-04-12-sokcho",
+        title: "4월 속초 주말 캠핑",
+        date: {
+          start: "2026-04-12",
+          end: "2026-04-13",
+        },
+        location: {
+          region: "sokcho",
+        },
+        companion_ids: ["self"],
+        attendee_count: 1,
+        notes: [],
+        archived_at: "2026-04-15T09:00:00.000Z",
+        output_path: ".camping-data/outputs/2026-04-12-sokcho-plan.md",
+        trip_snapshot: {
+          version: 1,
+          trip_id: "2026-04-12-sokcho",
+          title: "4월 속초 주말 캠핑",
+          date: {
+            start: "2026-04-12",
+            end: "2026-04-13",
+          },
+          location: {
+            region: "sokcho",
+          },
+          party: {
+            companion_ids: ["self"],
+          },
+          notes: [],
+        },
+      },
+    ];
+    state.outputs["2026-03-08-yangpyeong"] = {
+      trip_id: "2026-03-08-yangpyeong",
+      output_path: ".camping-data/outputs/2026-03-08-yangpyeong-plan.md",
+      markdown: "# 늦게 도착한 양평 결과\n\n- stale 응답",
+    };
+    state.outputs["2026-04-12-sokcho"] = {
+      trip_id: "2026-04-12-sokcho",
+      output_path: ".camping-data/outputs/2026-04-12-sokcho-plan.md",
+      markdown: "# 속초 결과\n\n- 현재 선택 결과",
+    };
+
+    let resolveDelayedOutput:
+      | ((response: Response) => void)
+      | undefined;
+
+    fetchMock.mockImplementation((input: RequestInfo | URL, init?: RequestInit) => {
+      const rawUrl = typeof input === "string" ? input : input.toString();
+      const pathname = new URL(rawUrl, "http://localhost").pathname;
+      const method = init?.method?.toUpperCase() ?? "GET";
+
+      if (pathname === "/api/outputs/2026-03-08-yangpyeong" && method === "GET") {
+        return new Promise<Response>((resolve) => {
+          resolveDelayedOutput = resolve;
+        });
+      }
+
+      return mockFetch(input, init);
+    });
+
+    render(<App />);
+
+    await userEvent.click(await screen.findByRole("button", { name: "캠핑 히스토리" }));
+    await userEvent.click(screen.getByRole("button", { name: "결과 열기" }));
+    await userEvent.click(
+      screen.getByRole("button", { name: /4월 속초 주말 캠핑/u }),
+    );
+
+    resolveDelayedOutput?.({
+      ok: true,
+      status: 200,
+      json: async () => state.outputs["2026-03-08-yangpyeong"],
+    } as Response);
+
+    await waitFor(() => {
+      expect(screen.getByDisplayValue("4월 속초 주말 캠핑")).toBeInTheDocument();
+    });
+    expect(screen.queryByText("늦게 도착한 양평 결과")).not.toBeInTheDocument();
+  });
+
   it("renders external links grouped by category", async () => {
     state.links = [
       {
