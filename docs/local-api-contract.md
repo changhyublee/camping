@@ -16,6 +16,16 @@
 - OpenAI 호출은 API 서버만 수행한다
 - UI는 `trip_id` 와 사용자 액션 중심으로 요청한다
 - 운영 데이터는 계속 `.camping-data/` 에 저장한다
+- `trip_id` 는 데이터 모델의 파일명 규칙과 동일한 소문자 kebab-case를 따른다
+
+## 2.1 입력 검증 규칙
+
+- `trip_id` 는 `2026-04-18-gapyeong` 같은 소문자 kebab-case만 허용한다
+- `trip_id` 에 `/`, `\\`, `.`, `..` 같은 경로 문자는 허용하지 않는다
+- 분석 요청은 날짜와 장소가 모두 비어 있으면 실패로 처리한다
+- 날짜만 있거나 장소만 있는 경우는 경고와 함께 분석을 계속할 수 있다
+- 동행자 정보가 비어 있으면 분석을 중단한다
+- 출력 경로는 서버가 검증된 `trip_id` 로만 생성한다
 
 ## 3. 엔드포인트
 
@@ -98,6 +108,18 @@
 }
 ```
 
+실패 응답 예:
+
+```json
+{
+  "status": "failed",
+  "error": {
+    "code": "TRIP_INVALID",
+    "message": "날짜와 장소가 모두 비어 있어 분석을 진행할 수 없습니다."
+  }
+}
+```
+
 ### `POST /api/analyze-trip`
 
 목적:
@@ -156,7 +178,7 @@
 
 ```ts
 type TripSummary = {
-  trip_id: string;
+  trip_id: TripId;
   title: string;
   start_date?: string;
   end_date?: string;
@@ -164,11 +186,17 @@ type TripSummary = {
 };
 ```
 
+### `TripId`
+
+```ts
+type TripId = string; // lowercase kebab-case only
+```
+
 ### `AnalyzeTripRequest`
 
 ```ts
 type AnalyzeTripRequest = {
-  trip_id: string;
+  trip_id: TripId;
   override_instructions?: string;
   save_output?: boolean;
 };
@@ -178,7 +206,7 @@ type AnalyzeTripRequest = {
 
 ```ts
 type AnalyzeTripResponse = {
-  trip_id: string;
+  trip_id: TripId;
   status: "completed" | "failed";
   warnings: string[];
   markdown?: string;
@@ -194,6 +222,7 @@ type AnalyzeTripResponse = {
 
 권장 오류 코드:
 
+- `INVALID_TRIP_ID_FORMAT`
 - `TRIP_NOT_FOUND`
 - `TRIP_INVALID`
 - `DEPENDENCY_MISSING`
@@ -219,6 +248,7 @@ type AnalyzeTripResponse = {
 - `save_output: true` 인 경우 분석 후 자동 저장
 - `save_output: false` 인 경우 UI에서 별도 저장 요청 가능
 - 저장 시 기존 파일은 덮어쓴다
+- 저장 경로는 요청 본문이 아니라 서버가 검증한 `trip_id` 로만 계산한다
 
 ## 7. 보안 규칙
 
@@ -228,7 +258,6 @@ type AnalyzeTripResponse = {
 
 ## 8. 향후 확장 가능 항목
 
-- `GET /api/outputs/:tripId`
 - `POST /api/reanalyze-section`
 - `GET /api/preferences`
 - `POST /api/cache/weather`
