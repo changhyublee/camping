@@ -73,6 +73,7 @@ beforeEach(() => {
 
 afterEach(() => {
   fetchMock.mockReset();
+  vi.useRealTimers();
   vi.restoreAllMocks();
 });
 
@@ -618,6 +619,88 @@ describe("App", () => {
         "장비 카테고리를 불러오지 못했습니다. 기본 카테고리로 계속 진행합니다. equipment/categories.yaml 형식이 올바르지 않습니다.",
       ),
     ).toBeInTheDocument();
+  });
+
+  it("keeps startup warnings as inline banners instead of auto-dismissing toasts", async () => {
+    fetchMock.mockImplementation((input, init) => {
+      const rawUrl = typeof input === "string" ? input : input.toString();
+      const pathname = new URL(rawUrl, "http://localhost").pathname;
+      const method = init?.method?.toUpperCase() ?? "GET";
+
+      if (pathname === "/api/companions" && method === "GET") {
+        return jsonResponse(
+          {
+            status: "failed",
+            error: {
+              code: "TRIP_INVALID",
+              message: "companions.yaml 형식이 올바르지 않습니다.",
+            },
+          },
+          400,
+        );
+      }
+
+      return mockFetch(input, init);
+    });
+
+    render(<App />);
+
+    expect(await screen.findByText("초기 로딩 경고")).toBeInTheDocument();
+    expect(document.querySelector(".floating-status-layer")).toBeNull();
+
+    vi.useFakeTimers();
+    await vi.advanceTimersByTimeAsync(6000);
+
+    expect(screen.getByText("초기 로딩 경고")).toBeInTheDocument();
+    expect(document.querySelector(".floating-status-layer")).toBeNull();
+  });
+
+  it("renders action results as floating toasts", async () => {
+    render(<App />);
+
+    await userEvent.click(await screen.findByRole("button", { name: "관리 설정" }));
+    await userEvent.type(screen.getByPlaceholderText("예: 수납"), "수납");
+    await userEvent.type(screen.getByPlaceholderText("예: tarp"), "storage-rack");
+    await userEvent.click(screen.getByRole("button", { name: "카테고리 추가" }));
+
+    expect(await screen.findByText("장비 카테고리 추가 완료")).toBeInTheDocument();
+    expect(document.querySelector(".floating-status-layer")).not.toBeNull();
+  });
+
+  it("keeps startup warning visible after a later floating toast appears", async () => {
+    fetchMock.mockImplementation((input, init) => {
+      const rawUrl = typeof input === "string" ? input : input.toString();
+      const pathname = new URL(rawUrl, "http://localhost").pathname;
+      const method = init?.method?.toUpperCase() ?? "GET";
+
+      if (pathname === "/api/companions" && method === "GET") {
+        return jsonResponse(
+          {
+            status: "failed",
+            error: {
+              code: "TRIP_INVALID",
+              message: "companions.yaml 형식이 올바르지 않습니다.",
+            },
+          },
+          400,
+        );
+      }
+
+      return mockFetch(input, init);
+    });
+
+    render(<App />);
+
+    expect(await screen.findByText("초기 로딩 경고")).toBeInTheDocument();
+
+    await userEvent.click(screen.getByRole("button", { name: "관리 설정" }));
+    await userEvent.type(screen.getByPlaceholderText("예: 수납"), "수납");
+    await userEvent.type(screen.getByPlaceholderText("예: tarp"), "storage-rack");
+    await userEvent.click(screen.getByRole("button", { name: "카테고리 추가" }));
+
+    expect(await screen.findByText("장비 카테고리 추가 완료")).toBeInTheDocument();
+    expect(screen.getByText("초기 로딩 경고")).toBeInTheDocument();
+    expect(document.querySelector(".floating-status-layer")).not.toBeNull();
   });
 
   it("keeps an invalid trip editable and saves it to the selected trip id", async () => {

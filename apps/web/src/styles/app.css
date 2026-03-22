@@ -286,6 +286,11 @@ code {
   border: 1px solid transparent;
 }
 
+.status-banner--floating {
+  margin-top: 0;
+  box-shadow: 0 20px 44px rgba(32, 52, 44, 0.18);
+}
+
 .status-banner--info {
   background: var(--info-bg);
   border-color: rgba(49, 93, 116, 0.18);
@@ -310,6 +315,26 @@ code {
   font-weight: 700;
 }
 
+.status-banner__header {
+  display: flex;
+  align-items: flex-start;
+  justify-content: space-between;
+  gap: 12px;
+}
+
+.status-banner__close {
+  border: 0;
+  background: transparent;
+  color: var(--muted);
+  font: inherit;
+  cursor: pointer;
+  padding: 0;
+}
+
+.status-banner__close:hover {
+  color: inherit;
+}
+
 .status-banner__description {
   margin: 8px 0 0;
   color: var(--muted);
@@ -323,6 +348,36 @@ code {
 
 .status-banner__list li + li {
   margin-top: 6px;
+}
+
+.floating-status-layer {
+  position: fixed;
+  top: 20px;
+  right: 20px;
+  z-index: 30;
+  width: min(360px, calc(100vw - 32px));
+  animation: floating-status-enter 180ms ease-out;
+}
+
+@keyframes floating-status-enter {
+  from {
+    opacity: 0;
+    transform: translateY(-10px);
+  }
+
+  to {
+    opacity: 1;
+    transform: translateY(0);
+  }
+}
+
+@media (max-width: 720px) {
+  .floating-status-layer {
+    top: 12px;
+    right: 16px;
+    left: 16px;
+    width: auto;
+  }
 }
 
 .assistant-box,

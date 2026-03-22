@@ -110,6 +110,7 @@ export function App() {
   const [analyzing, setAnalyzing] = useState(false);
   const [saveOutput, setSaveOutput] = useState(true);
   const [savingOutput, setSavingOutput] = useState(false);
+  const [bannerState, setBannerState] = useState<OperationState | null>(null);
   const [operationState, setOperationState] = useState<OperationState | null>(
     null,
   );
@@ -123,6 +124,28 @@ export function App() {
   useEffect(() => {
     void loadInitialData();
   }, []);
+
+  useEffect(() => {
+    if (!operationState) {
+      return;
+    }
+
+    const duration =
+      operationState.tone === "success"
+        ? 3400
+        : operationState.tone === "warning"
+          ? 4800
+          : 5600;
+    const timeoutId = window.setTimeout(() => {
+      setOperationState((current) =>
+        current === operationState ? null : current,
+      );
+    }, duration);
+
+    return () => {
+      window.clearTimeout(timeoutId);
+    };
+  }, [operationState]);
 
   useEffect(() => {
     if (isCreatingTrip || !selectedTripId) {
@@ -353,12 +376,14 @@ export function App() {
       }
 
       if (startupWarnings.length > 0) {
-        setOperationState({
+        setBannerState({
           title: "초기 로딩 경고",
           tone: "warning",
           description: "일부 데이터를 기본값 또는 빈 상태로 불러왔습니다.",
           items: startupWarnings,
         });
+      } else {
+        setBannerState(null);
       }
     } catch (error) {
       setLoadError(getErrorMessage(error));
@@ -1278,13 +1303,27 @@ export function App() {
         <StatusBanner tone="error" title="초기 로딩 실패" description={loadError} />
       ) : null}
 
-      {operationState ? (
+      {bannerState ? (
         <StatusBanner
-          tone={operationState.tone}
-          title={operationState.title}
-          description={operationState.description}
-          items={operationState.items}
+          tone={bannerState.tone}
+          title={bannerState.title}
+          description={bannerState.description}
+          items={bannerState.items}
+          onDismiss={() => setBannerState(null)}
         />
+      ) : null}
+
+      {operationState ? (
+        <div className="floating-status-layer">
+          <StatusBanner
+            tone={operationState.tone}
+            title={operationState.title}
+            description={operationState.description}
+            items={operationState.items}
+            onDismiss={() => setOperationState(null)}
+            variant="floating"
+          />
+        </div>
       ) : null}
 
       <div className="app-layout">

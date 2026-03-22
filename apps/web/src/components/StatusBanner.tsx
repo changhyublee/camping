@@ -5,6 +5,8 @@ type StatusBannerProps = {
   title: string;
   description?: string;
   items?: string[];
+  variant?: "inline" | "floating";
+  onDismiss?: () => void;
 };
 
 export function StatusBanner({
@@ -12,10 +14,28 @@ export function StatusBanner({
   title,
   description,
   items,
+  variant = "inline",
+  onDismiss,
 }: StatusBannerProps) {
   return (
-    <section className={`status-banner status-banner--${tone}`}>
-      <div className="status-banner__title">{title}</div>
+    <section
+      aria-live={tone === "error" ? "assertive" : "polite"}
+      className={`status-banner status-banner--${tone} status-banner--${variant}`}
+      role="status"
+    >
+      <div className="status-banner__header">
+        <div className="status-banner__title">{title}</div>
+        {onDismiss ? (
+          <button
+            aria-label="상태 메시지 닫기"
+            className="status-banner__close"
+            onClick={onDismiss}
+            type="button"
+          >
+            닫기
+          </button>
+        ) : null}
+      </div>
       {description ? (
         <p className="status-banner__description">{description}</p>
       ) : null}
