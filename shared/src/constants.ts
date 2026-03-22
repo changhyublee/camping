@@ -25,6 +25,9 @@ type PrecheckStatus = Extract<
 
 export const TRIP_ID_REGEX = /^[a-z0-9]+(?:-[a-z0-9]+)*$/;
 
+export const EQUIPMENT_CATEGORY_MANUAL_CODE_REQUIRED_MESSAGE =
+  "표시 이름만으로 카테고리 코드를 자동 생성할 수 없습니다. 카테고리 코드를 영문 소문자, 숫자, -, _ 형식으로 입력해 주세요.";
+
 export const ERROR_CODES: Record<ErrorCode, ErrorCode> = {
   INVALID_TRIP_ID_FORMAT: "INVALID_TRIP_ID_FORMAT",
   TRIP_NOT_FOUND: "TRIP_NOT_FOUND",

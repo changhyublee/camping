@@ -29,11 +29,15 @@ import {
   AGE_GROUP_LABELS,
   CONSUMABLE_STATUS_LABELS,
   DURABLE_STATUS_LABELS,
+  EQUIPMENT_CATEGORY_MANUAL_CODE_REQUIRED_MESSAGE,
   EQUIPMENT_SECTION_LABELS,
   EXTERNAL_LINK_CATEGORY_LABELS,
   PRECHECK_STATUS_LABELS,
 } from "@camping/shared";
-import { buildKebabId, cloneEquipmentCategories } from "@camping/shared";
+import {
+  buildEquipmentCategoryCodeCandidate,
+  cloneEquipmentCategories,
+} from "@camping/shared";
 import { apiClient, ApiClientError } from "./api/client";
 import { StatusBanner } from "./components/StatusBanner";
 
@@ -198,7 +202,7 @@ export function App() {
   );
 
   const categoryDraftPreviewId = useMemo(
-    () => buildCategoryPreviewId(equipmentSection, categoryDrafts[equipmentSection].label),
+    () => buildCategoryPreviewId(categoryDrafts[equipmentSection].label),
     [categoryDrafts, equipmentSection],
   );
 
@@ -964,11 +968,33 @@ export function App() {
 
   async function handleCreateEquipmentCategory(section: EquipmentSection) {
     const draft = categoryDrafts[section];
+    const label = draft.label.trim();
+    const manualCode = draft.id?.trim();
+    const previewCode = buildCategoryPreviewId(label);
+
+    if (!label) {
+      setOperationState({
+        title: "장비 카테고리 추가 실패",
+        tone: "error",
+        description: "카테고리 표시 이름을 입력해 주세요.",
+      });
+      return;
+    }
+
+    if (!manualCode && !previewCode) {
+      setOperationState({
+        title: "장비 카테고리 추가 실패",
+        tone: "error",
+        description: EQUIPMENT_CATEGORY_MANUAL_CODE_REQUIRED_MESSAGE,
+      });
+      return;
+    }
 
     try {
       const response = await apiClient.createEquipmentCategory(section, {
         ...draft,
-        label: draft.label.trim(),
+        id: manualCode || undefined,
+        label,
       });
       setEquipmentCategories((current) => ({
         ...current,
@@ -1834,7 +1860,8 @@ export function App() {
                   <h2>새 카테고리 추가</h2>
                 </div>
                 <p className="panel__copy">
-                  표시 이름을 입력하면 카테고리 코드는 자동 생성됩니다.
+                  표시 이름으로 코드가 만들어지면 자동 생성됩니다. 한글 이름만으로 코드가
+                  만들어지지 않으면 영문 코드를 직접 입력합니다.
                 </p>
                 <div className="form-grid">
                   <FormField label="적용 섹션">
@@ -1845,6 +1872,21 @@ export function App() {
                       placeholder="표시 이름을 입력하면 자동 생성"
                       value={categoryDraftPreviewId}
                       readOnly
+                    />
+                  </FormField>
+                  <FormField label="직접 입력 코드">
+                    <input
+                      placeholder="예: tarp"
+                      value={categoryDrafts[equipmentSection].id ?? ""}
+                      onChange={(event) =>
+                        setCategoryDrafts((current) => ({
+                          ...current,
+                          [equipmentSection]: {
+                            ...current[equipmentSection],
+                            id: event.target.value,
+                          },
+                        }))
+                      }
                     />
                   </FormField>
                   <FormField full label="표시 이름">
@@ -3086,6 +3128,7 @@ function createEmptyLink(): ExternalLinkInput {
 
 function createEmptyEquipmentCategoryDraft(): EquipmentCategoryInput {
   return {
+    id: "",
     label: "",
   };
 }
@@ -3490,13 +3533,12 @@ function sortEquipmentCategories(left: EquipmentCategory, right: EquipmentCatego
   return left.label.localeCompare(right.label, "ko");
 }
 
-function buildCategoryPreviewId(section: EquipmentSection, label: string) {
+function buildCategoryPreviewId(label: string) {
   if (!label.trim()) {
     return "";
   }
 
-  const candidate = buildKebabId(section, [label]).replace(`${section}-`, "");
-  return !candidate || candidate === section ? "category" : candidate;
+  return buildEquipmentCategoryCodeCandidate(label);
 }
 
 function appendSyncWarnings(base: string, warnings: string[]) {

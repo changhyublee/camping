@@ -8,7 +8,7 @@ export const equipmentCategoryIdSchema = z
   .string()
   .regex(
     /^[a-z0-9]+(?:[-_][a-z0-9]+)*$/,
-    "category id must be lowercase and may use - or _",
+    "카테고리 코드는 영문 소문자, 숫자, -, _ 만 사용할 수 있습니다.",
   );
 
 export const ageGroupSchema = z.enum([

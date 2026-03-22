@@ -8,7 +8,7 @@ import {
 } from "node:fs/promises";
 import path from "node:path";
 import {
-  buildKebabId,
+  buildEquipmentCategoryCodeCandidate,
   cloneEquipmentCategories,
   companionSchema,
   companionsSchema,
@@ -21,6 +21,7 @@ import {
   getTripOutputFilename,
   getTripOutputRelativePath,
   humanizeEquipmentCategoryId,
+  EQUIPMENT_CATEGORY_MANUAL_CODE_REQUIRED_MESSAGE,
   historyRecordSchema,
   isTripId,
   precheckSchema,
@@ -1257,8 +1258,18 @@ export class CampingRepository {
     section: EquipmentSection,
     label: string,
   ): Promise<string> {
+    const baseId = deriveEquipmentCategoryBaseId(label);
+
+    if (!baseId) {
+      throw new AppError(
+        "TRIP_INVALID",
+        EQUIPMENT_CATEGORY_MANUAL_CODE_REQUIRED_MESSAGE,
+        400,
+      );
+    }
+
     return this.createUniqueId(
-      deriveEquipmentCategoryBaseId(section, label),
+      baseId,
       async (candidate) => {
         const categories = await this.readEquipmentCategories();
         return !categories[section].some((item) => item.id === candidate);
@@ -1375,12 +1386,8 @@ function mergeEquipmentCategories(
   return sortEquipmentCategories(merged);
 }
 
-function deriveEquipmentCategoryBaseId(
-  section: EquipmentSection,
-  label: string,
-) {
-  const candidate = buildKebabId(section, [label]).replace(`${section}-`, "");
-  return !candidate || candidate === section ? "category" : candidate;
+function deriveEquipmentCategoryBaseId(label: string) {
+  return buildEquipmentCategoryCodeCandidate(label);
 }
 
 function sortEquipmentCategories(categories: EquipmentCategory[]) {
