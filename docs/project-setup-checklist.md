@@ -41,7 +41,8 @@
 - [x] 메뉴형 로컬 웹 UI
 - [x] 동행자 CRUD
 - [x] 캠핑 계획 CRUD
-- [x] trip 검증과 분석 실행
+- [x] trip 검증과 백그라운드 분석 실행
+- [x] 분석 상태 조회와 중복 실행 방지
 - [x] planning assistant 응답
 - [x] 결과 Markdown 저장과 다시 열기
 - [x] 장비 CRUD
@@ -88,7 +89,7 @@
 7. `pnpm dev:api`
 8. `pnpm dev:web`
 9. `GET /api/health` 확인
-10. 웹 UI에서 trip 1건 저장과 분석 실행 확인
+10. 웹 UI에서 trip 1건 저장 후 `분석 중...` 상태, 완료 후 결과 자동 갱신, 삭제/히스토리 이동 제어를 확인
 11. 필요하면 `pnpm typecheck`, `pnpm test`, `pnpm build`
 
 ## 5. 환경별 검증이 필요한 항목
@@ -107,6 +108,7 @@
 - `pnpm backup:data` 는 현재 `.camping-data/` 를 `.camping-backups/<timestamp>/` 에 수동 백업한다.
 - `pnpm seed` 는 새 환경 초기화용이며, 기존 `.camping-data/` 가 있으면 중단한다.
 - `pnpm seed -- --replace` 는 기존 `.camping-data/` 를 `.camping-backups/<timestamp>/` 에 백업한 뒤 `docs/examples/` 를 다시 복사한다.
+- `cache/analysis-jobs/` 는 예시 시드 파일이 아니라 분석 실행 시 런타임에 생성되는 상태 디렉토리다.
 - `.camping-data/` 는 운영 데이터 경로이며 Git 커밋 대상이 아니다.
 - `.camping-backups/` 는 운영 데이터 백업 경로이며 Git 커밋 대상이 아니다.
 - 개인 준비물은 저장소에서 직접 관리하는 인벤토리가 아니라 분석 결과다.

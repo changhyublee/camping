@@ -42,18 +42,18 @@
 - [`design-spec.md`](design-spec.md)
   - 최신 트렌드를 반영한 화면 디자인 기준과 에이전트 구현 규칙
 - [`local-api-contract.md`](local-api-contract.md)
-  - CRUD 및 분석 API 계약
+  - CRUD, 백그라운드 분석, 상태 조회 API 계약
 - [`ui-flow.md`](ui-flow.md)
-  - 화면 흐름과 사용자 액션
+  - 화면 흐름과 분석 상태 기반 사용자 액션
 - [`data-model.md`](data-model.md)
-  - `.camping-data/` 구조와 파일 책임
+  - `.camping-data/` 구조와 결과/상태 파일 책임
 - [`directory-structure.md`](directory-structure.md)
   - 저장소와 로컬 데이터 경로 책임
 
 ### 실행 흐름
 
 - [`trip-analysis-workflow.md`](trip-analysis-workflow.md)
-  - 계획 작성부터 분석, 히스토리 아카이브까지의 흐름
+  - 계획 작성부터 백그라운드 분석, 히스토리 아카이브까지의 흐름
 
 ### 범위와 착수
 
@@ -70,7 +70,7 @@
 ### 예시
 
 - [`example-files.md`](example-files.md)
-  - 예시 입력/출력 파일 설명
+  - 예시 입력/출력 파일과 런타임 생성 파일 설명
 - [`docs/examples/profile.yaml`](examples/profile.yaml)
 - [`docs/examples/companions.yaml`](examples/companions.yaml)
 - [`docs/examples/vehicles.yaml`](examples/vehicles.yaml)
