@@ -14,33 +14,35 @@
       "type": "string"
     },
     "summary": {
-      "type": "string"
+      "type": ["string", "null"]
     },
     "product": {
-      "type": "object",
+      "type": ["object", "null"],
       "properties": {
-        "brand": { "type": "string" },
-        "official_name": { "type": "string" },
-        "model": { "type": "string" }
+        "brand": { "type": ["string", "null"] },
+        "official_name": { "type": ["string", "null"] },
+        "model": { "type": ["string", "null"] }
       },
+      "required": ["brand", "official_name", "model"],
       "additionalProperties": false
     },
     "packing": {
-      "type": "object",
+      "type": ["object", "null"],
       "properties": {
-        "width_cm": { "type": "number" },
-        "depth_cm": { "type": "number" },
-        "height_cm": { "type": "number" },
-        "weight_kg": { "type": "number" }
+        "width_cm": { "type": ["number", "null"] },
+        "depth_cm": { "type": ["number", "null"] },
+        "height_cm": { "type": ["number", "null"] },
+        "weight_kg": { "type": ["number", "null"] }
       },
+      "required": ["width_cm", "depth_cm", "height_cm", "weight_kg"],
       "additionalProperties": false
     },
     "planning": {
-      "type": "object",
+      "type": ["object", "null"],
       "properties": {
-        "setup_time_minutes": { "type": "integer" },
-        "recommended_people": { "type": "integer" },
-        "capacity_people": { "type": "integer" },
+        "setup_time_minutes": { "type": ["integer", "null"] },
+        "recommended_people": { "type": ["integer", "null"] },
+        "capacity_people": { "type": ["integer", "null"] },
         "season_notes": {
           "type": "array",
           "items": { "type": "string" }
@@ -50,6 +52,13 @@
           "items": { "type": "string" }
         }
       },
+      "required": [
+        "setup_time_minutes",
+        "recommended_people",
+        "capacity_people",
+        "season_notes",
+        "weather_notes"
+      ],
       "additionalProperties": false
     },
     "sources": {
@@ -65,6 +74,15 @@
       }
     }
   },
-  "required": ["lookup_status", "searched_at", "query", "sources"],
+  "required": [
+    "lookup_status",
+    "searched_at",
+    "query",
+    "summary",
+    "product",
+    "packing",
+    "planning",
+    "sources"
+  ],
   "additionalProperties": false
 }

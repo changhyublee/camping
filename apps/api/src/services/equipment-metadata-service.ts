@@ -110,6 +110,7 @@ export class CodexCliEquipmentMetadataClient
     private readonly options: {
       binary: string;
       model: string;
+      reasoningEffort?: "low" | "medium" | "high" | "xhigh";
       projectRoot: string;
       outputSchemaPath: string;
       runner?: CommandRunner;
@@ -139,6 +140,9 @@ export class CodexCliEquipmentMetadataClient
           this.options.outputSchemaPath,
           "--output-last-message",
           outputFile,
+          ...(this.options.reasoningEffort
+            ? ["-c", `model_reasoning_effort="${this.options.reasoningEffort}"`]
+            : []),
           "-C",
           this.options.projectRoot,
           "-m",
@@ -221,7 +225,10 @@ function buildSystemPrompt(input: { runtime: "openai" | "codex" }) {
     "- not_found: 검색했지만 실질적으로 쓸 수 있는 메타데이터를 찾지 못함",
     "- failed: 검색 결과가 너무 모순되거나 장비 식별 자체가 불가능함",
     "필드 규칙:",
+    "- 스키마에 있는 필드는 누락하지 마라",
     "- searched_at 는 현재 시각 ISO 문자열 대신 그대로 '__SERVER_TIMESTAMP__' 를 넣어라",
+    "- 문자열/숫자/객체 필드에 값이 없으면 null 을 넣어라",
+    "- 배열 필드에 값이 없으면 빈 배열을 넣어라",
     "- season_notes 와 weather_notes 는 짧은 한국어 문장 배열로 작성하라",
     "- sources 는 title 과 url 만 넣어도 된다",
   ].join("\n");
@@ -279,7 +286,7 @@ function normalizeMetadataPayload(
   text: string,
   extraSources: DurableEquipmentMetadataSource[],
 ) {
-  const payload = parseJsonObject(text);
+  const payload = stripNullishMetadataFields(parseJsonObject(text));
   const parsed = durableEquipmentMetadataSchema.safeParse({
     ...payload,
     sources: mergeSources(extraSources, parseModelSources(payload.sources)),
@@ -381,6 +388,48 @@ function parseJsonObject(text: string): Record<string, unknown> {
       );
     }
   }
+}
+
+function stripNullishMetadataFields(value: unknown): Record<string, unknown> {
+  if (typeof value !== "object" || value === null || Array.isArray(value)) {
+    throw new AppError(
+      "OPENAI_REQUEST_FAILED",
+      "장비 메타데이터 응답에서 JSON 객체를 추출하지 못했습니다.",
+      502,
+    );
+  }
+
+  return Object.fromEntries(
+    Object.entries(value).flatMap(([key, entryValue]) => {
+      if (entryValue === null) {
+        return [];
+      }
+
+      if (Array.isArray(entryValue)) {
+        return [[key, entryValue.filter((item) => item !== null)]];
+      }
+
+      if (typeof entryValue === "object") {
+        const nestedValue = Object.fromEntries(
+          Object.entries(entryValue).flatMap(([nestedKey, nestedEntryValue]) => {
+            if (nestedEntryValue === null) {
+              return [];
+            }
+
+            if (Array.isArray(nestedEntryValue)) {
+              return [[nestedKey, nestedEntryValue.filter((item) => item !== null)]];
+            }
+
+            return [[nestedKey, nestedEntryValue]];
+          }),
+        );
+
+        return Object.keys(nestedValue).length > 0 ? [[key, nestedValue]] : [];
+      }
+
+      return [[key, entryValue]];
+    }),
+  );
 }
 
 function parseModelSources(value: unknown): DurableEquipmentMetadataSource[] {

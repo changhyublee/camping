@@ -9,6 +9,8 @@ const ENV_KEYS = [
   "AI_BACKEND",
   "CODEX_BIN",
   "CODEX_MODEL",
+  "CODEX_METADATA_MODEL",
+  "CODEX_METADATA_REASONING_EFFORT",
   "OPENAI_API_KEY",
   "OPENAI_MODEL",
   "OPENAI_METADATA_MODEL",
@@ -34,6 +36,25 @@ afterEach(async () => {
 });
 
 describe("resolveConfig", () => {
+  it("uses a metadata-optimized codex model by default when no env override is set", () => {
+    for (const key of ENV_KEYS) {
+      delete process.env[key];
+    }
+
+    const config = resolveConfig({
+      projectRoot: process.cwd(),
+    });
+
+    expect(config).toEqual(
+      expect.objectContaining({
+        aiBackend: "codex-cli",
+        codexModel: "gpt-5.4",
+        codexMetadataModel: "gpt-5-mini",
+        codexMetadataReasoningEffort: "low",
+      }),
+    );
+  });
+
   it("loads local API settings from the project root .env file", async () => {
     for (const key of ENV_KEYS) {
       delete process.env[key];
@@ -51,6 +72,8 @@ describe("resolveConfig", () => {
         "OPENAI_METADATA_MODEL=gpt-meta-test",
         "CODEX_BIN=codex-custom",
         "CODEX_MODEL=gpt-5.5",
+        "CODEX_METADATA_MODEL=gpt-5.5-mini",
+        "CODEX_METADATA_REASONING_EFFORT=medium",
         "API_PORT=9898",
       ].join("\n"),
       "utf8",
@@ -66,6 +89,8 @@ describe("resolveConfig", () => {
         openaiMetadataModel: "gpt-meta-test",
         codexBin: "codex-custom",
         codexModel: "gpt-5.5",
+        codexMetadataModel: "gpt-5.5-mini",
+        codexMetadataReasoningEffort: "medium",
         apiPort: 9898,
       }),
     );

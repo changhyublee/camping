@@ -83,6 +83,10 @@
 - pnpm 10 이상
 - `codex` CLI 설치 및 로그인
 
+선택 설정:
+
+- 장비 메타데이터 수집 속도를 별도로 조정하려면 `.env` 에 `CODEX_METADATA_MODEL`, `CODEX_METADATA_REASONING_EFFORT` 를 설정할 수 있습니다.
+
 실행 순서:
 
 ```bash

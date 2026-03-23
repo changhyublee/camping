@@ -7,6 +7,7 @@ import { CodexCliClient, type CommandRunner } from "../src/services/openai-clien
 import { CodexCliEquipmentMetadataClient } from "../src/services/equipment-metadata-service";
 
 const tempDirs: string[] = [];
+const projectRoot = path.resolve(process.cwd(), "../..");
 
 afterEach(async () => {
   await Promise.all(
@@ -171,6 +172,7 @@ describe("CodexCliClient", () => {
     const client = new CodexCliEquipmentMetadataClient({
       binary: "codex",
       model: "gpt-5.4",
+      reasoningEffort: "low",
       projectRoot: process.cwd(),
       outputSchemaPath: schemaPath,
       runner,
@@ -200,5 +202,191 @@ describe("CodexCliClient", () => {
         ],
       }),
     );
+    expect(runner).toHaveBeenCalledWith(
+      expect.objectContaining({
+        args: expect.arrayContaining(["-c", 'model_reasoning_effort="low"']),
+      }),
+    );
+  });
+
+  it("normalizes nullable codex metadata fields into optional app metadata fields", async () => {
+    const schemaPath = path.join(
+      projectRoot,
+      "schemas",
+      "codex-equipment-metadata-output.schema.json",
+    );
+
+    const runner: CommandRunner = vi.fn().mockImplementation(async ({ args }) => {
+      const outputFileIndex = args.findIndex(
+        (value: string) => value === "--output-last-message",
+      );
+      const outputFile = args[outputFileIndex + 1];
+      await writeFile(
+        outputFile,
+        JSON.stringify({
+          lookup_status: "not_found",
+          searched_at: "__SERVER_TIMESTAMP__",
+          query: "루메나 5.1CH MAX LED 캠핑랜턴",
+          summary: null,
+          product: {
+            brand: "루메나",
+            official_name: "루메나 5.1CH MAX LED 캠핑랜턴",
+            model: null,
+          },
+          packing: null,
+          planning: {
+            setup_time_minutes: null,
+            recommended_people: null,
+            capacity_people: null,
+            season_notes: [],
+            weather_notes: [],
+          },
+          sources: [],
+        }),
+        "utf8",
+      );
+
+      return {
+        exitCode: 0,
+        stdout: "",
+        stderr: "",
+      };
+    });
+
+    const client = new CodexCliEquipmentMetadataClient({
+      binary: "codex",
+      model: "gpt-5.4",
+      reasoningEffort: "low",
+      projectRoot: process.cwd(),
+      outputSchemaPath: schemaPath,
+      runner,
+    });
+
+    await expect(
+      client.collectDurableEquipmentMetadata({
+        item: {
+          id: "lumena-lantern",
+          name: "루메나 5.1CH MAX LED 캠핑랜턴",
+          category: "lighting",
+          quantity: 1,
+          status: "ok",
+        },
+        categoryLabel: "조명",
+      }),
+    ).resolves.toEqual({
+      lookup_status: "not_found",
+      searched_at: expect.any(String),
+      query: "루메나 5.1CH MAX LED 캠핑랜턴",
+      product: {
+        brand: "루메나",
+        official_name: "루메나 5.1CH MAX LED 캠핑랜턴",
+      },
+      planning: {
+        season_notes: [],
+        weather_notes: [],
+      },
+      sources: [],
+    });
+  });
+
+  it("keeps the checked-in codex metadata schema compatible with strict structured outputs", async () => {
+    const raw = await readFile(
+      path.join(projectRoot, "schemas", "codex-equipment-metadata-output.schema.json"),
+      "utf8",
+    );
+    const schema = JSON.parse(raw) as {
+      required?: string[];
+      properties?: Record<string, { properties?: Record<string, unknown>; required?: string[] }>;
+    };
+
+    expect(schema.required).toEqual([
+      "lookup_status",
+      "searched_at",
+      "query",
+      "summary",
+      "product",
+      "packing",
+      "planning",
+      "sources",
+    ]);
+    expect(schema.properties?.product?.required).toEqual([
+      "brand",
+      "official_name",
+      "model",
+    ]);
+    expect(schema.properties?.packing?.required).toEqual([
+      "width_cm",
+      "depth_cm",
+      "height_cm",
+      "weight_kg",
+    ]);
+    expect(schema.properties?.planning?.required).toEqual([
+      "setup_time_minutes",
+      "recommended_people",
+      "capacity_people",
+      "season_notes",
+      "weather_notes",
+    ]);
+  });
+
+  it("allows metadata-specific model and reasoning options to be changed", async () => {
+    const schemaPath = path.join(
+      projectRoot,
+      "schemas",
+      "codex-equipment-metadata-output.schema.json",
+    );
+
+    const runner: CommandRunner = vi.fn().mockImplementation(async ({ args }) => {
+      const outputFileIndex = args.findIndex(
+        (value: string) => value === "--output-last-message",
+      );
+      const outputFile = args[outputFileIndex + 1];
+      await writeFile(
+        outputFile,
+        JSON.stringify({
+          lookup_status: "not_found",
+          searched_at: "__SERVER_TIMESTAMP__",
+          query: "테스트 조명",
+          summary: null,
+          product: null,
+          packing: null,
+          planning: null,
+          sources: [],
+        }),
+        "utf8",
+      );
+
+      return {
+        exitCode: 0,
+        stdout: "",
+        stderr: "",
+      };
+    });
+
+    const client = new CodexCliEquipmentMetadataClient({
+      binary: "codex",
+      model: "gpt-5.4-mini",
+      reasoningEffort: "medium",
+      projectRoot: process.cwd(),
+      outputSchemaPath: schemaPath,
+      runner,
+    });
+
+    await client.collectDurableEquipmentMetadata({
+      item: {
+        id: "test-light",
+        name: "테스트 조명",
+        category: "lighting",
+        quantity: 1,
+        status: "ok",
+      },
+      categoryLabel: "조명",
+    });
+
+    const args = vi.mocked(runner).mock.calls[0]?.[0].args ?? [];
+    expect(args).toContain("-m");
+    expect(args).toContain("gpt-5.4-mini");
+    expect(args).toContain("-c");
+    expect(args).toContain('model_reasoning_effort="medium"');
   });
 });

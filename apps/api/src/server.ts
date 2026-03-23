@@ -119,7 +119,8 @@ function createEquipmentMetadataClient(
   if (config.aiBackend === "codex-cli") {
     return new CodexCliEquipmentMetadataClient({
       binary: config.codexBin,
-      model: config.codexModel,
+      model: config.codexMetadataModel,
+      reasoningEffort: config.codexMetadataReasoningEffort,
       projectRoot: config.projectRoot,
       outputSchemaPath: path.join(
         config.projectRoot,

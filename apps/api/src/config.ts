@@ -12,6 +12,8 @@ export type AppConfig = {
   openaiMetadataModel: string;
   codexBin: string;
   codexModel: string;
+  codexMetadataModel: string;
+  codexMetadataReasoningEffort: "low" | "medium" | "high" | "xhigh";
   codexOutputSchemaPath: string;
   projectRoot: string;
   dataDir: string;
@@ -39,6 +41,16 @@ export function resolveConfig(overrides: ConfigOverrides = {}): AppConfig {
       "gpt-5-mini",
     codexBin: overrides.codexBin ?? process.env.CODEX_BIN ?? "codex",
     codexModel: overrides.codexModel ?? process.env.CODEX_MODEL ?? "gpt-5.4",
+    codexMetadataModel:
+      overrides.codexMetadataModel ??
+      process.env.CODEX_METADATA_MODEL ??
+      "gpt-5-mini",
+    codexMetadataReasoningEffort:
+      overrides.codexMetadataReasoningEffort ??
+      parseCodexReasoningEffort(
+        process.env.CODEX_METADATA_REASONING_EFFORT,
+      ) ??
+      "low",
     codexOutputSchemaPath:
       overrides.codexOutputSchemaPath ??
       path.join(projectRoot, "schemas", "codex-trip-analysis-output.schema.json"),
@@ -65,4 +77,19 @@ function isMissingFileError(error: unknown): boolean {
     "code" in error &&
     error.code === "ENOENT"
   );
+}
+
+function parseCodexReasoningEffort(
+  value: string | undefined,
+): AppConfig["codexMetadataReasoningEffort"] | undefined {
+  if (
+    value === "low" ||
+    value === "medium" ||
+    value === "high" ||
+    value === "xhigh"
+  ) {
+    return value;
+  }
+
+  return undefined;
 }
