@@ -56,6 +56,14 @@ const PAGE_KEYS: PageKey[] = [
   "links",
   "management",
 ];
+const PAGE_LABELS: Record<PageKey, string> = {
+  dashboard: "대시보드",
+  equipment: "장비 관리",
+  planning: "캠핑 계획",
+  history: "캠핑 히스토리",
+  links: "외부 링크",
+  management: "관리 설정",
+};
 const EQUIPMENT_SECTIONS: EquipmentSection[] = [
   "durable",
   "consumables",
@@ -399,6 +407,33 @@ export function App() {
       links: links.length,
     };
   }, [equipment, history.length, links.length, trips.length]);
+
+  const equipmentMetrics = useMemo(
+    () => ({
+      durable: equipment?.durable.items.length ?? 0,
+      consumables: equipment?.consumables.items.length ?? 0,
+      precheck: equipment?.precheck.items.length ?? 0,
+      categories:
+        equipmentCategories.durable.length +
+        equipmentCategories.consumables.length +
+        equipmentCategories.precheck.length,
+      alerts: dashboardMetrics.alerts,
+    }),
+    [dashboardMetrics.alerts, equipment, equipmentCategories],
+  );
+
+  const dashboardAlerts = useMemo(
+    () => buildDashboardAlerts(equipment),
+    [equipment],
+  );
+
+  const selectedTripSummary = useMemo(
+    () =>
+      (selectedTripId
+        ? trips.find((item) => item.trip_id === selectedTripId)
+        : null) ?? null,
+    [selectedTripId, trips],
+  );
 
   async function loadInitialData() {
     setAppLoading(true);
@@ -1551,17 +1586,32 @@ export function App() {
 
   return (
     <div className="app-shell">
-      <header className="hero">
+      <header className="hero hero--global">
         <div className="hero__copy">
-          <div className="hero__eyebrow">Local-first Camping Manager</div>
-          <h1>장비, 일정, 히스토리, 링크를 한 번에 관리하는 로컬 캠핑 도구</h1>
+          <div className="hero__eyebrow">Field Note Dashboard</div>
+          <h1>로컬 파일 위에서 계획, 장비, 기록을 한 화면 언어로 다루는 캠핑 운영 도구</h1>
           <p>{tripCountLabel}</p>
+          <div className="hero__tags" aria-label="현재 앱 요약">
+            <span className="hero-tag">현재 메뉴 {PAGE_LABELS[activePage]}</span>
+            <span className="hero-tag">예정 계획 {dashboardMetrics.trips}건</span>
+            <span className="hero-tag">재고/점검 경고 {dashboardMetrics.alerts}건</span>
+          </div>
         </div>
-        <div className="hero__meta">
-          <div className="hero__meta-label">핵심 경로</div>
-          <code>.camping-data/trips/&lt;trip-id&gt;.yaml</code>
-          <code>.camping-data/history/&lt;history-id&gt;.yaml</code>
-          <code>.camping-data/links.yaml</code>
+        <div className="hero__meta-grid">
+          <article className="hero__meta">
+            <div className="hero__meta-label">현재 초점</div>
+            <strong>{PAGE_LABELS[activePage]}</strong>
+            <span>
+              선택된 계획 {formatCompactTripId(selectedTripId) ?? "없음"} / 히스토리{" "}
+              {formatCompactTripId(selectedHistoryId) ?? "없음"}
+            </span>
+          </article>
+          <article className="hero__meta hero__meta--paths">
+            <div className="hero__meta-label">주요 저장 경로</div>
+            <code>.camping-data/trips/&lt;trip-id&gt;.yaml</code>
+            <code>.camping-data/history/&lt;history-id&gt;.yaml</code>
+            <code>.camping-data/links.yaml</code>
+          </article>
         </div>
       </header>
 
@@ -1593,56 +1643,85 @@ export function App() {
       ) : null}
 
       <div className="app-layout">
-        <aside className="side-nav panel">
-          <div className="panel__eyebrow">Menu</div>
+        <aside className="side-nav panel panel--nav">
+          <div className="panel__eyebrow">Workspace</div>
+          <div className="nav-overview">
+            <strong>필드 노트 운영 메뉴</strong>
+            <p>
+              메뉴는 항상 열어 두고, 현재 상태를 잃지 않은 채 계획 편집과 운영 점검을
+              오갈 수 있게 구성했습니다.
+            </p>
+          </div>
           <nav className="nav-list">
             <button
               className={navButtonClass(activePage === "dashboard")}
               onClick={() => setActivePage("dashboard")}
               type="button"
             >
-              대시보드
+              <span>대시보드</span>
+              <span aria-hidden="true" className="nav-button__meta">
+                현황 {dashboardMetrics.trips}/{dashboardMetrics.history}
+              </span>
             </button>
             <button
               className={navButtonClass(activePage === "equipment")}
               onClick={() => setActivePage("equipment")}
               type="button"
             >
-              장비 관리
+              <span>장비 관리</span>
+              <span aria-hidden="true" className="nav-button__meta">
+                항목 {equipmentMetrics.durable + equipmentMetrics.consumables + equipmentMetrics.precheck}
+              </span>
             </button>
             <button
               className={navButtonClass(activePage === "planning")}
               onClick={() => setActivePage("planning")}
               type="button"
             >
-              캠핑 계획
+              <span>캠핑 계획</span>
+              <span aria-hidden="true" className="nav-button__meta">
+                활성 {formatCompactTripId(selectedTripId) ?? "새 초안"}
+              </span>
             </button>
             <button
               className={navButtonClass(activePage === "history")}
               onClick={() => setActivePage("history")}
               type="button"
             >
-              캠핑 히스토리
+              <span>캠핑 히스토리</span>
+              <span aria-hidden="true" className="nav-button__meta">
+                기록 {dashboardMetrics.history}건
+              </span>
             </button>
             <button
               className={navButtonClass(activePage === "links")}
               onClick={() => setActivePage("links")}
               type="button"
             >
-              외부 링크
+              <span>외부 링크</span>
+              <span aria-hidden="true" className="nav-button__meta">
+                링크 {dashboardMetrics.links}건
+              </span>
             </button>
             <button
               className={navButtonClass(activePage === "management")}
               onClick={() => setActivePage("management")}
               type="button"
             >
-              관리 설정
+              <span>관리 설정</span>
+              <span aria-hidden="true" className="nav-button__meta">
+                카테고리 {equipmentMetrics.categories}개
+              </span>
             </button>
           </nav>
           <div className="nav-actions">
             <button className="button button--primary" onClick={beginCreateTrip} type="button">
               새 캠핑 계획
             </button>
+            <div className="nav-note">
+              <span>주 실행 단위</span>
+              <code>.camping-data/trips/&lt;trip-id&gt;.yaml</code>
+            </div>
           </div>
         </aside>
 
@@ -1654,82 +1733,210 @@ export function App() {
           ) : null}
 
           {!appLoading && activePage === "dashboard" ? (
-            <section className="page-grid">
-              <section className="panel">
-                <div className="panel__eyebrow">Overview</div>
-                <div className="panel__header">
-                  <h2>운영 현황</h2>
+            <section className="page-stack">
+              <section className="page-intro page-intro--dashboard panel">
+                <div className="page-intro__copy">
+                  <div className="panel__eyebrow">Dashboard</div>
+                  <h2>대시보드</h2>
+                  <p className="panel__copy">
+                    예정 계획, 최근 기록, 장비 경고, 링크 현황을 한 번에 훑고 바로 다음
+                    작업으로 이동합니다.
+                  </p>
                 </div>
-                <div className="metric-grid">
-                  <MetricCard label="예정 계획" value={`${dashboardMetrics.trips}건`} />
-                  <MetricCard label="히스토리" value={`${dashboardMetrics.history}건`} />
-                  <MetricCard label="점검/재고 경고" value={`${dashboardMetrics.alerts}건`} />
-                  <MetricCard label="외부 링크" value={`${dashboardMetrics.links}건`} />
+                <div className="page-intro__meta">
+                  <div className="meta-chip">
+                    <span>현재 선택 계획</span>
+                    <strong>{selectedTripSummary?.title ?? "없음"}</strong>
+                  </div>
+                  <div className="meta-chip">
+                    <span>경고 항목</span>
+                    <strong>{dashboardAlerts.length}건</strong>
+                  </div>
+                  <div className="meta-chip">
+                    <span>링크 그룹</span>
+                    <strong>{linkGroups.length}개</strong>
+                  </div>
                 </div>
               </section>
 
-              <section className="panel">
-                <div className="panel__eyebrow">Upcoming</div>
-                <div className="panel__header">
-                  <h2>곧 실행할 계획</h2>
-                </div>
-                {trips.length === 0 ? (
-                  <div className="empty-state">아직 등록된 캠핑 계획이 없습니다.</div>
-                ) : (
-                  <div className="stack-list">
-                    {trips.slice(0, 4).map((trip) => (
-                      <button
-                        key={trip.trip_id}
-                        className="list-card"
-                        onClick={() => selectTrip(trip.trip_id)}
-                        type="button"
-                      >
-                        <strong>{trip.title}</strong>
-                        <span>
-                          {trip.start_date ?? "날짜 미입력"} / {trip.region ?? "지역 미입력"}
-                        </span>
-                      </button>
-                    ))}
+              <section className="dashboard-grid">
+                <section className="panel dashboard-grid__feature">
+                  <div className="panel__eyebrow">Overview</div>
+                  <div className="panel__header">
+                    <h2>운영 현황</h2>
                   </div>
-                )}
-              </section>
+                  <div className="metric-grid metric-grid--feature">
+                    <MetricCard label="예정 계획" value={`${dashboardMetrics.trips}건`} />
+                    <MetricCard label="히스토리" value={`${dashboardMetrics.history}건`} />
+                    <MetricCard label="점검/재고 경고" value={`${dashboardMetrics.alerts}건`} />
+                    <MetricCard label="외부 링크" value={`${dashboardMetrics.links}건`} />
+                  </div>
+                </section>
 
-              <section className="panel">
-                <div className="panel__eyebrow">Recent</div>
-                <div className="panel__header">
-                  <h2>최근 히스토리</h2>
-                </div>
-                {history.length === 0 ? (
-                  <div className="empty-state">아직 아카이브된 캠핑 히스토리가 없습니다.</div>
-                ) : (
-                  <div className="stack-list">
-                    {history.slice(0, 4).map((item) => (
-                      <button
-                        key={item.history_id}
-                        className="list-card"
-                        onClick={() => {
-                          setActivePage("history");
-                          setSelectedHistoryId(item.history_id);
-                        }}
-                        type="button"
-                      >
-                        <strong>{item.title}</strong>
-                        <span>
-                          {item.date?.start ?? "날짜 미입력"} /{" "}
-                          {item.location?.region ?? "지역 미입력"} /{" "}
-                          {item.attendee_count ?? item.companion_ids.length}명
-                        </span>
-                      </button>
-                    ))}
+                <section className="panel">
+                  <div className="panel__eyebrow">Upcoming</div>
+                  <div className="panel__header">
+                    <h2>곧 실행할 계획</h2>
                   </div>
-                )}
+                  {trips.length === 0 ? (
+                    <div className="empty-state">아직 등록된 캠핑 계획이 없습니다.</div>
+                  ) : (
+                    <div className="stack-list">
+                      {trips.slice(0, 4).map((trip) => (
+                        <button
+                          key={trip.trip_id}
+                          className="list-card"
+                          onClick={() => selectTrip(trip.trip_id)}
+                          type="button"
+                        >
+                          <strong>{trip.title}</strong>
+                          <span>
+                            {trip.start_date ?? "날짜 미입력"} / {trip.region ?? "지역 미입력"}
+                          </span>
+                        </button>
+                      ))}
+                    </div>
+                  )}
+                </section>
+
+                <section className="panel">
+                  <div className="panel__eyebrow">Recent</div>
+                  <div className="panel__header">
+                    <h2>최근 히스토리</h2>
+                  </div>
+                  {history.length === 0 ? (
+                    <div className="empty-state">아직 아카이브된 캠핑 히스토리가 없습니다.</div>
+                  ) : (
+                    <div className="stack-list">
+                      {history.slice(0, 4).map((item) => (
+                        <button
+                          key={item.history_id}
+                          className="list-card"
+                          onClick={() => {
+                            setActivePage("history");
+                            setSelectedHistoryId(item.history_id);
+                          }}
+                          type="button"
+                        >
+                          <strong>{item.title}</strong>
+                          <span>
+                            {item.date?.start ?? "날짜 미입력"} /{" "}
+                            {item.location?.region ?? "지역 미입력"} /{" "}
+                            {item.attendee_count ?? item.companion_ids.length}명
+                          </span>
+                        </button>
+                      ))}
+                    </div>
+                  )}
+                </section>
+
+                <section className="panel">
+                  <div className="panel__eyebrow">Alerts</div>
+                  <div className="panel__header">
+                    <h2>점검 경고</h2>
+                  </div>
+                  {dashboardAlerts.length === 0 ? (
+                    <div className="empty-state empty-state--compact">
+                      현재 확인이 필요한 장비 경고가 없습니다.
+                    </div>
+                  ) : (
+                    <ul className="detail-list">
+                      {dashboardAlerts.map((item) => (
+                        <li key={item}>{item}</li>
+                      ))}
+                    </ul>
+                  )}
+                </section>
+
+                <section className="panel">
+                  <div className="panel__eyebrow">Quick Move</div>
+                  <div className="panel__header">
+                    <h2>빠른 이동</h2>
+                  </div>
+                  <div className="stack-list">
+                    <button
+                      className="list-card"
+                      onClick={() => setActivePage("planning")}
+                      type="button"
+                    >
+                      <strong>캠핑 계획 열기</strong>
+                      <span>저장된 계획을 편집하거나 분석을 다시 실행합니다.</span>
+                    </button>
+                    <button
+                      className="list-card"
+                      onClick={() => setActivePage("equipment")}
+                      type="button"
+                    >
+                      <strong>장비 점검으로 이동</strong>
+                      <span>재고와 출발 전 점검 상태를 바로 수정합니다.</span>
+                    </button>
+                    <button
+                      className="list-card"
+                      onClick={() => setActivePage("links")}
+                      type="button"
+                    >
+                      <strong>외부 링크 정리</strong>
+                      <span>날씨, 장소, 맛집 링크를 카테고리별로 관리합니다.</span>
+                    </button>
+                  </div>
+                </section>
+
+                <section className="panel">
+                  <div className="panel__eyebrow">Links</div>
+                  <div className="panel__header">
+                    <h2>외부 링크 요약</h2>
+                  </div>
+                  {linkGroups.length === 0 ? (
+                    <div className="empty-state empty-state--compact">
+                      등록된 외부 링크가 없습니다.
+                    </div>
+                  ) : (
+                    <div className="stack-list">
+                      {linkGroups.slice(0, 4).map((group) => (
+                        <article className="summary-card" key={group.category}>
+                          <strong>{group.label}</strong>
+                          <span>{group.items.length}개 링크</span>
+                        </article>
+                      ))}
+                    </div>
+                  )}
+                </section>
               </section>
             </section>
           ) : null}
 
           {!appLoading && activePage === "equipment" ? (
-            <section className="page-grid page-grid--two">
-              <section className="panel page-grid__full">
+            <section className="page-stack">
+              <section className="page-intro panel">
+                <div className="page-intro__copy">
+                  <div className="panel__eyebrow">Equipment</div>
+                  <h2>장비 운영 상태</h2>
+                  <p className="panel__copy">
+                    반복 장비, 소모품, 출발 전 점검을 같은 레이아웃에서 보고 현재 상태를
+                    먼저 파악한 뒤 필요한 항목만 펼쳐 수정합니다.
+                  </p>
+                </div>
+                <div className="page-intro__meta">
+                  <div className="meta-chip">
+                    <span>반복 장비</span>
+                    <strong>{equipmentMetrics.durable}개</strong>
+                  </div>
+                  <div className="meta-chip">
+                    <span>소모품</span>
+                    <strong>{equipmentMetrics.consumables}개</strong>
+                  </div>
+                  <div className="meta-chip">
+                    <span>점검 항목</span>
+                    <strong>{equipmentMetrics.precheck}개</strong>
+                  </div>
+                  <div className="meta-chip">
+                    <span>경고</span>
+                    <strong>{equipmentMetrics.alerts}건</strong>
+                  </div>
+                </div>
+              </section>
+
+              <section className="panel">
                 <div className="panel__eyebrow">Equipment</div>
                 <div className="panel__header">
                   <h2>장비 탭</h2>
@@ -1737,6 +1944,12 @@ export function App() {
                 <p className="panel__copy">
                   반복 장비, 소모품, 출발 전 점검을 탭으로 전환하며 관리합니다.
                 </p>
+                <div className="metric-grid metric-grid--compact">
+                  <MetricCard label="반복 장비" value={`${equipmentMetrics.durable}개`} />
+                  <MetricCard label="소모품" value={`${equipmentMetrics.consumables}개`} />
+                  <MetricCard label="출발 전 점검" value={`${equipmentMetrics.precheck}개`} />
+                  <MetricCard label="카테고리" value={`${equipmentMetrics.categories}개`} />
+                </div>
                 <div aria-label="장비 섹션" className="equipment-tabs" role="tablist">
                   {EQUIPMENT_SECTIONS.map((section) => {
                     const isActive = equipmentSection === section;
@@ -1765,7 +1978,7 @@ export function App() {
 
               <section
                 aria-labelledby={activeEquipmentTabId}
-                className="equipment-tab-panel page-grid page-grid--two page-grid__full"
+                className="equipment-tab-panel equipment-workspace"
                 id={activeEquipmentPanelId}
                 role="tabpanel"
               >
@@ -1896,258 +2109,312 @@ export function App() {
                   ) : null}
                 </section>
 
-                <section className="panel">
-                  <div className="panel__eyebrow">Create</div>
-                  <div className="panel__header">
-                    <h2>{`${currentEquipmentSectionLabel} 추가`}</h2>
-                  </div>
-                  {equipmentSection === "durable" ? (
-                    <div className="form-grid">
-                      <FormField label="장비명">
-                        <input
-                          placeholder="예: 3계절 침낭"
-                          value={durableDraft.name}
-                          onChange={(event) =>
-                            setDurableDraft((current) => ({
-                              ...current,
-                              name: event.target.value,
-                            }))
-                          }
-                        />
-                      </FormField>
-                      <FormField label="모델명">
-                        <input
-                          placeholder="예: 머미형 800g"
-                          value={durableDraft.model ?? ""}
-                          onChange={(event) =>
-                            setDurableDraft((current) => ({
-                              ...current,
-                              model: event.target.value || undefined,
-                            }))
-                          }
-                        />
-                      </FormField>
-                      <FormField label="카테고리">
-                        <EquipmentCategorySelect
-                          categories={equipmentCategories.durable}
-                          value={durableDraft.category}
-                          onChange={(value) =>
-                            setDurableDraft((current) => ({
-                              ...current,
-                              category: value,
-                            }))
-                          }
-                        />
-                      </FormField>
-                      <FormField label="수량">
-                        <input
-                          type="number"
-                          min="1"
-                          placeholder="1"
-                          value={durableDraft.quantity}
-                          onChange={(event) =>
-                            setDurableDraft((current) => ({
-                              ...current,
-                              quantity: Number(event.target.value) || 1,
-                            }))
-                          }
-                        />
-                      </FormField>
-                      <FormField label="상태">
-                        <select
-                          value={durableDraft.status}
-                          onChange={(event) =>
-                            setDurableDraft((current) => ({
-                              ...current,
-                              status: event.target.value as DurableEquipmentItem["status"],
-                            }))
-                          }
-                        >
-                          {Object.entries(DURABLE_STATUS_LABELS).map(([value, label]) => (
-                            <option key={value} value={value}>
-                              {label}
-                            </option>
-                          ))}
-                        </select>
-                      </FormField>
-                      <FormField label="구매 링크" full>
-                        <input
-                          placeholder="https://"
-                          value={durableDraft.purchase_link ?? ""}
-                          onChange={(event) =>
-                            setDurableDraft((current) => ({
-                              ...current,
-                              purchase_link: event.target.value || undefined,
-                            }))
-                          }
-                        />
-                      </FormField>
-                      <p className="equipment-helper-copy form-grid__full">
-                        구매 링크가 있으면 AI 메타데이터 수집 시 우선 참고합니다.
-                      </p>
-                      <button
-                        className="button button--primary form-grid__full"
-                        onClick={() => handleCreateEquipmentItem("durable")}
-                        type="button"
-                      >
-                        반복 장비 추가
-                      </button>
+                <div className="equipment-side-stack">
+                  <section className="panel">
+                    <div className="panel__eyebrow">Current Section</div>
+                    <div className="panel__header">
+                      <h2>{currentEquipmentSectionLabel} 작업 요약</h2>
                     </div>
-                  ) : null}
+                    <p className="panel__copy">
+                      현재 섹션의 카테고리 수는 {currentEquipmentCategories.length}개이며,
+                      선택한 항목을 펼쳐 수정한 뒤 오른쪽 입력 카드에서 새 항목을 바로
+                      추가할 수 있습니다.
+                    </p>
+                    <div className="stack-list">
+                      <article className="summary-card">
+                        <strong>현재 선택 섹션</strong>
+                        <span>{currentEquipmentSectionLabel}</span>
+                      </article>
+                      <article className="summary-card">
+                        <strong>카테고리 수</strong>
+                        <span>{currentEquipmentCategories.length}개</span>
+                      </article>
+                      <article className="summary-card">
+                        <strong>점검 경고</strong>
+                        <span>{dashboardMetrics.alerts}건</span>
+                      </article>
+                    </div>
+                  </section>
 
-                  {equipmentSection === "consumables" ? (
-                    <div className="form-grid">
-                      <FormField label="소모품명">
-                        <input
-                          placeholder="예: 가스 캔"
-                          value={consumableDraft.name}
-                          onChange={(event) =>
-                            setConsumableDraft((current) => ({
-                              ...current,
-                              name: event.target.value,
-                            }))
-                          }
-                        />
-                      </FormField>
-                      <FormField label="카테고리">
-                        <EquipmentCategorySelect
-                          categories={equipmentCategories.consumables}
-                          value={consumableDraft.category}
-                          onChange={(value) =>
-                            setConsumableDraft((current) => ({
-                              ...current,
-                              category: value,
-                            }))
-                          }
-                        />
-                      </FormField>
-                      <FormField label="단위">
-                        <input
-                          placeholder="예: pack"
-                          value={consumableDraft.unit}
-                          onChange={(event) =>
-                            setConsumableDraft((current) => ({
-                              ...current,
-                              unit: event.target.value,
-                            }))
-                          }
-                        />
-                      </FormField>
-                      <FormField label="현재 수량">
-                        <input
-                          type="number"
-                          min="0"
-                          placeholder="0"
-                          value={consumableDraft.quantity_on_hand}
-                          onChange={(event) =>
-                            setConsumableDraft((current) => ({
-                              ...current,
-                              quantity_on_hand: Number(event.target.value) || 0,
-                            }))
-                          }
-                        />
-                      </FormField>
-                      <FormField label="부족 기준">
-                        <input
-                          type="number"
-                          min="0"
-                          placeholder="예: 2"
-                          value={consumableDraft.low_stock_threshold ?? ""}
-                          onChange={(event) =>
-                            setConsumableDraft((current) => ({
-                              ...current,
-                              low_stock_threshold: parseInteger(event.target.value),
-                            }))
-                          }
-                        />
-                      </FormField>
-                      <FormField label="상태">
-                        <select
-                          value={consumableDraft.status}
-                          onChange={(event) =>
-                            setConsumableDraft((current) => ({
-                              ...current,
-                              status: event.target.value as ConsumableEquipmentItem["status"],
-                            }))
-                          }
-                        >
-                          {Object.entries(CONSUMABLE_STATUS_LABELS).map(([value, label]) => (
-                            <option key={value} value={value}>
-                              {label}
-                            </option>
-                          ))}
-                        </select>
-                      </FormField>
-                      <button
-                        className="button button--primary form-grid__full"
-                        onClick={() => handleCreateEquipmentItem("consumables")}
-                        type="button"
-                      >
-                        소모품 추가
-                      </button>
+                  <section className="panel">
+                    <div className="panel__eyebrow">Create</div>
+                    <div className="panel__header">
+                      <h2>{`${currentEquipmentSectionLabel} 추가`}</h2>
                     </div>
-                  ) : null}
+                    {equipmentSection === "durable" ? (
+                      <div className="form-grid">
+                        <FormField label="장비명">
+                          <input
+                            placeholder="예: 3계절 침낭"
+                            value={durableDraft.name}
+                            onChange={(event) =>
+                              setDurableDraft((current) => ({
+                                ...current,
+                                name: event.target.value,
+                              }))
+                            }
+                          />
+                        </FormField>
+                        <FormField label="모델명">
+                          <input
+                            placeholder="예: 머미형 800g"
+                            value={durableDraft.model ?? ""}
+                            onChange={(event) =>
+                              setDurableDraft((current) => ({
+                                ...current,
+                                model: event.target.value || undefined,
+                              }))
+                            }
+                          />
+                        </FormField>
+                        <FormField label="카테고리">
+                          <EquipmentCategorySelect
+                            categories={equipmentCategories.durable}
+                            value={durableDraft.category}
+                            onChange={(value) =>
+                              setDurableDraft((current) => ({
+                                ...current,
+                                category: value,
+                              }))
+                            }
+                          />
+                        </FormField>
+                        <FormField label="수량">
+                          <input
+                            type="number"
+                            min="1"
+                            placeholder="1"
+                            value={durableDraft.quantity}
+                            onChange={(event) =>
+                              setDurableDraft((current) => ({
+                                ...current,
+                                quantity: Number(event.target.value) || 1,
+                              }))
+                            }
+                          />
+                        </FormField>
+                        <FormField label="상태">
+                          <select
+                            value={durableDraft.status}
+                            onChange={(event) =>
+                              setDurableDraft((current) => ({
+                                ...current,
+                                status: event.target.value as DurableEquipmentItem["status"],
+                              }))
+                            }
+                          >
+                            {Object.entries(DURABLE_STATUS_LABELS).map(([value, label]) => (
+                              <option key={value} value={value}>
+                                {label}
+                              </option>
+                            ))}
+                          </select>
+                        </FormField>
+                        <FormField label="구매 링크" full>
+                          <input
+                            placeholder="https://"
+                            value={durableDraft.purchase_link ?? ""}
+                            onChange={(event) =>
+                              setDurableDraft((current) => ({
+                                ...current,
+                                purchase_link: event.target.value || undefined,
+                              }))
+                            }
+                          />
+                        </FormField>
+                        <p className="equipment-helper-copy form-grid__full">
+                          구매 링크가 있으면 AI 메타데이터 수집 시 우선 참고합니다.
+                        </p>
+                        <button
+                          className="button button--primary form-grid__full"
+                          onClick={() => handleCreateEquipmentItem("durable")}
+                          type="button"
+                        >
+                          반복 장비 추가
+                        </button>
+                      </div>
+                    ) : null}
 
-                  {equipmentSection === "precheck" ? (
-                    <div className="form-grid">
-                      <FormField label="점검 항목명">
-                        <input
-                          placeholder="예: 랜턴 배터리"
-                          value={precheckDraft.name}
-                          onChange={(event) =>
-                            setPrecheckDraft((current) => ({
-                              ...current,
-                              name: event.target.value,
-                            }))
-                          }
-                        />
-                      </FormField>
-                      <FormField label="카테고리">
-                        <EquipmentCategorySelect
-                          categories={equipmentCategories.precheck}
-                          value={precheckDraft.category}
-                          onChange={(value) =>
-                            setPrecheckDraft((current) => ({
-                              ...current,
-                              category: value,
-                            }))
-                          }
-                        />
-                      </FormField>
-                      <FormField label="상태">
-                        <select
-                          value={precheckDraft.status}
-                          onChange={(event) =>
-                            setPrecheckDraft((current) => ({
-                              ...current,
-                              status: event.target.value as PrecheckItem["status"],
-                            }))
-                          }
+                    {equipmentSection === "consumables" ? (
+                      <div className="form-grid">
+                        <FormField label="소모품명">
+                          <input
+                            placeholder="예: 가스 캔"
+                            value={consumableDraft.name}
+                            onChange={(event) =>
+                              setConsumableDraft((current) => ({
+                                ...current,
+                                name: event.target.value,
+                              }))
+                            }
+                          />
+                        </FormField>
+                        <FormField label="카테고리">
+                          <EquipmentCategorySelect
+                            categories={equipmentCategories.consumables}
+                            value={consumableDraft.category}
+                            onChange={(value) =>
+                              setConsumableDraft((current) => ({
+                                ...current,
+                                category: value,
+                              }))
+                            }
+                          />
+                        </FormField>
+                        <FormField label="단위">
+                          <input
+                            placeholder="예: pack"
+                            value={consumableDraft.unit}
+                            onChange={(event) =>
+                              setConsumableDraft((current) => ({
+                                ...current,
+                                unit: event.target.value,
+                              }))
+                            }
+                          />
+                        </FormField>
+                        <FormField label="현재 수량">
+                          <input
+                            type="number"
+                            min="0"
+                            placeholder="0"
+                            value={consumableDraft.quantity_on_hand}
+                            onChange={(event) =>
+                              setConsumableDraft((current) => ({
+                                ...current,
+                                quantity_on_hand: Number(event.target.value) || 0,
+                              }))
+                            }
+                          />
+                        </FormField>
+                        <FormField label="부족 기준">
+                          <input
+                            type="number"
+                            min="0"
+                            placeholder="예: 2"
+                            value={consumableDraft.low_stock_threshold ?? ""}
+                            onChange={(event) =>
+                              setConsumableDraft((current) => ({
+                                ...current,
+                                low_stock_threshold: parseInteger(event.target.value),
+                              }))
+                            }
+                          />
+                        </FormField>
+                        <FormField label="상태">
+                          <select
+                            value={consumableDraft.status}
+                            onChange={(event) =>
+                              setConsumableDraft((current) => ({
+                                ...current,
+                                status: event.target.value as ConsumableEquipmentItem["status"],
+                              }))
+                            }
+                          >
+                            {Object.entries(CONSUMABLE_STATUS_LABELS).map(([value, label]) => (
+                              <option key={value} value={value}>
+                                {label}
+                              </option>
+                            ))}
+                          </select>
+                        </FormField>
+                        <button
+                          className="button button--primary form-grid__full"
+                          onClick={() => handleCreateEquipmentItem("consumables")}
+                          type="button"
                         >
-                          {Object.entries(PRECHECK_STATUS_LABELS).map(([value, label]) => (
-                            <option key={value} value={value}>
-                              {label}
-                            </option>
-                          ))}
-                        </select>
-                      </FormField>
-                      <button
-                        className="button button--primary form-grid__full"
-                        onClick={() => handleCreateEquipmentItem("precheck")}
-                        type="button"
-                      >
-                        점검 항목 추가
-                      </button>
-                    </div>
-                  ) : null}
-                </section>
+                          소모품 추가
+                        </button>
+                      </div>
+                    ) : null}
+
+                    {equipmentSection === "precheck" ? (
+                      <div className="form-grid">
+                        <FormField label="점검 항목명">
+                          <input
+                            placeholder="예: 랜턴 배터리"
+                            value={precheckDraft.name}
+                            onChange={(event) =>
+                              setPrecheckDraft((current) => ({
+                                ...current,
+                                name: event.target.value,
+                              }))
+                            }
+                          />
+                        </FormField>
+                        <FormField label="카테고리">
+                          <EquipmentCategorySelect
+                            categories={equipmentCategories.precheck}
+                            value={precheckDraft.category}
+                            onChange={(value) =>
+                              setPrecheckDraft((current) => ({
+                                ...current,
+                                category: value,
+                              }))
+                            }
+                          />
+                        </FormField>
+                        <FormField label="상태">
+                          <select
+                            value={precheckDraft.status}
+                            onChange={(event) =>
+                              setPrecheckDraft((current) => ({
+                                ...current,
+                                status: event.target.value as PrecheckItem["status"],
+                              }))
+                            }
+                          >
+                            {Object.entries(PRECHECK_STATUS_LABELS).map(([value, label]) => (
+                              <option key={value} value={value}>
+                                {label}
+                              </option>
+                            ))}
+                          </select>
+                        </FormField>
+                        <button
+                          className="button button--primary form-grid__full"
+                          onClick={() => handleCreateEquipmentItem("precheck")}
+                          type="button"
+                        >
+                          점검 항목 추가
+                        </button>
+                      </div>
+                    ) : null}
+                  </section>
+                </div>
               </section>
             </section>
           ) : null}
 
           {!appLoading && activePage === "management" ? (
-            <section className="page-grid page-grid--two">
-              <section className="panel">
+            <section className="page-stack">
+              <section className="page-intro panel">
+                <div className="page-intro__copy">
+                  <div className="panel__eyebrow">Management</div>
+                  <h2>관리 설정</h2>
+                  <p className="panel__copy">
+                    장비 섹션별 카테고리를 관리하는 화면입니다. 사용자에게 보이는 이름과
+                    내부 식별 코드를 분리해 유지합니다.
+                  </p>
+                </div>
+                <div className="page-intro__meta">
+                  <div className="meta-chip">
+                    <span>현재 섹션</span>
+                    <strong>{currentEquipmentSectionLabel}</strong>
+                  </div>
+                  <div className="meta-chip">
+                    <span>카테고리 수</span>
+                    <strong>{currentEquipmentCategories.length}개</strong>
+                  </div>
+                  <div className="meta-chip">
+                    <span>총 관리 수</span>
+                    <strong>{equipmentMetrics.categories}개</strong>
+                  </div>
+                </div>
+              </section>
+
+              <section className="page-grid page-grid--two">
+                <section className="panel">
                 <div className="panel__eyebrow">Categories</div>
                 <div className="panel__header">
                   <h2>장비 카테고리 관리</h2>
@@ -2246,67 +2513,112 @@ export function App() {
                     ))}
                   </div>
                 )}
-              </section>
+                </section>
 
-              <section className="panel">
-                <div className="panel__eyebrow">Create</div>
-                <div className="panel__header">
-                  <h2>새 카테고리 추가</h2>
-                </div>
-                <p className="panel__copy">
-                  카테고리 코드는 자동 생성하지 않습니다. 영문 소문자, 숫자, `-`, `_`
-                  형식으로 직접 입력합니다.
-                </p>
-                <div className="form-grid">
-                  <FormField label="적용 섹션">
-                    <input value={EQUIPMENT_SECTION_LABELS[equipmentSection]} readOnly />
-                  </FormField>
-                  <FormField label="카테고리 코드">
-                    <input
-                      placeholder="예: tarp"
-                      value={categoryDrafts[equipmentSection].id ?? ""}
-                      onChange={(event) =>
-                        setCategoryDrafts((current) => ({
-                          ...current,
-                          [equipmentSection]: {
-                            ...current[equipmentSection],
-                            id: event.target.value,
-                          },
-                        }))
-                      }
-                    />
-                  </FormField>
-                  <FormField full label="표시 이름">
-                    <input
-                      className="form-grid__full"
-                      placeholder="예: 수납"
-                      value={categoryDrafts[equipmentSection].label}
-                      onChange={(event) =>
-                        setCategoryDrafts((current) => ({
-                          ...current,
-                          [equipmentSection]: {
-                            ...current[equipmentSection],
-                            label: event.target.value,
-                          },
-                        }))
-                      }
-                    />
-                  </FormField>
-                  <button
-                    className="button button--primary form-grid__full"
-                    onClick={() => void handleCreateEquipmentCategory(equipmentSection)}
-                    type="button"
-                  >
-                    카테고리 추가
-                  </button>
+                <div className="stack-list">
+                  <section className="panel">
+                    <div className="panel__eyebrow">Rules</div>
+                    <div className="panel__header">
+                      <h2>관리 원칙</h2>
+                    </div>
+                    <ul className="detail-list">
+                      <li>표시 이름은 사용자가 보는 라벨입니다.</li>
+                      <li>카테고리 코드는 영문 소문자, 숫자, `-`, `_`만 허용됩니다.</li>
+                      <li>이미 사용 중이거나 마지막 남은 카테고리는 삭제가 제한됩니다.</li>
+                    </ul>
+                  </section>
+
+                  <section className="panel">
+                    <div className="panel__eyebrow">Create</div>
+                    <div className="panel__header">
+                      <h2>새 카테고리 추가</h2>
+                    </div>
+                    <p className="panel__copy">
+                      카테고리 코드는 자동 생성하지 않습니다. 영문 소문자, 숫자, `-`, `_`
+                      형식으로 직접 입력합니다.
+                    </p>
+                    <div className="form-grid">
+                      <FormField label="적용 섹션">
+                        <input value={EQUIPMENT_SECTION_LABELS[equipmentSection]} readOnly />
+                      </FormField>
+                      <FormField label="카테고리 코드">
+                        <input
+                          placeholder="예: tarp"
+                          value={categoryDrafts[equipmentSection].id ?? ""}
+                          onChange={(event) =>
+                            setCategoryDrafts((current) => ({
+                              ...current,
+                              [equipmentSection]: {
+                                ...current[equipmentSection],
+                                id: event.target.value,
+                              },
+                            }))
+                          }
+                        />
+                      </FormField>
+                      <FormField full label="표시 이름">
+                        <input
+                          className="form-grid__full"
+                          placeholder="예: 수납"
+                          value={categoryDrafts[equipmentSection].label}
+                          onChange={(event) =>
+                            setCategoryDrafts((current) => ({
+                              ...current,
+                              [equipmentSection]: {
+                                ...current[equipmentSection],
+                                label: event.target.value,
+                              },
+                            }))
+                          }
+                        />
+                      </FormField>
+                      <button
+                        className="button button--primary form-grid__full"
+                        onClick={() => void handleCreateEquipmentCategory(equipmentSection)}
+                        type="button"
+                      >
+                        카테고리 추가
+                      </button>
+                    </div>
+                  </section>
                 </div>
               </section>
             </section>
           ) : null}
 
           {!appLoading && activePage === "planning" ? (
-            <section className="page-grid page-grid--planning">
-              <section className="panel">
+            <section className="page-stack">
+              <section className="page-intro panel">
+                <div className="page-intro__copy">
+                  <div className="panel__eyebrow">Planning</div>
+                  <h2>캠핑 계획</h2>
+                  <p className="panel__copy">
+                    계획 목록, 원본 입력 폼, AI 보조와 분석 결과를 같은 화면에서 다루되
+                    사용자 입력과 AI 제안이 섞여 보이지 않게 분리합니다.
+                  </p>
+                </div>
+                <div className="page-intro__meta">
+                  <div className="meta-chip">
+                    <span>선택된 계획</span>
+                    <strong>{formatCompactTripId(selectedTripId) ?? "새 초안"}</strong>
+                  </div>
+                  <div className="meta-chip">
+                    <span>검증 경고</span>
+                    <strong>{validationWarnings.length}건</strong>
+                  </div>
+                  <div className="meta-chip">
+                    <span>미등록 동행자</span>
+                    <strong>{missingCompanionIds.length}명</strong>
+                  </div>
+                  <div className="meta-chip">
+                    <span>결과 경로</span>
+                    <strong>{selectedTripId ? `${selectedTripId}-plan.md` : "저장 후 생성"}</strong>
+                  </div>
+                </div>
+              </section>
+
+              <section className="page-grid page-grid--planning">
+                <section className="panel">
                 <div className="panel__eyebrow">Plans</div>
                 <div className="panel__header">
                   <h2>캠핑 계획 목록</h2>
@@ -2960,121 +3272,175 @@ export function App() {
                     왼쪽에서 계획을 선택하거나 새 계획을 시작하세요.
                   </div>
                 ) : null}
-              </section>
+                </section>
 
-              <section className="panel">
-                <div className="panel__eyebrow">AI Assist</div>
-                <div className="panel__header">
-                  <h2>AI 보조와 분석 결과</h2>
-                </div>
-                <div className="stack-list usage-guide-list">
-                  <div className="action-card">
-                    <strong>AI 보조는 저장 후 질문할 때 사용</strong>
-                    <p>
-                      분석 전에 빠진 정보, 장비 보강 포인트, 먼저 수정할 항목을 확인할 때
-                      사용합니다.
-                    </p>
-                  </div>
-                  <div className="action-card">
-                    <strong>분석 결과는 최종 정리할 때 확인</strong>
-                    <p>
-                      계획과 장비 점검이 끝난 뒤 분석을 실행하면 준비물, 체크리스트,
-                      식단, 이동 추천, 다음 캠핑 추천이 Markdown으로 정리됩니다.
-                    </p>
-                  </div>
-                </div>
-
-                {selectedTripId ? (
-                  <>
-                    <div className="section-label">
-                      <strong>AI 보조</strong>
-                      <p>저장된 계획을 기준으로 먼저 물어보고, 필요한 제안만 직접 반영합니다.</p>
+                <div className="planning-side-stack">
+                  <section className="panel">
+                    <div className="panel__eyebrow">AI Assist</div>
+                    <div className="panel__header">
+                      <h2>AI 보조</h2>
                     </div>
-                    <div className="assistant-box">
-                      <textarea
-                        placeholder="예: 빠진 준비물이 있는지 먼저 점검해줘. 비 예보와 아이 동행 기준으로 알려줘"
-                        value={assistantInput}
-                        onChange={(event) => setAssistantInput(event.target.value)}
-                      />
-                      <button
-                        className="button button--primary"
-                        disabled={assistantLoading}
-                        onClick={handleAssistantSubmit}
-                        type="button"
-                      >
-                        {assistantLoading ? "응답 생성 중..." : "AI에게 물어보기"}
-                      </button>
+                    <div className="stack-list usage-guide-list">
+                      <div className="action-card">
+                        <strong>AI 보조는 저장 후 질문할 때 사용</strong>
+                        <p>
+                          분석 전에 빠진 정보, 장비 보강 포인트, 먼저 수정할 항목을
+                          확인할 때 사용합니다.
+                        </p>
+                      </div>
+                      <div className="action-card">
+                        <strong>AI 제안은 자동 반영되지 않음</strong>
+                        <p>
+                          제안과 실제 저장을 분리해, 사용자가 확인한 액션만 명시적으로
+                          반영합니다.
+                        </p>
+                      </div>
                     </div>
 
-                    {assistantResponse ? (
+                    {selectedTripId ? (
                       <>
-                        <StatusBanner
-                          tone="info"
-                          title="AI 보조 응답"
-                          description="제안은 자동 반영되지 않으며, 아래 액션을 눌러야 실제 파일이 수정됩니다."
-                          items={assistantResponse.warnings}
-                        />
-                        <article className="markdown-pane markdown-pane--compact">
-                          <ReactMarkdown>{assistantResponse.assistant_message}</ReactMarkdown>
-                        </article>
-                        <div className="stack-list">
-                          {assistantResponse.actions.map((action) => (
-                            <div className="action-card" key={action.id}>
-                              <strong>{action.title}</strong>
-                              <p>{action.reason}</p>
-                              <button
-                                className="button"
-                                onClick={() => handleApplyAssistantAction(action)}
-                                type="button"
-                              >
-                                제안 반영
-                              </button>
-                            </div>
-                          ))}
+                        <div className="section-label">
+                          <strong>AI 보조</strong>
+                          <p>
+                            저장된 계획을 기준으로 먼저 물어보고, 필요한 제안만 직접
+                            반영합니다.
+                          </p>
                         </div>
-                      </>
-                    ) : null}
+                        <div className="assistant-box">
+                          <textarea
+                            placeholder="예: 빠진 준비물이 있는지 먼저 점검해줘. 비 예보와 아이 동행 기준으로 알려줘"
+                            value={assistantInput}
+                            onChange={(event) => setAssistantInput(event.target.value)}
+                          />
+                          <button
+                            className="button button--primary"
+                            disabled={assistantLoading}
+                            onClick={handleAssistantSubmit}
+                            type="button"
+                          >
+                            {assistantLoading ? "응답 생성 중..." : "AI에게 물어보기"}
+                          </button>
+                        </div>
 
-                    <div className="section-label section-label--analysis">
-                      <strong>분석 결과</strong>
+                        {assistantResponse ? (
+                          <>
+                            <StatusBanner
+                              tone="info"
+                              title="AI 보조 응답"
+                              description="제안은 자동 반영되지 않으며, 아래 액션을 눌러야 실제 파일이 수정됩니다."
+                              items={assistantResponse.warnings}
+                            />
+                            <article className="markdown-pane markdown-pane--compact">
+                              <ReactMarkdown>{assistantResponse.assistant_message}</ReactMarkdown>
+                            </article>
+                            <div className="stack-list">
+                              {assistantResponse.actions.map((action) => (
+                                <div className="action-card" key={action.id}>
+                                  <strong>{action.title}</strong>
+                                  <p>{action.reason}</p>
+                                  <button
+                                    className="button"
+                                    onClick={() => handleApplyAssistantAction(action)}
+                                    type="button"
+                                  >
+                                    제안 반영
+                                  </button>
+                                </div>
+                              ))}
+                            </div>
+                          </>
+                        ) : null}
+                      </>
+                    ) : (
+                      <div className="empty-state">
+                        AI 보조는 저장된 계획에서만 실행할 수 있습니다.
+                      </div>
+                    )}
+                  </section>
+
+                  <section className="panel">
+                    <div className="panel__eyebrow">Analysis</div>
+                    <div className="panel__header">
+                      <h2>분석 결과</h2>
+                    </div>
+                    <div className="action-card action-card--soft">
+                      <strong>분석 결과는 최종 정리할 때 확인</strong>
                       <p>
-                        입력과 점검이 끝났다면 분석 실행을 눌러 이번 캠핑의 최종 정리본을
-                        확인합니다.
+                        계획과 장비 점검이 끝난 뒤 분석을 실행하면 준비물, 체크리스트,
+                        식단, 이동 추천, 다음 캠핑 추천이 Markdown으로 정리됩니다.
                       </p>
                     </div>
 
-                    {analysisResponse?.error?.code === "OUTPUT_SAVE_FAILED" ? (
-                      <StatusBanner
-                        tone="warning"
-                        title="결과 생성 완료, 저장 실패"
-                        description={analysisResponse.error.message}
-                      />
-                    ) : null}
+                    {selectedTripId ? (
+                      <>
+                        <div className="section-label section-label--analysis">
+                          <strong>분석 결과</strong>
+                          <p>
+                            입력과 점검이 끝났다면 분석 실행을 눌러 이번 캠핑의 최종
+                            정리본을 확인합니다.
+                          </p>
+                        </div>
 
-                    {analysisResponse?.markdown ? (
-                      <article className="markdown-pane">
-                        <ReactMarkdown>{analysisResponse.markdown}</ReactMarkdown>
-                      </article>
+                        {analysisResponse?.error?.code === "OUTPUT_SAVE_FAILED" ? (
+                          <StatusBanner
+                            tone="warning"
+                            title="결과 생성 완료, 저장 실패"
+                            description={analysisResponse.error.message}
+                          />
+                        ) : null}
+
+                        {analysisResponse?.markdown ? (
+                          <article className="markdown-pane">
+                            <ReactMarkdown>{analysisResponse.markdown}</ReactMarkdown>
+                          </article>
+                        ) : (
+                          <div className="empty-state">
+                            계획 저장 후 분석 실행을 누르면 추천 장비, 개인 준비물, 출발 전
+                            체크리스트, 식단, 이동/주변 추천, 다음 캠핑 추천 결과가 여기에
+                            표시됩니다.
+                          </div>
+                        )}
+                      </>
                     ) : (
                       <div className="empty-state">
-                        계획 저장 후 분석 실행을 누르면 추천 장비, 개인 준비물, 출발 전
-                        체크리스트, 식단, 이동/주변 추천, 다음 캠핑 추천 결과가 여기에
-                        표시됩니다.
+                        분석은 저장된 계획에서만 실행할 수 있습니다.
                       </div>
                     )}
-                  </>
-                ) : (
-                  <div className="empty-state">
-                    AI 보조와 분석은 저장된 계획에서만 실행할 수 있습니다.
-                  </div>
-                )}
+                  </section>
+                </div>
               </section>
             </section>
           ) : null}
 
           {!appLoading && activePage === "history" ? (
-            <section className="page-grid page-grid--two">
-              <section className="panel">
+            <section className="page-stack">
+              <section className="page-intro panel page-intro--archive">
+                <div className="page-intro__copy">
+                  <div className="panel__eyebrow">History</div>
+                  <h2>캠핑 히스토리</h2>
+                  <p className="panel__copy">
+                    완료된 계획을 아카이브 문서처럼 관리하되, 결과 Markdown과 실제 메모를
+                    다시 열어 후속 준비에 참고할 수 있게 유지합니다.
+                  </p>
+                </div>
+                <div className="page-intro__meta">
+                  <div className="meta-chip">
+                    <span>보관된 기록</span>
+                    <strong>{history.length}건</strong>
+                  </div>
+                  <div className="meta-chip">
+                    <span>선택 기록</span>
+                    <strong>{selectedHistory?.title ?? "없음"}</strong>
+                  </div>
+                  <div className="meta-chip">
+                    <span>결과 문서</span>
+                    <strong>{selectedHistory?.output_path ? "연결됨" : "없음"}</strong>
+                  </div>
+                </div>
+              </section>
+
+              <section className="page-grid page-grid--two">
+                <section className="panel">
                 <div className="panel__eyebrow">History</div>
                 <div className="panel__header">
                   <h2>캠핑 히스토리 목록</h2>
@@ -3226,13 +3592,40 @@ export function App() {
                 ) : (
                   <div className="empty-state">왼쪽에서 히스토리를 선택하세요.</div>
                 )}
+                </section>
               </section>
             </section>
           ) : null}
 
           {!appLoading && activePage === "links" ? (
-            <section className="page-grid page-grid--two">
-              <section className="panel">
+            <section className="page-stack">
+              <section className="page-intro panel">
+                <div className="page-intro__copy">
+                  <div className="panel__eyebrow">Links</div>
+                  <h2>외부 링크</h2>
+                  <p className="panel__copy">
+                    날씨, 장소, 맛집, 장보기 링크를 북마크처럼 빠르게 읽고 수정할 수 있게
+                    카테고리 카드로 묶어 둡니다.
+                  </p>
+                </div>
+                <div className="page-intro__meta">
+                  <div className="meta-chip">
+                    <span>전체 링크</span>
+                    <strong>{links.length}개</strong>
+                  </div>
+                  <div className="meta-chip">
+                    <span>카테고리 그룹</span>
+                    <strong>{linkGroups.length}개</strong>
+                  </div>
+                  <div className="meta-chip">
+                    <span>최근 작업</span>
+                    <strong>{links[0]?.name ?? "없음"}</strong>
+                  </div>
+                </div>
+              </section>
+
+              <section className="page-grid page-grid--two">
+                <section className="panel">
                 <div className="panel__eyebrow">Links</div>
                 <div className="panel__header">
                   <h2>외부 링크 목록</h2>
@@ -3423,6 +3816,7 @@ export function App() {
                     링크 추가
                   </button>
                 </div>
+                </section>
               </section>
             </section>
           ) : null}
@@ -4337,6 +4731,47 @@ function buildDurableFingerprintMap(catalog: EquipmentCatalog) {
   return Object.fromEntries(
     catalog.durable.items.map((item) => [item.id, buildDurableMetadataFingerprint(item)]),
   );
+}
+
+function buildDashboardAlerts(catalog: EquipmentCatalog | null) {
+  if (!catalog) {
+    return [];
+  }
+
+  const consumableAlerts = catalog.consumables.items
+    .filter(
+      (item) =>
+        item.status === "low" ||
+        item.status === "empty" ||
+        item.quantity_on_hand <= (item.low_stock_threshold ?? -1),
+    )
+    .map(
+      (item) =>
+        `${item.name} ${item.quantity_on_hand}${item.unit ? ` ${item.unit}` : ""} / ${getStatusLabel(
+          CONSUMABLE_STATUS_LABELS,
+          item.status,
+        )}`,
+    );
+
+  const precheckAlerts = catalog.precheck.items
+    .filter((item) => item.status !== "ok")
+    .map((item) => `${item.name} / ${getStatusLabel(PRECHECK_STATUS_LABELS, item.status)}`);
+
+  return [...consumableAlerts, ...precheckAlerts].slice(0, 6);
+}
+
+function formatCompactTripId(value: string | null | undefined) {
+  if (!value) {
+    return null;
+  }
+
+  const [year, month, day, ...rest] = value.split("-");
+
+  if (!year || !month || !day || rest.length === 0) {
+    return value;
+  }
+
+  return `${year}-${month}-${day} / ${rest.join("-")}`;
 }
 
 function formatPackedSize(metadata: DurableEquipmentMetadata) {
