@@ -32,6 +32,33 @@ class MockAnalysisClient implements AnalysisModelClient {
   }
 }
 
+class CapturingAnalysisClient implements AnalysisModelClient {
+  public lastInput:
+    | {
+        systemPrompt: string;
+        userPrompt: string;
+      }
+    | null = null;
+
+  constructor(private readonly markdown: string) {}
+
+  async generateMarkdown(input: { systemPrompt: string; userPrompt: string }) {
+    this.lastInput = input;
+    return this.markdown;
+  }
+
+  async getHealthStatus(): Promise<BackendHealth> {
+    return {
+      status: "ok",
+      backend: "codex-cli",
+      ready: true,
+      auth_status: "ok",
+      model: "gpt-5.4",
+      message: "Logged in using ChatGPT",
+    };
+  }
+}
+
 async function createSeededDataDir() {
   const tempRoot = await mkdtemp(path.join(os.tmpdir(), "camping-api-test-"));
   tempDirs.push(tempRoot);
@@ -377,6 +404,41 @@ describe("API server", () => {
       "utf8",
     );
     expect(saved).toBe(markdown);
+
+    await app.close();
+  });
+
+  it("includes next camping recommendation context and links in the analyze prompt", async () => {
+    const dataDir = await createSeededDataDir();
+    const modelClient = new CapturingAnalysisClient("# 테스트 분석 결과");
+    const app = await buildServer({
+      dataDir,
+      projectRoot,
+      modelClient,
+    });
+
+    const response = await app.inject({
+      method: "POST",
+      url: "/api/analyze-trip",
+      payload: {
+        trip_id: "2026-04-18-gapyeong",
+        save_output: false,
+      },
+    });
+
+    expect(response.statusCode).toBe(200);
+    expect(modelClient.lastInput?.userPrompt).toContain(
+      "## next-camping-recommendation-context",
+    );
+    expect(modelClient.lastInput?.userPrompt).toContain(
+      "reference_date: 2026-04-19",
+    );
+    expect(modelClient.lastInput?.userPrompt).toContain(
+      "family_friendly_required: true",
+    );
+    expect(modelClient.lastInput?.userPrompt).toContain("## links.yaml");
+    expect(modelClient.lastInput?.userPrompt).toContain("name: 기상청");
+    expect(modelClient.lastInput?.userPrompt).toContain("start: 2026-04-25");
 
     await app.close();
   });

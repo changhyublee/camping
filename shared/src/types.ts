@@ -131,6 +131,7 @@ export type TripBundle = {
   precheck: PrecheckData;
   travelPreferences: TravelPreferencesData;
   foodPreferences: FoodPreferencesData;
+  links: ExternalLinksData;
   trip: TripData;
   caches: {
     weather: Array<{ name: string; content: unknown }>;

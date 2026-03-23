@@ -471,13 +471,18 @@ describe("App", () => {
     expect(await screen.findByText("AI 보조는 저장 후 질문할 때 사용")).toBeInTheDocument();
     expect(await screen.findByText("분석 결과는 최종 정리할 때 확인")).toBeInTheDocument();
     expect(
+      screen.getByText(
+        "계획과 장비 점검이 끝난 뒤 분석을 실행하면 준비물, 체크리스트, 식단, 이동 추천, 다음 캠핑 추천이 Markdown으로 정리됩니다.",
+      ),
+    ).toBeInTheDocument();
+    expect(
       screen.getByPlaceholderText(
         "예: 빠진 준비물이 있는지 먼저 점검해줘. 비 예보와 아이 동행 기준으로 알려줘",
       ),
     ).toBeInTheDocument();
     expect(
       screen.getByText(
-        "계획 저장 후 분석 실행을 누르면 추천 장비, 개인 준비물, 출발 전 체크리스트, 식단, 이동/주변 추천 결과가 여기에 표시됩니다.",
+        "계획 저장 후 분석 실행을 누르면 추천 장비, 개인 준비물, 출발 전 체크리스트, 식단, 이동/주변 추천, 다음 캠핑 추천 결과가 여기에 표시됩니다.",
       ),
     ).toBeInTheDocument();
 

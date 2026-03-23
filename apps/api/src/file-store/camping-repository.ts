@@ -642,6 +642,7 @@ export class CampingRepository {
       precheck,
       travelPreferences,
       foodPreferences,
+      links,
       caches,
     ] = await Promise.all([
       this.readYamlFile(
@@ -672,6 +673,7 @@ export class CampingRepository {
         "TRIP_INVALID",
         "preferences/food.yaml 형식이 올바르지 않습니다.",
       ),
+      this.readLinks(),
       this.loadRelevantCaches(trip),
     ]);
 
@@ -683,6 +685,7 @@ export class CampingRepository {
       precheck,
       travelPreferences,
       foodPreferences,
+      links,
       trip,
       caches,
     };
