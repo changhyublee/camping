@@ -73,6 +73,7 @@
   - 예시 입력/출력 파일 설명
 - [`docs/examples/profile.yaml`](examples/profile.yaml)
 - [`docs/examples/companions.yaml`](examples/companions.yaml)
+- [`docs/examples/vehicles.yaml`](examples/vehicles.yaml)
 - [`docs/examples/equipment/durable.yaml`](examples/equipment/durable.yaml)
 - [`docs/examples/equipment/consumables.yaml`](examples/equipment/consumables.yaml)
 - [`docs/examples/equipment/precheck.yaml`](examples/equipment/precheck.yaml)

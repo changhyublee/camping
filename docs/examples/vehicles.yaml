@@ -1,0 +1,16 @@
+version: 1
+vehicles:
+  - id: family-suv
+    name: 패밀리 SUV
+    description: 가족 캠핑에 자주 쓰는 기본 차량
+    passenger_capacity: 5
+    load_capacity_kg: 400
+    notes:
+      - 루프박스 장착 가능
+  - id: compact-van
+    name: 컴팩트 밴
+    description: 적재 공간이 넉넉한 보조 차량
+    passenger_capacity: 4
+    load_capacity_kg: 550
+    notes:
+      - 2열 폴딩 시 적재 공간 확대

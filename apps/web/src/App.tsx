@@ -1,5 +1,9 @@
-import { useEffect, useMemo, useRef, useState } from "react";
-import type { KeyboardEvent as ReactKeyboardEvent, ReactNode } from "react";
+import { cloneElement, isValidElement, useEffect, useMemo, useRef, useState } from "react";
+import type {
+  KeyboardEvent as ReactKeyboardEvent,
+  ReactElement,
+  ReactNode,
+} from "react";
 import ReactMarkdown from "react-markdown";
 import type {
   AnalyzeTripResponse,
@@ -25,6 +29,8 @@ import type {
   PrecheckItemInput,
   TripDraft,
   TripSummary,
+  Vehicle,
+  VehicleInput,
 } from "@camping/shared";
 import {
   AGE_GROUP_LABELS,
@@ -42,27 +48,36 @@ import { StatusBanner } from "./components/StatusBanner";
 
 type PageKey =
   | "dashboard"
-  | "equipment"
   | "planning"
   | "history"
+  | "companions"
+  | "vehicles"
+  | "equipment"
   | "links"
-  | "management";
+  | "categories"
+  | "help";
 
 const PAGE_KEYS: PageKey[] = [
   "dashboard",
-  "equipment",
   "planning",
   "history",
+  "companions",
+  "vehicles",
+  "equipment",
   "links",
-  "management",
+  "categories",
+  "help",
 ];
 const PAGE_LABELS: Record<PageKey, string> = {
   dashboard: "대시보드",
-  equipment: "장비 관리",
   planning: "캠핑 계획",
   history: "캠핑 히스토리",
+  companions: "사람 관리",
+  vehicles: "차량 관리",
+  equipment: "장비 관리",
   links: "외부 링크",
-  management: "관리 설정",
+  categories: "카테고리 설정",
+  help: "보조 설명",
 };
 const NAVIGATION_GROUPS: Array<{
   title: string;
@@ -76,13 +91,13 @@ const NAVIGATION_GROUPS: Array<{
   },
   {
     title: "준비 데이터",
-    description: "장비와 참고 정보를 정리",
-    items: ["equipment", "links"],
+    description: "사람, 차량, 장비와 참고 정보를 정리",
+    items: ["companions", "vehicles", "equipment", "links"],
   },
   {
     title: "관리 설정",
-    description: "카테고리와 백업 기준 관리",
-    items: ["management"],
+    description: "기준 데이터와 보조 설명 관리",
+    items: ["categories", "help"],
   },
 ];
 const EQUIPMENT_SECTIONS: EquipmentSection[] = [
@@ -100,7 +115,6 @@ type OperationState = {
 };
 
 type CommaSeparatedInputs = {
-  companionIds: string;
   requestedDishes: string;
   requestedStops: string;
 };
@@ -125,6 +139,9 @@ export function App() {
   const [companionDraft, setCompanionDraft] =
     useState<Companion>(createEmptyCompanion());
   const [editingCompanionId, setEditingCompanionId] = useState<string | null>(null);
+  const [vehicles, setVehicles] = useState<Vehicle[]>([]);
+  const [vehicleDraft, setVehicleDraft] = useState<VehicleInput>(createEmptyVehicle());
+  const [editingVehicleId, setEditingVehicleId] = useState<string | null>(null);
   const [trips, setTrips] = useState<TripSummary[]>([]);
   const [selectedTripId, setSelectedTripId] = useState<string | null>(
     persistedUiState?.selectedTripId ?? null,
@@ -332,6 +349,14 @@ export function App() {
   const currentEquipmentSectionLabel = EQUIPMENT_SECTION_LABELS[equipmentSection];
   const activeEquipmentTabId = getEquipmentSectionTabId(equipmentSection);
   const activeEquipmentPanelId = getEquipmentSectionPanelId(equipmentSection);
+  const selectedTripCompanions = useMemo(
+    () => resolveSelectedCompanions(tripDraft?.party?.companion_ids ?? [], companions),
+    [companions, tripDraft?.party?.companion_ids],
+  );
+  const selectedTripVehicle = useMemo(
+    () => resolveSelectedVehicle(tripDraft?.vehicle, vehicles),
+    [tripDraft?.vehicle, vehicles],
+  );
 
   const missingCompanionIds = useMemo(
     () =>
@@ -340,6 +365,17 @@ export function App() {
         companions.map((item) => item.id),
       ),
     [companions, tripDraft?.party?.companion_ids],
+  );
+  const selectedHistoryCompanionSnapshots = useMemo(
+    () =>
+      selectedHistory
+        ? resolveHistoryCompanionSnapshots(selectedHistory, companions)
+        : [],
+    [companions, selectedHistory],
+  );
+  const selectedHistoryVehicle = useMemo(
+    () => resolveHistoryVehicleSnapshot(selectedHistory, vehicles),
+    [selectedHistory, vehicles],
   );
 
   useEffect(() => {
@@ -411,10 +447,12 @@ export function App() {
     return {
       trips: trips.length,
       history: history.length,
+      companions: companions.length,
+      vehicles: vehicles.length,
       alerts: lowStockCount,
       links: links.length,
     };
-  }, [equipment, history.length, links.length, trips.length]);
+  }, [companions.length, equipment, history.length, links.length, trips.length, vehicles.length]);
 
   const equipmentMetrics = useMemo(
     () => ({
@@ -453,17 +491,16 @@ export function App() {
     selectedHistory?.title ??
     formatCompactTripId(selectedHistoryId) ??
     "없음";
-  const currentTripPath = selectedTripId
-    ? `.camping-data/trips/${selectedTripId}.yaml`
-    : ".camping-data/trips/<trip-id>.yaml";
-  const currentOutputPath = analysisResponse?.output_path ?? "분석 실행 후 생성";
   const activePageLead = {
     dashboard: "예정 계획과 점검 경고를 먼저 훑고 다음 작업으로 바로 이동하는 운영 허브입니다.",
-    equipment: "보유 장비, 소모품, 출발 전 점검을 읽기 쉬운 목록으로 정리하는 화면입니다.",
     planning: "trip 원본 입력, AI 보조, 최종 분석 결과를 단계별로 다루는 핵심 작업 화면입니다.",
     history: "완료된 계획과 저장된 결과 Markdown을 다시 열어보는 기록 보관 화면입니다.",
+    companions: "캠핑 인원 프로필을 미리 정리하고 계획 화면에서는 선택만 하도록 분리한 화면입니다.",
+    vehicles: "차량 정보를 미리 관리해 캠핑 계획에서는 차량 선택과 요약 확인만 하도록 정리한 화면입니다.",
+    equipment: "보유 장비, 소모품, 출발 전 점검을 읽기 쉬운 목록으로 정리하는 화면입니다.",
     links: "날씨, 장소, 맛집 같은 참고 링크를 카테고리별로 정리하는 화면입니다.",
-    management: "장비 카테고리 기준과 로컬 데이터 백업을 관리하는 설정 화면입니다.",
+    categories: "장비 카테고리 기준을 정리하고 운영용 백업을 실행하는 화면입니다.",
+    help: "주 작업 파일과 생성 결과처럼 운영 중 참고할 보조 설명만 따로 모아 둔 화면입니다.",
   } satisfies Record<PageKey, string>;
 
   async function loadInitialData() {
@@ -473,6 +510,7 @@ export function App() {
     try {
       const [
         companionResponse,
+        vehicleResponse,
         tripResponse,
         equipmentResponse,
         equipmentCategoryResponse,
@@ -480,6 +518,7 @@ export function App() {
         linkResponse,
       ] = await Promise.allSettled([
         apiClient.getCompanions(),
+        apiClient.getVehicles(),
         apiClient.getTrips(),
         apiClient.getEquipment(),
         apiClient.getEquipmentCategories(),
@@ -539,6 +578,15 @@ export function App() {
           `동행자 목록을 불러오지 못했습니다. ${getErrorMessage(
             companionResponse.reason,
           )}`,
+        );
+      }
+
+      if (vehicleResponse.status === "fulfilled") {
+        setVehicles(vehicleResponse.value.items);
+      } else {
+        setVehicles([]);
+        startupWarnings.push(
+          `차량 목록을 불러오지 못했습니다. ${getErrorMessage(vehicleResponse.reason)}`,
         );
       }
 
@@ -705,37 +753,6 @@ export function App() {
     });
   }
 
-  async function ensureCompanionProfiles(companionIds: string[]) {
-    const missingIds = getMissingCompanionIds(
-      companionIds,
-      companions.map((item) => item.id),
-    );
-
-    if (missingIds.length === 0) {
-      return [];
-    }
-
-    const createdIds: string[] = [];
-
-    for (const companionId of missingIds) {
-      try {
-        await apiClient.createCompanion(createPlaceholderCompanion(companionId));
-        createdIds.push(companionId);
-      } catch (error) {
-        if (error instanceof ApiClientError && error.code === "CONFLICT") {
-          continue;
-        }
-
-        throw error;
-      }
-    }
-
-    const response = await apiClient.getCompanions();
-    setCompanions(response.items);
-
-    return createdIds;
-  }
-
   async function handleCreateCompanion(input: Companion = companionDraft) {
     try {
       const response = await apiClient.createCompanion(input);
@@ -798,6 +815,15 @@ export function App() {
         setCompanionDraft(createEmptyCompanion());
       }
 
+      if (tripDraft?.party?.companion_ids.includes(companionId)) {
+        updateTripDraft((current) => ({
+          ...current,
+          party: {
+            companion_ids: current.party?.companion_ids.filter((item) => item !== companionId) ?? [],
+          },
+        }));
+      }
+
       setOperationState({
         title: "동행자 삭제 완료",
         tone: "success",
@@ -806,6 +832,98 @@ export function App() {
     } catch (error) {
       setOperationState({
         title: "동행자 삭제 실패",
+        tone: "error",
+        description: getErrorMessage(error),
+      });
+    }
+  }
+
+  function beginCreateVehicle() {
+    setEditingVehicleId(null);
+    setVehicleDraft(createEmptyVehicle());
+  }
+
+  function beginEditVehicle(vehicle: Vehicle) {
+    setEditingVehicleId(vehicle.id);
+    setVehicleDraft({
+      ...vehicle,
+      notes: [...vehicle.notes],
+    });
+  }
+
+  async function handleCreateVehicle(input: VehicleInput = vehicleDraft) {
+    try {
+      const response = await apiClient.createVehicle(input);
+      setVehicles((current) => [...current, response.item].sort(sortVehicles));
+      setVehicleDraft(createEmptyVehicle());
+      setEditingVehicleId(null);
+      setOperationState({
+        title: "차량 추가 완료",
+        tone: "success",
+        description: `${response.item.name} (${response.item.id})`,
+      });
+    } catch (error) {
+      setOperationState({
+        title: "차량 추가 실패",
+        tone: "error",
+        description: getErrorMessage(error),
+      });
+    }
+  }
+
+  async function handleSaveVehicle() {
+    if (!editingVehicleId) return;
+
+    try {
+      const response = await apiClient.updateVehicle(editingVehicleId, vehicleDraft);
+      setVehicles((current) =>
+        current
+          .map((item) => (item.id === response.item.id ? response.item : item))
+          .sort(sortVehicles),
+      );
+      setVehicleDraft(createEmptyVehicle());
+      setEditingVehicleId(null);
+      setOperationState({
+        title: "차량 저장 완료",
+        tone: "success",
+        description: `${response.item.name} (${response.item.id})`,
+      });
+    } catch (error) {
+      setOperationState({
+        title: "차량 저장 실패",
+        tone: "error",
+        description: getErrorMessage(error),
+      });
+    }
+  }
+
+  async function handleDeleteVehicle(vehicleId: string) {
+    if (!confirmDeletion(`차량 정보를 삭제할까요?\n${vehicleId}`)) return;
+
+    try {
+      await apiClient.deleteVehicle(vehicleId);
+      setVehicles((current) => current.filter((item) => item.id !== vehicleId));
+
+      if (editingVehicleId === vehicleId) {
+        setEditingVehicleId(null);
+        setVehicleDraft(createEmptyVehicle());
+      }
+
+      if (tripDraft?.vehicle?.id === vehicleId) {
+        updateTripDraft((current) => ({
+          ...current,
+          vehicle: undefined,
+        }));
+      }
+
+      setOperationState({
+        title: "차량 삭제 완료",
+        tone: "success",
+        description: vehicleId,
+      });
+    } catch (error) {
+      setOperationState({
+        title: "차량 삭제 실패",
         tone: "error",
         description: getErrorMessage(error),
       });
@@ -822,16 +940,6 @@ export function App() {
       const response = isCreatingTrip
         ? await apiClient.createTrip(tripDraft)
         : await apiClient.updateTrip(selectedTripId ?? tripDraft.trip_id ?? "", tripDraft);
-      let autoCreatedCompanions: string[] = [];
-      let companionProfileError: string | null = null;
-
-      try {
-        autoCreatedCompanions = await ensureCompanionProfiles(
-          response.data.party.companion_ids,
-        );
-      } catch (error) {
-        companionProfileError = getErrorMessage(error);
-      }
 
       const tripList = await apiClient.getTrips();
       setTrips(tripList.items);
@@ -840,41 +948,24 @@ export function App() {
       setTripDraft(response.data);
       setCommaInputs(createCommaSeparatedInputs(response.data));
       const savedDescription = `${response.data.title} 계획을 저장했습니다.`;
-      const companionDescription =
-        autoCreatedCompanions.length > 0
-          ? ` 등록되지 않은 동행자 ID(${autoCreatedCompanions.join(", ")})를 기본 프로필로 추가했습니다. 이름과 연령대를 확인하세요.`
-          : "";
-      const companionErrorDescription = companionProfileError
-        ? ` 동행자 기본 프로필 자동 추가에 실패했습니다: ${companionProfileError}`
-        : "";
 
       try {
         const validation = await apiClient.validateTrip(response.trip_id);
         setValidationWarnings(validation.warnings);
         setOperationState({
           title: "캠핑 계획 저장 완료",
-          tone:
-            validation.warnings.length > 0 ||
-            autoCreatedCompanions.length > 0 ||
-            Boolean(companionProfileError)
-              ? "warning"
-              : "success",
+          tone: validation.warnings.length > 0 ? "warning" : "success",
           description:
             validation.warnings.length > 0
-              ? `${savedDescription}${companionDescription}${companionErrorDescription} 검증 경고를 확인하세요.`
-              : `${savedDescription}${companionDescription}${companionErrorDescription}`,
+              ? `${savedDescription} 검증 경고를 확인하세요.`
+              : savedDescription,
         });
       } catch (error) {
-        setValidationWarnings([
-          ...toValidationWarnings(error),
-          ...(companionProfileError
-            ? [`동행자 기본 프로필 자동 추가 실패: ${companionProfileError}`]
-            : []),
-        ]);
+        setValidationWarnings(toValidationWarnings(error));
         setOperationState({
           title: "캠핑 계획 저장 완료",
           tone: "warning",
-          description: `${savedDescription}${companionDescription}${companionErrorDescription} 검증 경고를 확인하세요.`,
+          description: `${savedDescription} 검증 경고를 확인하세요.`,
         });
       }
     } catch (error) {
@@ -1681,10 +1772,11 @@ export function App() {
             <span>계획 {currentTripLabel}</span>
             <span>히스토리 {currentHistoryLabel}</span>
           </article>
-          <article className="hero__meta hero__meta--paths">
-            <div className="hero__meta-label">주 작업 파일</div>
-            <code>{currentTripPath}</code>
-            <code>{currentOutputPath}</code>
+          <article className="hero__meta">
+            <div className="hero__meta-label">현재 계획 기준</div>
+            <strong>{selectedTripCompanions.length}명 선택</strong>
+            <span>차량 {selectedTripVehicle?.name ?? "미선택"}</span>
+            <span>검증 경고 {validationWarnings.length}건</span>
           </article>
         </div>
       </header>
@@ -1755,6 +1847,20 @@ export function App() {
                         `기록 ${dashboardMetrics.history}건 · 현재 ${currentHistoryLabel}`,
                       )
                     : null}
+                  {group.items.includes("companions")
+                    ? renderNavButton(
+                        "companions",
+                        "캠핑 인원 프로필을 미리 등록하고 계획에서는 선택만 합니다.",
+                        `등록 ${dashboardMetrics.companions}명`,
+                      )
+                    : null}
+                  {group.items.includes("vehicles")
+                    ? renderNavButton(
+                        "vehicles",
+                        "차량 정보를 미리 저장하고 계획에서는 차량만 선택합니다.",
+                        `등록 ${dashboardMetrics.vehicles}대`,
+                      )
+                    : null}
                   {group.items.includes("equipment")
                     ? renderNavButton(
                         "equipment",
@@ -1773,11 +1879,20 @@ export function App() {
                         `링크 ${dashboardMetrics.links}건 · 그룹 ${linkGroups.length}개`,
                       )
                     : null}
-                  {group.items.includes("management")
+                  {group.items.includes("categories")
                     ? renderNavButton(
-                        "management",
+                        "categories",
                         "장비 카테고리 기준과 로컬 백업을 관리합니다.",
                         `카테고리 ${equipmentMetrics.categories}개`,
+                      )
+                    : null}
+                  {group.items.includes("help")
+                    ? renderNavButton(
+                        "help",
+                        "주 작업 파일, 결과 파일, 보조 설명을 따로 모아 봅니다.",
+                        `trip ${selectedTripId ? "선택됨" : "없음"} · 결과 ${
+                          analysisResponse?.output_path ? "연결됨" : "대기"
+                        }`,
                       )
                     : null}
                 </div>
@@ -1788,10 +1903,6 @@ export function App() {
             <button className="button button--primary" onClick={beginCreateTrip} type="button">
               새 캠핑 계획
             </button>
-            <div className="nav-note">
-              <span>주 실행 단위</span>
-              <code>{currentTripPath}</code>
-            </div>
           </div>
         </aside>
 
@@ -1970,6 +2081,453 @@ export function App() {
                       ))}
                     </div>
                   )}
+                </section>
+              </section>
+            </section>
+          ) : null}
+
+          {!appLoading && activePage === "companions" ? (
+            <section className="page-stack">
+              <section className="page-intro panel">
+                <div className="page-intro__copy">
+                  <div className="panel__eyebrow">준비 데이터</div>
+                  <h2>사람 관리</h2>
+                  <p className="panel__copy">
+                    캠핑 인원 프로필을 미리 정리해 두고, 계획 화면에서는 동행자 선택과
+                    요약 확인만 하도록 분리했습니다.
+                  </p>
+                </div>
+                <div className="page-intro__meta">
+                  <div className="meta-chip">
+                    <span>등록 인원</span>
+                    <strong>{companions.length}명</strong>
+                  </div>
+                  <div className="meta-chip">
+                    <span>현재 계획 선택</span>
+                    <strong>{selectedTripCompanions.length}명</strong>
+                  </div>
+                  <div className="meta-chip">
+                    <span>건강 메모</span>
+                    <strong>
+                      {companions.filter((item) => item.health_notes.length > 0).length}명
+                    </strong>
+                  </div>
+                  <div className="meta-chip">
+                    <span>복용약 기록</span>
+                    <strong>
+                      {
+                        companions.filter(
+                          (item) => item.required_medications.length > 0,
+                        ).length
+                      }
+                      명
+                    </strong>
+                  </div>
+                </div>
+              </section>
+
+              <section className="page-grid page-grid--two">
+                <section className="panel">
+                  <div className="panel__eyebrow">인원 목록</div>
+                  <div className="panel__header">
+                    <h2>등록된 사람</h2>
+                    <span className="pill">{companions.length}명</span>
+                  </div>
+                  <div className="stack-list">
+                    <button className="button" onClick={() => beginCreateCompanion()} type="button">
+                      새 사람 추가
+                    </button>
+                    {companions.length === 0 ? (
+                      <div className="empty-state empty-state--compact">
+                        아직 등록된 사람이 없습니다.
+                      </div>
+                    ) : (
+                      companions.map((companion) => (
+                        <button
+                          key={companion.id}
+                          className={`list-card${
+                            editingCompanionId === companion.id ? " list-card--active" : ""
+                          }`}
+                          onClick={() => beginEditCompanion(companion)}
+                          type="button"
+                        >
+                          <strong>{companion.name}</strong>
+                          <span>
+                            {AGE_GROUP_LABELS[companion.age_group]}
+                            {companion.birth_year ? ` / ${companion.birth_year}년생` : ""}
+                            {companion.required_medications[0]
+                              ? ` / ${companion.required_medications[0]}`
+                              : ""}
+                          </span>
+                        </button>
+                      ))
+                    )}
+                  </div>
+                </section>
+
+                <section className="panel">
+                  <div className="panel__eyebrow">프로필 편집</div>
+                  <div className="panel__header">
+                    <h2>{editingCompanionId ? "사람 정보 수정" : "새 사람 추가"}</h2>
+                  </div>
+                  <p className="panel__copy">
+                    이름, 연령대, 건강 특이사항, 복용약과 민감도를 기록해 두면 계획과
+                    분석에서 바로 활용합니다.
+                  </p>
+                  <div className="form-grid">
+                    <FormField label="사람 ID">
+                      <input
+                        placeholder="예: child-2"
+                        value={companionDraft.id}
+                        disabled={Boolean(editingCompanionId)}
+                        onChange={(event) =>
+                          setCompanionDraft((current) => ({
+                            ...current,
+                            id: event.target.value,
+                          }))
+                        }
+                      />
+                    </FormField>
+                    <FormField label="이름">
+                      <input
+                        placeholder="이름"
+                        value={companionDraft.name}
+                        onChange={(event) =>
+                          setCompanionDraft((current) => ({
+                            ...current,
+                            name: event.target.value,
+                          }))
+                        }
+                      />
+                    </FormField>
+                    <FormField label="연령대">
+                      <select
+                        value={companionDraft.age_group}
+                        onChange={(event) =>
+                          setCompanionDraft((current) => ({
+                            ...current,
+                            age_group: event.target.value as Companion["age_group"],
+                          }))
+                        }
+                      >
+                        {Object.entries(AGE_GROUP_LABELS).map(([value, label]) => (
+                          <option key={value} value={value}>
+                            {label}
+                          </option>
+                        ))}
+                      </select>
+                    </FormField>
+                    <FormField label="출생연도">
+                      <input
+                        type="number"
+                        min="1900"
+                        max="2100"
+                        placeholder="예: 2018"
+                        value={companionDraft.birth_year ?? ""}
+                        onChange={(event) =>
+                          setCompanionDraft((current) => ({
+                            ...current,
+                            birth_year: parseInteger(event.target.value),
+                          }))
+                        }
+                      />
+                    </FormField>
+                    <FormField full label="건강 특이사항">
+                      <textarea
+                        className="form-grid__full"
+                        placeholder="알레르기, 추위 민감, 멀미, 수면 습관 등 준비물에 영향을 주는 내용을 줄 단위로 입력하세요."
+                        value={joinLineList(companionDraft.health_notes)}
+                        onChange={(event) =>
+                          setCompanionDraft((current) => ({
+                            ...current,
+                            health_notes: splitLineList(event.target.value),
+                          }))
+                        }
+                      />
+                    </FormField>
+                    <FormField full label="필수 복용약">
+                      <textarea
+                        className="form-grid__full"
+                        placeholder="반드시 챙겨야 하는 약, 체온계, 밴드 같은 의료 관련 준비물을 줄 단위로 입력하세요."
+                        value={joinLineList(companionDraft.required_medications)}
+                        onChange={(event) =>
+                          setCompanionDraft((current) => ({
+                            ...current,
+                            required_medications: splitLineList(event.target.value),
+                          }))
+                        }
+                      />
+                    </FormField>
+                    <label className="checkbox-row">
+                      <input
+                        checked={companionDraft.traits.cold_sensitive ?? false}
+                        onChange={(event) =>
+                          setCompanionDraft((current) => ({
+                            ...current,
+                            traits: {
+                              ...current.traits,
+                              cold_sensitive: event.target.checked,
+                            },
+                          }))
+                        }
+                        type="checkbox"
+                      />
+                      추위에 민감
+                    </label>
+                    <label className="checkbox-row">
+                      <input
+                        checked={companionDraft.traits.heat_sensitive ?? false}
+                        onChange={(event) =>
+                          setCompanionDraft((current) => ({
+                            ...current,
+                            traits: {
+                              ...current.traits,
+                              heat_sensitive: event.target.checked,
+                            },
+                          }))
+                        }
+                        type="checkbox"
+                      />
+                      더위에 민감
+                    </label>
+                    <label className="checkbox-row">
+                      <input
+                        checked={companionDraft.traits.rain_sensitive ?? false}
+                        onChange={(event) =>
+                          setCompanionDraft((current) => ({
+                            ...current,
+                            traits: {
+                              ...current.traits,
+                              rain_sensitive: event.target.checked,
+                            },
+                          }))
+                        }
+                        type="checkbox"
+                      />
+                      비에 민감
+                    </label>
+                  </div>
+                  <div className="button-row">
+                    <button
+                      className="button button--primary"
+                      onClick={() =>
+                        editingCompanionId
+                          ? void handleSaveCompanion()
+                          : void handleCreateCompanion()
+                      }
+                      type="button"
+                    >
+                      {editingCompanionId ? "사람 저장" : "사람 추가"}
+                    </button>
+                    <button className="button" onClick={() => beginCreateCompanion()} type="button">
+                      새 입력으로 초기화
+                    </button>
+                    {editingCompanionId ? (
+                      <button
+                        className="button"
+                        onClick={() => handleDeleteCompanion(editingCompanionId)}
+                        type="button"
+                      >
+                        사람 삭제
+                      </button>
+                    ) : null}
+                  </div>
+                </section>
+              </section>
+            </section>
+          ) : null}
+
+          {!appLoading && activePage === "vehicles" ? (
+            <section className="page-stack">
+              <section className="page-intro panel">
+                <div className="page-intro__copy">
+                  <div className="panel__eyebrow">준비 데이터</div>
+                  <h2>차량 관리</h2>
+                  <p className="panel__copy">
+                    자주 쓰는 차량 정보를 미리 저장해 두고, 계획 화면에서는 차량 선택과
+                    요약 확인만 하도록 정리했습니다.
+                  </p>
+                </div>
+                <div className="page-intro__meta">
+                  <div className="meta-chip">
+                    <span>등록 차량</span>
+                    <strong>{vehicles.length}대</strong>
+                  </div>
+                  <div className="meta-chip">
+                    <span>현재 계획 차량</span>
+                    <strong>{selectedTripVehicle?.name ?? "미선택"}</strong>
+                  </div>
+                  <div className="meta-chip">
+                    <span>적재량 기록</span>
+                    <strong>
+                      {vehicles.filter((item) => item.load_capacity_kg).length}대
+                    </strong>
+                  </div>
+                  <div className="meta-chip">
+                    <span>탑승 인원 기록</span>
+                    <strong>
+                      {vehicles.filter((item) => item.passenger_capacity).length}대
+                    </strong>
+                  </div>
+                </div>
+              </section>
+
+              <section className="page-grid page-grid--two">
+                <section className="panel">
+                  <div className="panel__eyebrow">차량 목록</div>
+                  <div className="panel__header">
+                    <h2>등록된 차량</h2>
+                    <span className="pill">{vehicles.length}대</span>
+                  </div>
+                  <div className="stack-list">
+                    <button className="button" onClick={beginCreateVehicle} type="button">
+                      새 차량 추가
+                    </button>
+                    {vehicles.length === 0 ? (
+                      <div className="empty-state empty-state--compact">
+                        아직 등록된 차량이 없습니다.
+                      </div>
+                    ) : (
+                      vehicles.map((vehicle) => (
+                        <button
+                          key={vehicle.id}
+                          className={`list-card${
+                            editingVehicleId === vehicle.id ? " list-card--active" : ""
+                          }`}
+                          onClick={() => beginEditVehicle(vehicle)}
+                          type="button"
+                        >
+                          <strong>{vehicle.name}</strong>
+                          <span>
+                            {vehicle.passenger_capacity
+                              ? `탑승 ${vehicle.passenger_capacity}명`
+                              : "탑승 인원 미입력"}
+                            {" / "}
+                            {vehicle.load_capacity_kg
+                              ? `적재 ${vehicle.load_capacity_kg}kg`
+                              : "적재량 미입력"}
+                          </span>
+                        </button>
+                      ))
+                    )}
+                  </div>
+                </section>
+
+                <section className="panel">
+                  <div className="panel__eyebrow">차량 편집</div>
+                  <div className="panel__header">
+                    <h2>{editingVehicleId ? "차량 정보 수정" : "새 차량 추가"}</h2>
+                  </div>
+                  <p className="panel__copy">
+                    차종 설명, 탑승 인원, 적재량을 기록해 두면 매번 같은 값을 다시 입력할
+                    필요가 없습니다.
+                  </p>
+                  <div className="form-grid">
+                    <FormField label="차량 ID">
+                      <input
+                        placeholder="예: family-suv"
+                        value={vehicleDraft.id ?? ""}
+                        disabled={Boolean(editingVehicleId)}
+                        onChange={(event) =>
+                          setVehicleDraft((current) => ({
+                            ...current,
+                            id: event.target.value,
+                          }))
+                        }
+                      />
+                    </FormField>
+                    <FormField label="표시 이름">
+                      <input
+                        placeholder="예: 패밀리 SUV"
+                        value={vehicleDraft.name ?? ""}
+                        onChange={(event) =>
+                          setVehicleDraft((current) => ({
+                            ...current,
+                            name: event.target.value,
+                          }))
+                        }
+                      />
+                    </FormField>
+                    <FormField full label="차량 설명">
+                      <input
+                        className="form-grid__full"
+                        placeholder="예: 2열 독립 시트, 루프박스 없이 적재하는 주력 차량"
+                        value={vehicleDraft.description ?? ""}
+                        onChange={(event) =>
+                          setVehicleDraft((current) => ({
+                            ...current,
+                            description: event.target.value || undefined,
+                          }))
+                        }
+                      />
+                    </FormField>
+                    <FormField label="탑승 인원">
+                      <input
+                        type="number"
+                        min="1"
+                        placeholder="예: 5"
+                        value={vehicleDraft.passenger_capacity ?? ""}
+                        onChange={(event) =>
+                          setVehicleDraft((current) => ({
+                            ...current,
+                            passenger_capacity: parseInteger(event.target.value),
+                          }))
+                        }
+                      />
+                    </FormField>
+                    <FormField label="적재량 (kg)">
+                      <input
+                        type="number"
+                        min="0"
+                        placeholder="예: 400"
+                        value={vehicleDraft.load_capacity_kg ?? ""}
+                        onChange={(event) =>
+                          setVehicleDraft((current) => ({
+                            ...current,
+                            load_capacity_kg: parseNumber(event.target.value),
+                          }))
+                        }
+                      />
+                    </FormField>
+                    <FormField full label="메모">
+                      <textarea
+                        className="form-grid__full"
+                        placeholder="루프백 사용 여부, 적재 습관, 아이 카시트 배치 같은 메모를 줄 단위로 입력하세요."
+                        value={joinLineList(vehicleDraft.notes)}
+                        onChange={(event) =>
+                          setVehicleDraft((current) => ({
+                            ...current,
+                            notes: splitLineList(event.target.value),
+                          }))
+                        }
+                      />
+                    </FormField>
+                  </div>
+                  <div className="button-row">
+                    <button
+                      className="button button--primary"
+                      onClick={() =>
+                        editingVehicleId
+                          ? void handleSaveVehicle()
+                          : void handleCreateVehicle()
+                      }
+                      type="button"
+                    >
+                      {editingVehicleId ? "차량 저장" : "차량 추가"}
+                    </button>
+                    <button className="button" onClick={beginCreateVehicle} type="button">
+                      새 입력으로 초기화
+                    </button>
+                    {editingVehicleId ? (
+                      <button
+                        className="button"
+                        onClick={() => handleDeleteVehicle(editingVehicleId)}
+                        type="button"
+                      >
+                        차량 삭제
+                      </button>
+                    ) : null}
+                  </div>
                 </section>
               </section>
             </section>
@@ -2456,14 +3014,15 @@ export function App() {
             </section>
           ) : null}
 
-          {!appLoading && activePage === "management" ? (
+          {!appLoading && activePage === "categories" ? (
             <section className="page-stack">
               <section className="page-intro panel">
                 <div className="page-intro__copy">
                   <div className="panel__eyebrow">운영 설정</div>
-                  <h2>카테고리와 백업 관리</h2>
+                  <h2>카테고리 설정</h2>
                   <p className="panel__copy">
-                    장비 섹션별 카테고리 기준과 로컬 운영 데이터 백업을 한곳에서 관리합니다.
+                    장비 섹션별 카테고리 기준을 한곳에서 관리하고, 필요한 순간에는 같은
+                    화면에서 로컬 운영 데이터 백업까지 실행합니다.
                   </p>
                 </div>
                 <div className="page-intro__meta">
@@ -2476,137 +3035,140 @@ export function App() {
                     <strong>{currentEquipmentCategories.length}개</strong>
                   </div>
                   <div className="meta-chip">
-                    <span>총 관리 수</span>
+                    <span>총 카테고리 수</span>
                     <strong>{equipmentMetrics.categories}개</strong>
+                  </div>
+                  <div className="meta-chip">
+                    <span>백업 실행</span>
+                    <strong>{creatingDataBackup ? "진행 중" : "가능"}</strong>
                   </div>
                 </div>
               </section>
 
-              <section className="page-grid page-grid--two">
-                <section className="panel page-grid__full">
-                  <div className="panel__eyebrow">로컬 백업</div>
+              <section className="page-grid page-grid--categories">
+                <section className="panel">
+                  <div className="panel__eyebrow">카테고리</div>
                   <div className="panel__header">
-                    <h2>로컬 운영 데이터 백업</h2>
+                    <h2>장비 카테고리 관리</h2>
+                    <span className="pill">{currentEquipmentCategories.length}개</span>
                   </div>
                   <p className="panel__copy">
-                    현재 `.camping-data/` 상태를 `.camping-backups/&lt;timestamp&gt;/`
-                    아래에 수동 백업합니다. 서버 시작 시 자동 백업과 별도로 중요한 수정 전
-                    상태를 직접 남길 때 사용합니다.
+                    장비 화면에서는 여기서 정한 카테고리만 선택합니다. 카테고리 코드는 내부
+                    식별값으로 유지하고, 표시 이름만 사용자 문맥에 맞게 조정합니다.
                   </p>
-                  <div className="button-row">
+                  <div className="segmented-row">
                     <button
-                      className="button button--primary"
-                      disabled={creatingDataBackup}
-                      onClick={() => void handleCreateDataBackup()}
+                      className={segmentClass(equipmentSection === "durable")}
+                      onClick={() => setEquipmentSection("durable")}
                       type="button"
                     >
-                      {creatingDataBackup ? "백업 생성 중..." : "지금 백업 생성"}
+                      반복 장비
+                    </button>
+                    <button
+                      className={segmentClass(equipmentSection === "consumables")}
+                      onClick={() => setEquipmentSection("consumables")}
+                      type="button"
+                    >
+                      소모품
+                    </button>
+                    <button
+                      className={segmentClass(equipmentSection === "precheck")}
+                      onClick={() => setEquipmentSection("precheck")}
+                      type="button"
+                    >
+                      출발 전 점검
                     </button>
                   </div>
+                  {currentEquipmentCategories.length === 0 ? (
+                    <div className="empty-state">이 섹션에 등록된 카테고리가 없습니다.</div>
+                  ) : (
+                    <div className="stack-list">
+                      {currentEquipmentCategories.map((category) => (
+                        <article className="edit-card" key={category.id}>
+                          <div className="panel__header">
+                            <h3>
+                              {categoryLabelDrafts[equipmentSection][category.id] ??
+                                category.label}
+                            </h3>
+                            <code>{category.id}</code>
+                          </div>
+                          <div className="form-grid">
+                            <FormField label="표시 이름">
+                              <input
+                                placeholder="카테고리 표시 이름"
+                                value={
+                                  categoryLabelDrafts[equipmentSection][category.id] ??
+                                  category.label
+                                }
+                                onChange={(event) =>
+                                  setCategoryLabelDrafts((current) => ({
+                                    ...current,
+                                    [equipmentSection]: {
+                                      ...current[equipmentSection],
+                                      [category.id]: event.target.value,
+                                    },
+                                  }))
+                                }
+                              />
+                            </FormField>
+                            <FormField label="카테고리 코드">
+                              <input value={category.id} readOnly />
+                            </FormField>
+                          </div>
+                          <div className="button-row">
+                            <button
+                              className="button"
+                              onClick={() =>
+                                void handleSaveEquipmentCategory(
+                                  equipmentSection,
+                                  category.id,
+                                )
+                              }
+                              type="button"
+                            >
+                              저장
+                            </button>
+                            <button
+                              className="button"
+                              onClick={() =>
+                                void handleDeleteEquipmentCategory(
+                                  equipmentSection,
+                                  category.id,
+                                )
+                              }
+                              type="button"
+                            >
+                              삭제
+                            </button>
+                          </div>
+                        </article>
+                      ))}
+                    </div>
+                  )}
                 </section>
 
-                <section className="panel">
-                <div className="panel__eyebrow">카테고리</div>
-                <div className="panel__header">
-                  <h2>장비 카테고리 관리</h2>
-                  <span className="pill">{currentEquipmentCategories.length}개</span>
-                </div>
-                <p className="panel__copy">
-                  장비 섹션별 카테고리를 여기서 관리합니다. 장비 화면에서는 이 목록만
-                  선택할 수 있고, 카테고리 코드는 내부 식별값으로 유지됩니다.
-                </p>
-                <div className="segmented-row">
-                  <button
-                    className={segmentClass(equipmentSection === "durable")}
-                    onClick={() => setEquipmentSection("durable")}
-                    type="button"
-                  >
-                    반복 장비
-                  </button>
-                  <button
-                    className={segmentClass(equipmentSection === "consumables")}
-                    onClick={() => setEquipmentSection("consumables")}
-                    type="button"
-                  >
-                    소모품
-                  </button>
-                  <button
-                    className={segmentClass(equipmentSection === "precheck")}
-                    onClick={() => setEquipmentSection("precheck")}
-                    type="button"
-                  >
-                    출발 전 점검
-                  </button>
-                </div>
-                {currentEquipmentCategories.length === 0 ? (
-                  <div className="empty-state">이 섹션에 등록된 카테고리가 없습니다.</div>
-                ) : (
-                  <div className="stack-list">
-                    {currentEquipmentCategories.map((category) => (
-                      <article className="edit-card" key={category.id}>
-                        <div className="panel__header">
-                          <h3>
-                            {categoryLabelDrafts[equipmentSection][category.id] ??
-                              category.label}
-                          </h3>
-                          <code>{category.id}</code>
-                        </div>
-                        <div className="form-grid">
-                          <FormField label="표시 이름">
-                            <input
-                              placeholder="카테고리 표시 이름"
-                              value={
-                                categoryLabelDrafts[equipmentSection][category.id] ??
-                                category.label
-                              }
-                              onChange={(event) =>
-                                setCategoryLabelDrafts((current) => ({
-                                  ...current,
-                                  [equipmentSection]: {
-                                    ...current[equipmentSection],
-                                    [category.id]: event.target.value,
-                                  },
-                                }))
-                              }
-                            />
-                          </FormField>
-                          <FormField label="카테고리 코드">
-                            <input value={category.id} readOnly />
-                          </FormField>
-                        </div>
-                        <div className="button-row">
-                          <button
-                            className="button"
-                            onClick={() =>
-                              void handleSaveEquipmentCategory(
-                                equipmentSection,
-                                category.id,
-                              )
-                            }
-                            type="button"
-                          >
-                            저장
-                          </button>
-                          <button
-                            className="button"
-                            onClick={() =>
-                              void handleDeleteEquipmentCategory(
-                                equipmentSection,
-                                category.id,
-                              )
-                            }
-                            type="button"
-                          >
-                            삭제
-                          </button>
-                        </div>
-                      </article>
-                    ))}
-                  </div>
-                )}
-                </section>
+                <div className="stack-list categories-side-stack">
+                  <section className="panel">
+                    <div className="panel__eyebrow">로컬 백업</div>
+                    <div className="panel__header">
+                      <h2>로컬 운영 데이터 백업</h2>
+                    </div>
+                    <p className="panel__copy">
+                      현재 camping-data 폴더 상태를 camping-backups 아래에 시점별로 수동
+                      백업합니다. 큰 수정 전에 현재 상태를 남길 때 사용합니다.
+                    </p>
+                    <div className="button-row">
+                      <button
+                        className="button button--primary"
+                        disabled={creatingDataBackup}
+                        onClick={() => void handleCreateDataBackup()}
+                        type="button"
+                      >
+                        {creatingDataBackup ? "백업 생성 중..." : "지금 백업 생성"}
+                      </button>
+                    </div>
+                  </section>
 
-                <div className="stack-list">
                   <section className="panel">
                     <div className="panel__eyebrow">관리 원칙</div>
                     <div className="panel__header">
@@ -2614,7 +3176,7 @@ export function App() {
                     </div>
                     <ul className="detail-list">
                       <li>표시 이름은 사용자가 보는 라벨입니다.</li>
-                      <li>카테고리 코드는 영문 소문자, 숫자, `-`, `_`만 허용됩니다.</li>
+                      <li>카테고리 코드는 영문 소문자, 숫자, 하이픈(-), 밑줄(_)만 허용됩니다.</li>
                       <li>이미 사용 중이거나 마지막 남은 카테고리는 삭제가 제한됩니다.</li>
                     </ul>
                   </section>
@@ -2625,8 +3187,8 @@ export function App() {
                       <h2>새 카테고리 추가</h2>
                     </div>
                     <p className="panel__copy">
-                      카테고리 코드는 자동 생성하지 않습니다. 영문 소문자, 숫자, `-`, `_`
-                      형식으로 직접 입력합니다.
+                      카테고리 코드는 자동 생성하지 않습니다. 영문 소문자, 숫자,
+                      하이픈(-), 밑줄(_) 형식으로 직접 입력합니다.
                     </p>
                     <div className="form-grid">
                       <FormField label="적용 섹션">
@@ -2677,6 +3239,114 @@ export function App() {
             </section>
           ) : null}
 
+          {!appLoading && activePage === "help" ? (
+            <section className="page-stack">
+              <section className="page-intro panel">
+                <div className="page-intro__copy">
+                  <div className="panel__eyebrow">보조 설명</div>
+                  <h2>작업 파일과 생성 결과 안내</h2>
+                  <p className="panel__copy">
+                    메인 작업 흐름을 방해하지 않도록 파일 경로와 생성 규칙 같은 설명성
+                    정보는 이 화면에만 모았습니다.
+                  </p>
+                </div>
+                <div className="page-intro__meta">
+                  <div className="meta-chip">
+                    <span>현재 계획 파일</span>
+                    <strong>
+                      {selectedTripId
+                        ? `.camping-data/trips/${selectedTripId}.yaml`
+                        : ".camping-data/trips/<trip-id>.yaml"}
+                    </strong>
+                  </div>
+                  <div className="meta-chip">
+                    <span>결과 Markdown</span>
+                    <strong>{analysisResponse?.output_path ?? "분석 실행 후 생성"}</strong>
+                  </div>
+                  <div className="meta-chip">
+                    <span>히스토리 파일</span>
+                    <strong>
+                      {selectedHistoryId
+                        ? `.camping-data/history/${selectedHistoryId}.yaml`
+                        : ".camping-data/history/<history-id>.yaml"}
+                    </strong>
+                  </div>
+                </div>
+              </section>
+
+              <section className="page-grid page-grid--two">
+                <section className="panel">
+                  <div className="panel__eyebrow">주 작업 파일</div>
+                  <div className="panel__header">
+                    <h2>기준 파일 안내</h2>
+                  </div>
+                  <div className="stack-list">
+                    <article className="action-card">
+                      <strong>주 작업 파일</strong>
+                      <code className="output-path">
+                        {selectedTripId
+                          ? `.camping-data/trips/${selectedTripId}.yaml`
+                          : ".camping-data/trips/<trip-id>.yaml"}
+                      </code>
+                      <p>캠핑 계획 저장 시 갱신되는 원본 입력 파일입니다.</p>
+                    </article>
+                    <article className="action-card">
+                      <strong>결과 파일</strong>
+                      <code className="output-path">
+                        {analysisResponse?.output_path ?? "분석 실행 후 생성"}
+                      </code>
+                      <p>분석 실행 후 저장되는 Markdown 결과 문서입니다.</p>
+                    </article>
+                    <article className="action-card">
+                      <strong>히스토리 파일</strong>
+                      <code className="output-path">
+                        {selectedHistoryId
+                          ? `.camping-data/history/${selectedHistoryId}.yaml`
+                          : ".camping-data/history/<history-id>.yaml"}
+                      </code>
+                      <p>계획을 아카이브하면 당시 스냅샷과 메모가 이 파일에 저장됩니다.</p>
+                    </article>
+                  </div>
+                </section>
+
+                <div className="stack-list">
+                  <section className="panel">
+                    <div className="panel__eyebrow">생성 규칙</div>
+                    <div className="panel__header">
+                      <h2>언제 무엇이 만들어지나</h2>
+                    </div>
+                    <ul className="detail-list">
+                      <li>계획 저장 시 trips 폴더의 YAML 원본이 갱신됩니다.</li>
+                      <li>분석 실행 후 outputs 폴더에 Markdown 결과가 생성되거나 덮어써집니다.</li>
+                      <li>히스토리로 이동하면 history 폴더에 당시 스냅샷이 저장됩니다.</li>
+                    </ul>
+                  </section>
+
+                  <section className="panel">
+                    <div className="panel__eyebrow">운영 메모</div>
+                    <div className="panel__header">
+                      <h2>참고 사항</h2>
+                    </div>
+                    <div className="stack-list">
+                      <article className="summary-card">
+                        <strong>사람/차량 관리</strong>
+                        <span>준비 데이터에서 미리 입력하고 계획에서는 선택만 합니다.</span>
+                      </article>
+                      <article className="summary-card">
+                        <strong>히스토리 스냅샷</strong>
+                        <span>아카이브 시점의 동행자/차량 요약이 함께 저장됩니다.</span>
+                      </article>
+                      <article className="summary-card">
+                        <strong>보조 설명 위치</strong>
+                        <span>경로, 생성 규칙 같은 정보는 이 메뉴에서만 확인합니다.</span>
+                      </article>
+                    </div>
+                  </section>
+                </div>
+              </section>
+            </section>
+          ) : null}
+
           {!appLoading && activePage === "planning" ? (
             <section className="page-stack">
               <section className="page-intro panel">
@@ -2698,12 +3368,12 @@ export function App() {
                     <strong>{validationWarnings.length}건</strong>
                   </div>
                   <div className="meta-chip">
-                    <span>미등록 동행자</span>
-                    <strong>{missingCompanionIds.length}명</strong>
+                    <span>선택 동행자</span>
+                    <strong>{selectedTripCompanions.length}명</strong>
                   </div>
                   <div className="meta-chip">
-                    <span>결과 경로</span>
-                    <strong>{selectedTripId ? `${selectedTripId}-plan.md` : "저장 후 생성"}</strong>
+                    <span>선택 차량</span>
+                    <strong>{selectedTripVehicle?.name ?? "미선택"}</strong>
                   </div>
                 </div>
               </section>
@@ -2837,70 +3507,165 @@ export function App() {
                           }
                         />
                       </FormField>
-                      <FormField label="동행자 ID">
-                        <input
-                          placeholder="콤마로 구분 (예: self, child-1)"
-                          value={commaInputs.companionIds}
-                          onChange={(event) => {
-                            setCommaInputs((current) => ({
-                              ...current,
-                              companionIds: event.target.value,
-                            }));
-                            updateTripDraft((current) => ({
-                              ...current,
-                              party: {
-                                companion_ids: splitCommaList(event.target.value),
-                              },
-                            }));
-                          }}
-                        />
+                      <FormField full label="동행자 선택">
+                        <div className="selection-block form-grid__full">
+                          <div className="selection-block__header">
+                            <div>
+                              <strong>등록된 사람 목록에서 이번 동행자를 고르세요.</strong>
+                              <p>
+                                계획에는 선택만 남기고, 상세 프로필 수정은 사람 관리에서
+                                따로 다룹니다.
+                              </p>
+                            </div>
+                            <button
+                              className="button"
+                              onClick={() => setActivePage("companions")}
+                              type="button"
+                            >
+                              사람 관리 열기
+                            </button>
+                          </div>
+
+                          {companions.length > 0 ? (
+                            <div className="choice-list">
+                              {companions.map((companion) => {
+                                const included =
+                                  tripDraft.party?.companion_ids.includes(companion.id) ?? false;
+
+                                return (
+                                  <label
+                                    className={`choice-card${
+                                      included ? " choice-card--active" : ""
+                                    }`}
+                                    key={companion.id}
+                                  >
+                                    <input
+                                      checked={included}
+                                      onChange={() =>
+                                        updateTripDraft((current) => ({
+                                          ...current,
+                                          party: {
+                                            companion_ids: toggleSelectionId(
+                                              current.party?.companion_ids ?? [],
+                                              companion.id,
+                                            ),
+                                          },
+                                        }))
+                                      }
+                                      type="checkbox"
+                                    />
+                                    <div className="choice-card__body">
+                                      <strong>{companion.name}</strong>
+                                      <span>
+                                        {AGE_GROUP_LABELS[companion.age_group]}
+                                        {companion.birth_year
+                                          ? ` / ${companion.birth_year}년생`
+                                          : ""}
+                                        {companion.health_notes[0]
+                                          ? ` / ${companion.health_notes[0]}`
+                                          : ""}
+                                      </span>
+                                    </div>
+                                  </label>
+                                );
+                              })}
+                            </div>
+                          ) : (
+                            <div className="empty-state empty-state--compact">
+                              등록된 사람이 없습니다. 사람 관리에서 먼저 프로필을 추가하세요.
+                            </div>
+                          )}
+
+                          {selectedTripCompanions.length > 0 ? (
+                            <div className="summary-grid summary-grid--compact">
+                              {selectedTripCompanions.map((companion) => (
+                                <article className="summary-card" key={companion.id}>
+                                  <span>{companion.id}</span>
+                                  <strong>{companion.name}</strong>
+                                  <p className="panel__copy">
+                                    {AGE_GROUP_LABELS[companion.age_group]}
+                                    {companion.required_medications[0]
+                                      ? ` / 복용약 ${companion.required_medications[0]}`
+                                      : ""}
+                                  </p>
+                                </article>
+                              ))}
+                            </div>
+                          ) : (
+                            <div className="empty-state empty-state--compact">
+                              동행자를 선택하면 요약 정보가 여기 표시됩니다.
+                            </div>
+                          )}
+
+                          {missingCompanionIds.length > 0 ? (
+                            <div className="action-card">
+                              <strong>기존 계획에만 남아 있는 동행자 ID</strong>
+                              <p>{missingCompanionIds.join(", ")} 를 사람 관리에서 정리하세요.</p>
+                            </div>
+                          ) : null}
+                        </div>
                       </FormField>
-                      <FormField label="차량 ID">
-                        <input
-                          placeholder="예: carnival-01"
-                          value={tripDraft.vehicle?.id ?? ""}
-                          onChange={(event) =>
-                            updateTripDraft((current) => ({
-                              ...current,
-                              vehicle: {
-                                ...current.vehicle,
-                                id: event.target.value || undefined,
-                              },
-                            }))
-                          }
-                        />
-                      </FormField>
-                      <FormField label="적재량 (kg)">
-                        <input
-                          type="number"
-                          placeholder="예: 150"
-                          value={tripDraft.vehicle?.load_capacity_kg ?? ""}
-                          onChange={(event) =>
-                            updateTripDraft((current) => ({
-                              ...current,
-                              vehicle: {
-                                ...current.vehicle,
-                                load_capacity_kg: parseNumber(event.target.value),
-                              },
-                            }))
-                          }
-                        />
-                      </FormField>
-                      <FormField label="탑승 인원">
-                        <input
-                          type="number"
-                          placeholder="예: 4"
-                          value={tripDraft.vehicle?.passenger_capacity ?? ""}
-                          onChange={(event) =>
-                            updateTripDraft((current) => ({
-                              ...current,
-                              vehicle: {
-                                ...current.vehicle,
-                                passenger_capacity: parseInteger(event.target.value),
-                              },
-                            }))
-                          }
-                        />
+                      <FormField full label="차량 선택">
+                        <div className="selection-block form-grid__full">
+                          <div className="selection-block__header">
+                            <div>
+                              <strong>사전에 등록한 차량에서 이번 이동 차량을 선택하세요.</strong>
+                              <p>
+                                선택하면 탑승 인원과 적재량 요약이 계획에 함께 반영됩니다.
+                              </p>
+                            </div>
+                            <button
+                              className="button"
+                              onClick={() => setActivePage("vehicles")}
+                              type="button"
+                            >
+                              차량 관리 열기
+                            </button>
+                          </div>
+                          <select
+                            aria-label="차량 선택"
+                            value={tripDraft.vehicle?.id ?? ""}
+                            onChange={(event) =>
+                              updateTripDraft((current) => ({
+                                ...current,
+                                vehicle: buildTripVehicleSelection(
+                                  event.target.value,
+                                  vehicles,
+                                  current.vehicle,
+                                ),
+                              }))
+                            }
+                          >
+                            <option value="">차량을 선택하세요</option>
+                            {buildVehicleOptions(vehicles, tripDraft.vehicle).map((vehicle) => (
+                              <option key={vehicle.id} value={vehicle.id}>
+                                {vehicle.name}
+                              </option>
+                            ))}
+                          </select>
+
+                          {selectedTripVehicle ? (
+                            <article className="summary-card">
+                              <span>{selectedTripVehicle.id}</span>
+                              <strong>{selectedTripVehicle.name}</strong>
+                              <p className="panel__copy">
+                                {selectedTripVehicle.description ?? "차량 설명 없음"}
+                              </p>
+                              <div className="button-row button-row--compact">
+                                <span className="pill">
+                                  탑승 {selectedTripVehicle.passenger_capacity ?? "미입력"}명
+                                </span>
+                                <span className="pill">
+                                  적재 {selectedTripVehicle.load_capacity_kg ?? "미입력"}kg
+                                </span>
+                              </div>
+                            </article>
+                          ) : (
+                            <div className="empty-state empty-state--compact">
+                              차량을 선택하면 요약 정보가 여기 표시됩니다.
+                            </div>
+                          )}
+                        </div>
                       </FormField>
                       <FormField label="날씨 요약">
                         <input
@@ -3019,7 +3784,7 @@ export function App() {
                       <FormField full label="메모">
                         <textarea
                           className="form-grid__full"
-                          placeholder="메모를 줄 단위로 입력"
+                          placeholder="사이트 특이사항, 출발 전 꼭 챙길 것, 당일 일정 메모, 아직 장비/링크로 옮기지 않은 임시 메모를 줄 단위로 적어두세요."
                           value={joinLineList(tripDraft.notes)}
                           onChange={(event) =>
                             updateTripDraft((current) => ({
@@ -3030,283 +3795,6 @@ export function App() {
                         />
                       </FormField>
                     </div>
-
-                    <section className="companion-panel">
-                      <div className="panel__header">
-                        <h3>동행자 관리</h3>
-                        <span className="pill">{companions.length}명 등록됨</span>
-                      </div>
-                      <p className="panel__copy">
-                        계획에는 동행자 ID를 입력하고, 없는 ID는 여기서 바로 추가하거나 저장 시
-                        기본 프로필로 자동 등록할 수 있습니다. ID는 소문자 kebab-case를
-                        사용합니다.
-                      </p>
-
-                      {companions.length > 0 ? (
-                        <div className="stack-list">
-                          {companions.map((companion) => {
-                            const included =
-                              tripDraft.party?.companion_ids.includes(companion.id) ?? false;
-
-                            return (
-                              <article className="edit-card" key={companion.id}>
-                                <div className="companion-card__header">
-                                  <div>
-                                    <strong>
-                                      {companion.name} <code>{companion.id}</code>
-                                    </strong>
-                                    <p>
-                                      {AGE_GROUP_LABELS[companion.age_group]}
-                                      {companion.birth_year
-                                        ? ` / ${companion.birth_year}년생`
-                                        : ""}
-                                      {included ? " / 현재 계획에 포함됨" : ""}
-                                    </p>
-                                  </div>
-                                  <div className="button-row">
-                                    <button
-                                      className="button"
-                                      onClick={() => {
-                                        setCommaInputs((current) => ({
-                                          ...current,
-                                          companionIds: joinCommaList(
-                                            mergeCompanionIds(
-                                              tripDraft.party?.companion_ids ?? [],
-                                              companion.id,
-                                            ),
-                                          ),
-                                        }));
-                                        updateTripDraft((current) => ({
-                                          ...current,
-                                          party: {
-                                            companion_ids: mergeCompanionIds(
-                                              current.party?.companion_ids ?? [],
-                                              companion.id,
-                                            ),
-                                          },
-                                        }));
-                                      }}
-                                      type="button"
-                                    >
-                                      계획에 추가
-                                    </button>
-                                    <button
-                                      className="button"
-                                      onClick={() => beginEditCompanion(companion)}
-                                      type="button"
-                                    >
-                                      편집
-                                    </button>
-                                    <button
-                                      className="button"
-                                      onClick={() => handleDeleteCompanion(companion.id)}
-                                      type="button"
-                                    >
-                                      삭제
-                                    </button>
-                                  </div>
-                                </div>
-                              </article>
-                            );
-                          })}
-                        </div>
-                      ) : (
-                        <div className="empty-state empty-state--compact">
-                          등록된 동행자가 없습니다. 아래에서 첫 동행자를 추가하세요.
-                        </div>
-                      )}
-
-                      {missingCompanionIds.length > 0 ? (
-                        <div className="edit-card">
-                          <strong>미등록 동행자 ID</strong>
-                          <p className="companion-card__copy">
-                            {missingCompanionIds.join(", ")} 가 아직 등록되지 않았습니다.
-                          </p>
-                          <div className="button-row">
-                            {missingCompanionIds.map((companionId) => (
-                              <button
-                                className="button"
-                                key={companionId}
-                                onClick={() =>
-                                  void handleCreateCompanion(
-                                    createPlaceholderCompanion(companionId),
-                                  )
-                                }
-                                type="button"
-                              >
-                                {companionId} 기본값으로 추가
-                              </button>
-                            ))}
-                            <button
-                              className="button"
-                              onClick={() => beginCreateCompanion(missingCompanionIds[0])}
-                              type="button"
-                            >
-                              수동으로 상세 입력
-                            </button>
-                          </div>
-                        </div>
-                      ) : null}
-
-                      <div className="edit-card">
-                        <div className="panel__header">
-                          <h3>{editingCompanionId ? "동행자 수정" : "동행자 추가"}</h3>
-                        </div>
-                        <div className="form-grid">
-                          <FormField label="동행자 ID">
-                            <input
-                              placeholder="예: child-2"
-                              value={companionDraft.id}
-                              disabled={Boolean(editingCompanionId)}
-                              onChange={(event) =>
-                                setCompanionDraft((current) => ({
-                                  ...current,
-                                  id: event.target.value,
-                                }))
-                              }
-                            />
-                          </FormField>
-                          <FormField label="이름">
-                            <input
-                              placeholder="이름"
-                              value={companionDraft.name}
-                              onChange={(event) =>
-                                setCompanionDraft((current) => ({
-                                  ...current,
-                                  name: event.target.value,
-                                }))
-                              }
-                            />
-                          </FormField>
-                          <FormField label="연령대">
-                            <select
-                              value={companionDraft.age_group}
-                              onChange={(event) =>
-                                setCompanionDraft((current) => ({
-                                  ...current,
-                                  age_group: event.target.value as Companion["age_group"],
-                                }))
-                              }
-                            >
-                              {Object.entries(AGE_GROUP_LABELS).map(([value, label]) => (
-                                <option key={value} value={value}>
-                                  {label}
-                                </option>
-                              ))}
-                            </select>
-                          </FormField>
-                          <FormField label="출생연도">
-                            <input
-                              type="number"
-                              min="1900"
-                              max="2100"
-                              placeholder="예: 2018"
-                              value={companionDraft.birth_year ?? ""}
-                              onChange={(event) =>
-                                setCompanionDraft((current) => ({
-                                  ...current,
-                                  birth_year: parseInteger(event.target.value),
-                                }))
-                              }
-                            />
-                          </FormField>
-                          <FormField full label="건강 특이사항">
-                            <textarea
-                              className="form-grid__full"
-                              placeholder="줄 단위로 입력"
-                              value={joinLineList(companionDraft.health_notes)}
-                              onChange={(event) =>
-                                setCompanionDraft((current) => ({
-                                  ...current,
-                                  health_notes: splitLineList(event.target.value),
-                                }))
-                              }
-                            />
-                          </FormField>
-                          <FormField full label="필수 복용약">
-                            <textarea
-                              className="form-grid__full"
-                              placeholder="줄 단위로 입력"
-                              value={joinLineList(companionDraft.required_medications)}
-                              onChange={(event) =>
-                                setCompanionDraft((current) => ({
-                                  ...current,
-                                  required_medications: splitLineList(event.target.value),
-                                }))
-                              }
-                            />
-                          </FormField>
-                          <label className="checkbox-row">
-                            <input
-                              checked={companionDraft.traits.cold_sensitive ?? false}
-                              onChange={(event) =>
-                                setCompanionDraft((current) => ({
-                                  ...current,
-                                  traits: {
-                                    ...current.traits,
-                                    cold_sensitive: event.target.checked,
-                                  },
-                                }))
-                              }
-                              type="checkbox"
-                            />
-                            추위에 민감
-                          </label>
-                          <label className="checkbox-row">
-                            <input
-                              checked={companionDraft.traits.heat_sensitive ?? false}
-                              onChange={(event) =>
-                                setCompanionDraft((current) => ({
-                                  ...current,
-                                  traits: {
-                                    ...current.traits,
-                                    heat_sensitive: event.target.checked,
-                                  },
-                                }))
-                              }
-                              type="checkbox"
-                            />
-                            더위에 민감
-                          </label>
-                          <label className="checkbox-row">
-                            <input
-                              checked={companionDraft.traits.rain_sensitive ?? false}
-                              onChange={(event) =>
-                                setCompanionDraft((current) => ({
-                                  ...current,
-                                  traits: {
-                                    ...current.traits,
-                                    rain_sensitive: event.target.checked,
-                                  },
-                                }))
-                              }
-                              type="checkbox"
-                            />
-                            비에 민감
-                          </label>
-                        </div>
-                        <div className="button-row">
-                          <button
-                            className="button button--primary"
-                            onClick={() =>
-                              editingCompanionId
-                                ? void handleSaveCompanion()
-                                : void handleCreateCompanion()
-                            }
-                            type="button"
-                          >
-                            {editingCompanionId ? "동행자 저장" : "동행자 추가"}
-                          </button>
-                          <button
-                            className="button"
-                            onClick={() => beginCreateCompanion()}
-                            type="button"
-                          >
-                            새 입력으로 초기화
-                          </button>
-                        </div>
-                      </div>
-                    </section>
 
                     {validationWarnings.length > 0 ? (
                       <StatusBanner
@@ -3527,6 +4015,10 @@ export function App() {
                     <span>결과 문서</span>
                     <strong>{selectedHistory?.output_path ? "연결됨" : "없음"}</strong>
                   </div>
+                  <div className="meta-chip">
+                    <span>차량 기록</span>
+                    <strong>{selectedHistoryVehicle?.name ?? "없음"}</strong>
+                  </div>
                 </div>
               </section>
 
@@ -3553,7 +4045,8 @@ export function App() {
                         <span>
                           {item.date?.start ?? "날짜 미입력"} /{" "}
                           {item.location?.region ?? "지역 미입력"} /{" "}
-                          {item.attendee_count ?? item.companion_ids.length}명
+                          {item.attendee_count ?? item.companion_ids.length}명 /{" "}
+                          {resolveHistoryVehicleSnapshot(item, vehicles)?.name ?? "차량 미기록"}
                         </span>
                       </button>
                     ))}
@@ -3609,6 +4102,38 @@ export function App() {
                     <FormField label="보관 시각">
                       <input value={selectedHistory.archived_at} readOnly />
                     </FormField>
+                    <div className="form-grid__full summary-grid summary-grid--compact">
+                      {selectedHistoryCompanionSnapshots.length > 0 ? (
+                        selectedHistoryCompanionSnapshots.map((companion) => (
+                          <article className="summary-card" key={companion.id}>
+                            <span>{companion.id}</span>
+                            <strong>{companion.name}</strong>
+                            <p className="panel__copy">
+                              {AGE_GROUP_LABELS[companion.age_group]}
+                              {companion.required_medications[0]
+                                ? ` / 복용약 ${companion.required_medications[0]}`
+                                : ""}
+                            </p>
+                          </article>
+                        ))
+                      ) : (
+                        <article className="summary-card">
+                          <span>동행자</span>
+                          <strong>기록 없음</strong>
+                        </article>
+                      )}
+                      <article className="summary-card">
+                        <span>차량</span>
+                        <strong>{selectedHistoryVehicle?.name ?? "기록 없음"}</strong>
+                        <p className="panel__copy">
+                          {selectedHistoryVehicle
+                            ? `탑승 ${selectedHistoryVehicle.passenger_capacity ?? "미입력"}명 / 적재 ${
+                                selectedHistoryVehicle.load_capacity_kg ?? "미입력"
+                              }kg`
+                            : "당시 사용 차량 정보가 기록되지 않았습니다."}
+                        </p>
+                      </article>
+                    </div>
                     <div className="form-grid__full history-output-card">
                       <div className="history-output-card__header">
                         <div>
@@ -3651,7 +4176,7 @@ export function App() {
                     <FormField full label="메모">
                       <textarea
                         className="form-grid__full"
-                        placeholder="히스토리 메모를 줄 단위로 입력"
+                        placeholder="누구와 어떤 차량으로 갔는지, 실제로 좋았던 점과 불편했던 점, 다음에 보완할 준비물을 줄 단위로 적어두세요."
                         value={joinLineList(selectedHistory.notes)}
                         onChange={(event) =>
                           setHistory((current) =>
@@ -4036,6 +4561,15 @@ function createEmptyLink(): ExternalLinkInput {
   };
 }
 
+function createEmptyVehicle(): VehicleInput {
+  return {
+    id: "",
+    name: "",
+    description: "",
+    notes: [],
+  };
+}
+
 function createEmptyEquipmentCategoryDraft(): EquipmentCategoryCreateInput {
   return {
     id: "",
@@ -4069,17 +4603,29 @@ function createEmptySectionTrackedIds(): SectionTrackedIds {
 
 function createCommaSeparatedInputs(draft?: TripDraft | null): CommaSeparatedInputs {
   return {
-    companionIds: joinCommaList(draft?.party?.companion_ids),
     requestedDishes: joinCommaList(draft?.meal_plan?.requested_dishes),
     requestedStops: joinCommaList(draft?.travel_plan?.requested_stops),
   };
 }
 
 function FormField(props: { children: ReactNode; full?: boolean; label: string }) {
+  const child =
+    isValidElement(props.children) &&
+    typeof props.children.type === "string" &&
+    ["input", "select", "textarea"].includes(props.children.type)
+      ? cloneElement(
+          props.children as ReactElement<Record<string, unknown>>,
+          {
+            "aria-label":
+              (props.children.props as Record<string, unknown>)["aria-label"] ?? props.label,
+          },
+        )
+      : props.children;
+
   return (
     <div className={props.full ? "field form-grid__full" : "field"}>
       <span className="field__label">{props.label}</span>
-      {props.children}
+      {child}
     </div>
   );
 }
@@ -5001,8 +5547,133 @@ function getMissingCompanionIds(
   return [...new Set(companionIds.filter((item) => item && !knownIds.has(item)))];
 }
 
-function mergeCompanionIds(currentIds: string[], companionId: string) {
-  return [...new Set([...currentIds, companionId])];
+function toggleSelectionId(currentIds: string[], targetId: string) {
+  return currentIds.includes(targetId)
+    ? currentIds.filter((item) => item !== targetId)
+    : [...currentIds, targetId];
+}
+
+function resolveSelectedCompanions(
+  companionIds: string[],
+  companions: Companion[],
+) {
+  const companionMap = new Map(companions.map((item) => [item.id, item]));
+
+  return companionIds.map(
+    (companionId) =>
+      companionMap.get(companionId) ?? createPlaceholderCompanion(companionId),
+  );
+}
+
+function sortVehicles(left: Vehicle, right: Vehicle) {
+  return left.name.localeCompare(right.name, "ko");
+}
+
+function buildVehicleOptions(
+  vehicles: Vehicle[],
+  currentVehicle?: TripDraft["vehicle"],
+) {
+  const merged = [...vehicles];
+
+  if (
+    currentVehicle?.id &&
+    !merged.some((vehicle) => vehicle.id === currentVehicle.id)
+  ) {
+    merged.push({
+      id: currentVehicle.id,
+      name: currentVehicle.name ?? currentVehicle.id,
+      description: currentVehicle.description,
+      passenger_capacity: currentVehicle.passenger_capacity,
+      load_capacity_kg: currentVehicle.load_capacity_kg,
+      notes: currentVehicle.notes ?? [],
+    });
+  }
+
+  return merged.sort(sortVehicles);
+}
+
+function buildTripVehicleSelection(
+  vehicleId: string,
+  vehicles: Vehicle[],
+  currentVehicle?: TripDraft["vehicle"],
+): TripDraft["vehicle"] {
+  if (!vehicleId) {
+    return undefined;
+  }
+
+  const matchedVehicle = buildVehicleOptions(vehicles, currentVehicle).find(
+    (vehicle) => vehicle.id === vehicleId,
+  );
+
+  if (!matchedVehicle) {
+    return currentVehicle?.id === vehicleId ? currentVehicle : { id: vehicleId };
+  }
+
+  return {
+    id: matchedVehicle.id,
+    name: matchedVehicle.name,
+    description: matchedVehicle.description,
+    passenger_capacity: matchedVehicle.passenger_capacity,
+    load_capacity_kg: matchedVehicle.load_capacity_kg,
+    notes: [...matchedVehicle.notes],
+  };
+}
+
+function resolveSelectedVehicle(
+  tripVehicle: TripDraft["vehicle"],
+  vehicles: Vehicle[],
+): Vehicle | null {
+  if (!tripVehicle) {
+    return null;
+  }
+
+  const matchedVehicle = tripVehicle.id
+    ? vehicles.find((vehicle) => vehicle.id === tripVehicle.id) ?? null
+    : null;
+
+  if (!matchedVehicle && !tripVehicle.id && !tripVehicle.name) {
+    return null;
+  }
+
+  return {
+    id: tripVehicle.id ?? matchedVehicle?.id ?? "vehicle-snapshot",
+    name: tripVehicle.name ?? matchedVehicle?.name ?? tripVehicle.id ?? "차량",
+    description: tripVehicle.description ?? matchedVehicle?.description,
+    passenger_capacity:
+      tripVehicle.passenger_capacity ?? matchedVehicle?.passenger_capacity,
+    load_capacity_kg:
+      tripVehicle.load_capacity_kg ?? matchedVehicle?.load_capacity_kg,
+    notes:
+      tripVehicle.notes && tripVehicle.notes.length > 0
+        ? tripVehicle.notes
+        : matchedVehicle?.notes ?? [],
+  };
+}
+
+function resolveHistoryCompanionSnapshots(
+  history: HistoryRecord,
+  companions: Companion[],
+) {
+  if (history.companion_snapshots.length > 0) {
+    return history.companion_snapshots;
+  }
+
+  return resolveSelectedCompanions(history.companion_ids, companions);
+}
+
+function resolveHistoryVehicleSnapshot(
+  history: HistoryRecord | null,
+  vehicles: Vehicle[],
+) {
+  if (!history) {
+    return null;
+  }
+
+  if (history.vehicle_snapshot) {
+    return resolveSelectedVehicle(history.vehicle_snapshot, vehicles);
+  }
+
+  return resolveSelectedVehicle(history.trip_snapshot.vehicle, vehicles);
 }
 
 function sortCompanions(left: Companion, right: Companion) {

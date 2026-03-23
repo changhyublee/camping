@@ -26,6 +26,8 @@ import type {
   TripDraft,
   TripSummary,
   ValidateTripResponse,
+  Vehicle,
+  VehicleInput,
 } from "@camping/shared";
 
 const API_BASE_URL =
@@ -83,6 +85,9 @@ export const apiClient = {
   async getCompanions(): Promise<{ items: Companion[] }> {
     return request("/api/companions");
   },
+  async getVehicles(): Promise<{ items: Vehicle[] }> {
+    return request("/api/vehicles");
+  },
   async createDataBackup(): Promise<CreateDataBackupResponse> {
     return request("/api/data-backups", {
       method: "POST",
@@ -105,6 +110,26 @@ export const apiClient = {
   },
   async deleteCompanion(companionId: string): Promise<{ status: "deleted" }> {
     return request(`/api/companions/${companionId}`, {
+      method: "DELETE",
+    });
+  },
+  async createVehicle(input: VehicleInput): Promise<{ item: Vehicle }> {
+    return request("/api/vehicles", {
+      method: "POST",
+      body: JSON.stringify(input),
+    });
+  },
+  async updateVehicle(
+    vehicleId: string,
+    input: VehicleInput,
+  ): Promise<{ item: Vehicle }> {
+    return request(`/api/vehicles/${vehicleId}`, {
+      method: "PUT",
+      body: JSON.stringify(input),
+    });
+  },
+  async deleteVehicle(vehicleId: string): Promise<{ status: "deleted" }> {
+    return request(`/api/vehicles/${vehicleId}`, {
       method: "DELETE",
     });
   },

@@ -29,6 +29,8 @@ import {
   toTripSummary,
   travelPreferencesSchema,
   tripSchema,
+  vehicleSchema,
+  vehiclesSchema,
   type ConsumableEquipmentData,
   type ConsumableEquipmentItem,
   type ConsumableEquipmentItemInput,
@@ -58,6 +60,9 @@ import {
   type TripDraft,
   type TripId,
   type TripSummary,
+  type Vehicle,
+  type VehicleInput,
+  type VehiclesData,
 } from "@camping/shared";
 import { parse, stringify } from "yaml";
 import type { AppConfig } from "../config";
@@ -187,6 +192,10 @@ export class CampingRepository {
 
   async archiveTrip(tripId: TripId): Promise<HistoryRecord> {
     const trip = await this.readTrip(tripId);
+    const [companions, vehicles] = await Promise.all([
+      this.readCompanions(),
+      this.readVehicles(),
+    ]);
     const outputPath = (await fileExists(this.getTripOutputPath(tripId)))
       ? getTripOutputRelativePath(tripId)
       : null;
@@ -211,7 +220,12 @@ export class CampingRepository {
         region: trip.location?.region,
       },
       companion_ids: trip.party.companion_ids,
+      companion_snapshots: buildCompanionSnapshots(
+        trip.party.companion_ids,
+        companions.companions,
+      ),
       attendee_count: trip.party.companion_ids.length,
+      vehicle_snapshot: resolveVehicleSnapshot(trip.vehicle, vehicles.vehicles),
       notes: trip.notes ?? [],
       archived_at: new Date().toISOString(),
       output_path: outputPath,
@@ -364,6 +378,101 @@ export class CampingRepository {
     await this.writeYamlFile(this.getCompanionsPath(), {
       version: companions.version,
       companions: nextItems,
+    });
+  }
+
+  async readVehicles(): Promise<VehiclesData> {
+    const vehiclesPath = this.getVehiclesPath();
+
+    if (!(await fileExists(vehiclesPath))) {
+      return {
+        version: 1,
+        vehicles: [],
+      };
+    }
+
+    const vehicles = await this.readYamlFile(
+      vehiclesPath,
+      vehiclesSchema,
+      "RESOURCE_NOT_FOUND",
+      "vehicles.yaml 파일을 찾을 수 없습니다.",
+      "TRIP_INVALID",
+      "vehicles.yaml 형식이 올바르지 않습니다.",
+    );
+
+    return {
+      ...vehicles,
+      vehicles: [...vehicles.vehicles].sort(sortByName),
+    };
+  }
+
+  async createVehicle(input: VehicleInput): Promise<Vehicle> {
+    const vehicles = await this.readVehicles();
+
+    if (vehicles.vehicles.some((item) => item.id === input.id)) {
+      throw new AppError(
+        "CONFLICT",
+        `같은 id 의 차량이 이미 존재합니다: ${input.id}`,
+        409,
+      );
+    }
+
+    const vehicle = vehicleSchema.parse(input);
+
+    await this.writeYamlFile(this.getVehiclesPath(), {
+      version: vehicles.version,
+      vehicles: [...vehicles.vehicles, vehicle].sort(sortByName),
+    });
+
+    return vehicle;
+  }
+
+  async updateVehicle(vehicleId: string, input: VehicleInput): Promise<Vehicle> {
+    const vehicles = await this.readVehicles();
+    const index = vehicles.vehicles.findIndex((item) => item.id === vehicleId);
+
+    if (index < 0) {
+      throw new AppError(
+        "RESOURCE_NOT_FOUND",
+        `수정할 차량을 찾을 수 없습니다: ${vehicleId}`,
+        404,
+      );
+    }
+
+    const nextVehicle = vehicleSchema.parse({
+      ...input,
+      id: vehicleId,
+    });
+
+    vehicles.vehicles[index] = nextVehicle;
+    vehicles.vehicles.sort(sortByName);
+    await this.writeYamlFile(this.getVehiclesPath(), vehicles);
+    return nextVehicle;
+  }
+
+  async deleteVehicle(vehicleId: string): Promise<void> {
+    const vehicles = await this.readVehicles();
+    const nextItems = vehicles.vehicles.filter((item) => item.id !== vehicleId);
+
+    if (nextItems.length === vehicles.vehicles.length) {
+      throw new AppError(
+        "RESOURCE_NOT_FOUND",
+        `삭제할 차량을 찾을 수 없습니다: ${vehicleId}`,
+        404,
+      );
+    }
+
+    if (await this.isVehicleReferencedByTrip(vehicleId)) {
+      throw new AppError(
+        "CONFLICT",
+        `현재 계획에서 사용 중인 차량은 삭제할 수 없습니다: ${vehicleId}`,
+        409,
+      );
+    }
+
+    await this.writeYamlFile(this.getVehiclesPath(), {
+      version: vehicles.version,
+      vehicles: nextItems,
     });
   }
 
@@ -699,6 +808,7 @@ export class CampingRepository {
     const [
       profile,
       companions,
+      vehicles,
       durableEquipment,
       consumables,
       precheck,
@@ -716,6 +826,7 @@ export class CampingRepository {
         "profile.yaml 형식이 올바르지 않습니다.",
       ),
       this.readCompanions(),
+      this.readVehicles(),
       this.readDurableEquipment(),
       this.readConsumables(),
       this.readPrecheck(),
@@ -742,6 +853,8 @@ export class CampingRepository {
     return {
       profile,
       companions,
+      vehicles,
+      selected_vehicle: resolveVehicleSnapshot(trip.vehicle, vehicles.vehicles),
       durableEquipment,
       consumables,
       precheck,
@@ -1348,6 +1461,10 @@ export class CampingRepository {
     return path.join(this.config.dataDir, "companions.yaml");
   }
 
+  private getVehiclesPath() {
+    return path.join(this.config.dataDir, "vehicles.yaml");
+  }
+
   private getDurablePath() {
     return path.join(this.config.dataDir, "equipment", "durable.yaml");
   }
@@ -1486,6 +1603,28 @@ export class CampingRepository {
 
     return historyMatches.some(Boolean);
   }
+
+  private async isVehicleReferencedByTrip(vehicleId: string): Promise<boolean> {
+    const tripFiles = await this.listYamlFiles(this.getTripsDir());
+    const tripMatches = await Promise.all(
+      tripFiles.map(async (fileName) => {
+        const tripId = fileName.replace(/\.ya?ml$/u, "");
+
+        if (!isTripId(tripId)) {
+          return false;
+        }
+
+        try {
+          const trip = await this.readTrip(tripId);
+          return trip.vehicle?.id === vehicleId;
+        } catch {
+          return false;
+        }
+      }),
+    );
+
+    return tripMatches.some(Boolean);
+  }
 }
 
 function normalizeTripDraft(draft: TripDraft, tripId: string): TripData {
@@ -1511,6 +1650,63 @@ function normalizeTripDraft(draft: TripDraft, tripId: string): TripData {
   }
 
   return parsed.data;
+}
+
+function buildCompanionSnapshots(
+  companionIds: string[],
+  companions: Companion[],
+): Companion[] {
+  const companionMap = new Map(companions.map((item) => [item.id, item]));
+
+  return companionIds.map(
+    (companionId) => companionMap.get(companionId) ?? createPlaceholderCompanion(companionId),
+  );
+}
+
+function resolveVehicleSnapshot(
+  tripVehicle: TripData["vehicle"],
+  vehicles: Vehicle[],
+): Vehicle | null {
+  if (!tripVehicle) {
+    return null;
+  }
+
+  const matchedVehicle = tripVehicle.id
+    ? vehicles.find((item) => item.id === tripVehicle.id) ?? null
+    : null;
+
+  if (!matchedVehicle && !tripVehicle.id && !tripVehicle.name) {
+    return null;
+  }
+
+  return vehicleSchema.parse({
+    id: tripVehicle.id ?? matchedVehicle?.id ?? "vehicle-snapshot",
+    name: tripVehicle.name ?? matchedVehicle?.name ?? tripVehicle.id ?? "차량",
+    description: tripVehicle.description ?? matchedVehicle?.description,
+    passenger_capacity:
+      tripVehicle.passenger_capacity ?? matchedVehicle?.passenger_capacity,
+    load_capacity_kg:
+      tripVehicle.load_capacity_kg ?? matchedVehicle?.load_capacity_kg,
+    notes:
+      tripVehicle.notes && tripVehicle.notes.length > 0
+        ? tripVehicle.notes
+        : matchedVehicle?.notes ?? [],
+  });
+}
+
+function createPlaceholderCompanion(companionId: string): Companion {
+  return {
+    id: companionId,
+    name: companionId,
+    age_group: "adult",
+    health_notes: [],
+    required_medications: [],
+    traits: {
+      cold_sensitive: false,
+      heat_sensitive: false,
+      rain_sensitive: false,
+    },
+  };
 }
 
 function mergeEquipmentCategories(

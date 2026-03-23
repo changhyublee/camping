@@ -9,7 +9,7 @@
 - 모든 API는 로컬 환경에서만 실행한다
 - 브라우저는 OpenAI API를 직접 호출하지 않는다
 - 운영 데이터는 `.camping-data/` 에 저장한다
-- `trip_id`, `history_id`, 동행자 `id`, 링크 `id` 는 소문자 kebab-case를 사용한다
+- `trip_id`, `history_id`, 동행자 `id`, 차량 `id`, 링크 `id` 는 소문자 kebab-case를 사용한다
 - `trip_id` 는 `trips/`, `history/`, `outputs/` 와 충돌하지 않게 유지한다
 
 ## 3. 엔드포인트
@@ -26,6 +26,13 @@
 - `POST /api/companions`
 - `PUT /api/companions/:companionId`
 - `DELETE /api/companions/:companionId`
+
+### 차량
+
+- `GET /api/vehicles`
+- `POST /api/vehicles`
+- `PUT /api/vehicles/:vehicleId`
+- `DELETE /api/vehicles/:vehicleId`
 
 ### 캠핑 계획
 
@@ -78,6 +85,11 @@
 - `PUT /api/history/:historyId`
 - `DELETE /api/history/:historyId`
 
+히스토리 아카이브 규칙:
+
+- `POST /api/trips/:tripId/archive` 시 당시 계획의 `companion_snapshots`, `vehicle_snapshot` 이 함께 저장된다
+- 히스토리 상세는 이후 기준 데이터가 바뀌어도 스냅샷을 우선 보여준다
+
 ### 외부 링크
 
 - `GET /api/links`
@@ -112,6 +124,23 @@
       "id": "self",
       "name": "본인",
       "age_group": "adult"
+    }
+  ]
+}
+```
+
+### `GET /api/vehicles`
+
+```json
+{
+  "items": [
+    {
+      "id": "family-suv",
+      "name": "패밀리 SUV",
+      "description": "가족 캠핑용 기본 차량",
+      "passenger_capacity": 5,
+      "load_capacity_kg": 400,
+      "notes": []
     }
   ]
 }
@@ -200,7 +229,18 @@
   "items": [
     {
       "history_id": "2026-03-08-yangpyeong",
-      "title": "3월 양평 주말 캠핑"
+      "title": "3월 양평 주말 캠핑",
+      "companion_snapshots": [
+        {
+          "id": "self",
+          "name": "본인",
+          "age_group": "adult"
+        }
+      ],
+      "vehicle_snapshot": {
+        "id": "family-suv",
+        "name": "패밀리 SUV"
+      }
     }
   ]
 }
@@ -260,26 +300,3 @@
   }
 }
 ```
-
-백업 규칙:
-
-- 수동 백업은 `POST /api/data-backups` 로 생성한다
-- 서버 시작 시 현재 `.camping-data/` 가 있으면 `reason: startup` 백업을 자동 생성한다
-- 예시 데이터로 재초기화하기 전에 `reason: seed-replace` 백업을 자동 생성할 수 있다
-- 백업은 `.camping-backups/<timestamp>/` 아래에 누적 저장한다
-- 백업 데이터는 `backup.json` 메타데이터와 `data/` 스냅샷으로 분리한다
-
-## 5. 오류 모델
-
-권장 오류 코드:
-
-- `INVALID_TRIP_ID_FORMAT`
-- `TRIP_NOT_FOUND`
-- `TRIP_INVALID`
-- `DEPENDENCY_MISSING`
-- `OPENAI_REQUEST_FAILED`
-- `OUTPUT_SAVE_FAILED`
-- `BACKUP_FAILED`
-- `RESOURCE_NOT_FOUND`
-- `CONFLICT`
-- `INTERNAL_ERROR`

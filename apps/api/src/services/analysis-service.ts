@@ -24,6 +24,8 @@ import type {
   TripDraft,
   TripId,
   ValidateTripResponse,
+  Vehicle,
+  VehicleInput,
 } from "@camping/shared";
 import type { CampingRepository } from "../file-store/camping-repository";
 import type { DataBackupReason } from "../file-store/local-data-backup";
@@ -104,6 +106,10 @@ export class AnalysisService {
     return (await this.repository.readCompanions()).companions;
   }
 
+  async listVehicles() {
+    return (await this.repository.readVehicles()).vehicles;
+  }
+
   async createCompanion(input: CompanionInput): Promise<Companion> {
     return this.repository.createCompanion(input);
   }
@@ -117,6 +123,19 @@ export class AnalysisService {
 
   async deleteCompanion(companionId: string) {
     await this.repository.deleteCompanion(companionId);
+    return { status: "deleted" as const };
+  }
+
+  async createVehicle(input: VehicleInput): Promise<Vehicle> {
+    return this.repository.createVehicle(input);
+  }
+
+  async updateVehicle(vehicleId: string, input: VehicleInput): Promise<Vehicle> {
+    return this.repository.updateVehicle(vehicleId, input);
+  }
+
+  async deleteVehicle(vehicleId: string) {
+    await this.repository.deleteVehicle(vehicleId);
     return { status: "deleted" as const };
   }
 

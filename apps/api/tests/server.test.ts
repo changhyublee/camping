@@ -354,6 +354,98 @@ describe("API server", () => {
     await app.close();
   });
 
+  it("manages vehicles through CRUD endpoints and blocks deleting a referenced vehicle", async () => {
+    const dataDir = await createSeededDataDir();
+    const app = await buildServer({
+      dataDir,
+      projectRoot,
+      modelClient: new MockAnalysisClient("# sample"),
+    });
+
+    const listResponse = await app.inject({
+      method: "GET",
+      url: "/api/vehicles",
+    });
+
+    expect(listResponse.statusCode).toBe(200);
+    expect(listResponse.json().items).toEqual(
+      expect.arrayContaining([
+        expect.objectContaining({
+          id: "family-suv",
+          name: "패밀리 SUV",
+        }),
+      ]),
+    );
+
+    const createResponse = await app.inject({
+      method: "POST",
+      url: "/api/vehicles",
+      payload: {
+        id: "mini-van",
+        name: "미니밴",
+        description: "짐칸이 넓은 보조 차량",
+        passenger_capacity: 7,
+        load_capacity_kg: 550,
+        notes: ["루프박스 없이 적재"],
+      },
+    });
+
+    expect(createResponse.statusCode).toBe(200);
+    expect(createResponse.json().item).toEqual(
+      expect.objectContaining({
+        id: "mini-van",
+        name: "미니밴",
+      }),
+    );
+
+    const updateResponse = await app.inject({
+      method: "PUT",
+      url: "/api/vehicles/mini-van",
+      payload: {
+        id: "should-be-ignored",
+        name: "미니밴 업데이트",
+        description: "보조 차량",
+        passenger_capacity: 7,
+        load_capacity_kg: 600,
+        notes: ["트레일러 연결 가능"],
+      },
+    });
+
+    expect(updateResponse.statusCode).toBe(200);
+    expect(updateResponse.json().item).toEqual(
+      expect.objectContaining({
+        id: "mini-van",
+        name: "미니밴 업데이트",
+        load_capacity_kg: 600,
+      }),
+    );
+
+    const conflictDeleteResponse = await app.inject({
+      method: "DELETE",
+      url: "/api/vehicles/family-suv",
+    });
+
+    expect(conflictDeleteResponse.statusCode).toBe(409);
+    expect(conflictDeleteResponse.json()).toEqual(
+      expect.objectContaining({
+        status: "failed",
+        error: expect.objectContaining({
+          code: "CONFLICT",
+        }),
+      }),
+    );
+
+    const deleteResponse = await app.inject({
+      method: "DELETE",
+      url: "/api/vehicles/mini-van",
+    });
+
+    expect(deleteResponse.statusCode).toBe(200);
+    expect(deleteResponse.json()).toEqual({ status: "deleted" });
+
+    await app.close();
+  });
+
   it("returns field-level details when trip creation validation fails", async () => {
     const dataDir = await createSeededDataDir();
     const app = await buildServer({
@@ -715,6 +807,48 @@ describe("API server", () => {
     });
 
     expect(tripResponse.statusCode).toBe(404);
+
+    await app.close();
+  });
+
+  it("keeps placeholder companion snapshots when archiving a trip with unknown companion ids", async () => {
+    const dataDir = await createSeededDataDir();
+    const tripPath = path.join(dataDir, "trips", "2026-04-18-gapyeong.yaml");
+    const trip = parse(await readFile(tripPath, "utf8")) as Record<string, unknown>;
+
+    trip.party = {
+      companion_ids: ["self", "ghost"],
+    };
+
+    await writeFile(tripPath, stringify(trip), "utf8");
+
+    const app = await buildServer({
+      dataDir,
+      projectRoot,
+      modelClient: new MockAnalysisClient("# sample"),
+    });
+
+    const archiveResponse = await app.inject({
+      method: "POST",
+      url: "/api/trips/2026-04-18-gapyeong/archive",
+    });
+
+    expect(archiveResponse.statusCode).toBe(200);
+    expect(archiveResponse.json().item).toEqual(
+      expect.objectContaining({
+        companion_ids: ["self", "ghost"],
+        companion_snapshots: expect.arrayContaining([
+          expect.objectContaining({
+            id: "self",
+            name: "본인",
+          }),
+          expect.objectContaining({
+            id: "ghost",
+            name: "ghost",
+          }),
+        ]),
+      }),
+    );
 
     await app.close();
   });

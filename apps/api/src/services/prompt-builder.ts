@@ -72,6 +72,7 @@ export function buildAnalysisPrompt({
     "# 로컬 데이터",
     serializeYamlSection("profile.yaml", bundle.profile),
     serializeYamlSection("companions.yaml", bundle.companions),
+    serializeYamlSection("vehicles.yaml", bundle.vehicles),
     serializeYamlSection("equipment/durable.yaml", bundle.durableEquipment),
     serializeYamlSection("equipment/consumables.yaml", bundle.consumables),
     serializeYamlSection("equipment/precheck.yaml", bundle.precheck),
@@ -79,6 +80,7 @@ export function buildAnalysisPrompt({
     serializeYamlSection("preferences/food.yaml", bundle.foodPreferences),
     serializeYamlSection("links.yaml", bundle.links),
     serializeYamlSection(`trips/${bundle.trip.trip_id}.yaml`, bundle.trip),
+    serializeYamlSection("selected-vehicle.yaml", bundle.selected_vehicle),
     "",
     "# 추가 계산 컨텍스트",
     serializeYamlSection(

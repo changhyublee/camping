@@ -226,6 +226,7 @@ function buildPlanningPrompt(
     `- 일정: ${bundle.trip.date?.start ?? "미입력"} ~ ${bundle.trip.date?.end ?? "미입력"}`,
     `- 장소: ${bundle.trip.location?.campsite_name ?? "미입력"} / ${bundle.trip.location?.region ?? "미입력"}`,
     `- 동행자 수: ${bundle.trip.party.companion_ids.length}`,
+    `- 차량: ${formatVehicleLine(bundle)}`,
     "",
     "## 현재 경고",
     warningLines,
@@ -251,6 +252,7 @@ function buildFallbackAssistantMessage(
     `- 요청 메모: ${message.trim()}`,
     `- 현재 일정: ${bundle.trip.date?.start ?? "미입력"} ~ ${bundle.trip.date?.end ?? "미입력"}`,
     `- 장소: ${bundle.trip.location?.region ?? "미입력"}`,
+    `- 차량: ${formatVehicleLine(bundle)}`,
   ];
 
   if (warnings[0]) {
@@ -319,6 +321,26 @@ function buildEquipmentMetadataLines(bundle: TripBundle) {
       }`;
     })
     .join("\n");
+}
+
+function formatVehicleLine(bundle: TripBundle) {
+  const vehicle = bundle.selected_vehicle;
+
+  if (!vehicle) {
+    return "미선택";
+  }
+
+  const parts = [vehicle.name];
+
+  if (vehicle.passenger_capacity) {
+    parts.push(`탑승 ${vehicle.passenger_capacity}명`);
+  }
+
+  if (vehicle.load_capacity_kg) {
+    parts.push(`적재 ${vehicle.load_capacity_kg}kg`);
+  }
+
+  return parts.join(" / ");
 }
 
 function buildDurableSuggestion(input: {

@@ -32,6 +32,7 @@ export const tripIdSchema = baseIdSchema;
 export const historyIdSchema = baseIdSchema;
 export const externalLinkIdSchema = baseIdSchema;
 export const companionIdSchema = baseIdSchema;
+export const vehicleIdSchema = baseIdSchema;
 export const equipmentSectionSchema = z.enum([
   "durable",
   "consumables",
@@ -105,6 +106,22 @@ export const companionInputSchema = companionSchema;
 export const companionsSchema = z.object({
   version: z.number().int().positive(),
   companions: z.array(companionSchema),
+});
+
+export const vehicleSchema = z.object({
+  id: vehicleIdSchema,
+  name: z.string().min(1),
+  description: z.string().optional(),
+  passenger_capacity: z.number().int().positive().optional(),
+  load_capacity_kg: z.number().positive().optional(),
+  notes: z.array(z.string()).default([]),
+});
+
+export const vehicleInputSchema = vehicleSchema;
+
+export const vehiclesSchema = z.object({
+  version: z.number().int().positive(),
+  vehicles: z.array(vehicleSchema),
 });
 
 export const equipmentMetadataLookupStatusSchema = z.enum([
@@ -304,9 +321,12 @@ export const tripSchema = z.object({
   }),
   vehicle: z
     .object({
-      id: z.string().optional(),
+      id: vehicleIdSchema.optional(),
+      name: z.string().optional(),
+      description: z.string().optional(),
       load_capacity_kg: z.number().positive().optional(),
       passenger_capacity: z.number().int().positive().optional(),
+      notes: z.array(z.string()).default([]).optional(),
     })
     .optional(),
   conditions: z
@@ -370,7 +390,9 @@ export const historyRecordSchema = z.object({
     })
     .optional(),
   companion_ids: z.array(companionIdSchema).default([]),
+  companion_snapshots: z.array(companionSchema).default([]),
   attendee_count: z.number().int().nonnegative().optional(),
+  vehicle_snapshot: vehicleSchema.nullable().optional(),
   notes: z.array(z.string()).default([]),
   archived_at: z.string().min(1),
   output_path: z.string().nullable().optional(),

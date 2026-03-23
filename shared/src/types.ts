@@ -53,6 +53,10 @@ import type {
   tripSummarySchema,
   validateTripRequestSchema,
   validateTripResponseSchema,
+  vehicleIdSchema,
+  vehicleInputSchema,
+  vehicleSchema,
+  vehiclesSchema,
 } from "./schemas";
 
 export type AgeGroup = z.infer<typeof ageGroupSchema>;
@@ -73,6 +77,10 @@ export type CompanionId = z.infer<typeof companionIdSchema>;
 export type Companion = z.infer<typeof companionSchema>;
 export type CompanionInput = z.infer<typeof companionInputSchema>;
 export type CompanionsData = z.infer<typeof companionsSchema>;
+export type VehicleId = z.infer<typeof vehicleIdSchema>;
+export type Vehicle = z.infer<typeof vehicleSchema>;
+export type VehicleInput = z.infer<typeof vehicleInputSchema>;
+export type VehiclesData = z.infer<typeof vehiclesSchema>;
 export type EquipmentMetadataLookupStatus = z.infer<
   typeof equipmentMetadataLookupStatusSchema
 >;
@@ -151,6 +159,8 @@ export type BackendHealth = z.infer<typeof backendHealthSchema>;
 export type TripBundle = {
   profile: ProfileData;
   companions: CompanionsData;
+  vehicles: VehiclesData;
+  selected_vehicle: Vehicle | null;
   durableEquipment: DurableEquipmentData;
   consumables: ConsumableEquipmentData;
   precheck: PrecheckData;

@@ -17,6 +17,7 @@ import type {
   TripData,
   TripSummary,
   ValidateTripResponse,
+  Vehicle,
 } from "@camping/shared";
 import { App } from "./App";
 
@@ -40,6 +41,7 @@ type FailedValidationResponse = {
 
 type MockState = {
   companions: Companion[];
+  vehicles: Vehicle[];
   trips: TripSummary[];
   tripDetails: Record<string, TripData>;
   validations: Record<
@@ -163,6 +165,11 @@ function readCompanionIdFromPath(pathname: string) {
   return match?.[1] ?? null;
 }
 
+function readVehicleIdFromPath(pathname: string) {
+  const match = pathname.match(/^\/api\/vehicles\/([^/]+)$/u);
+  return match?.[1] ?? null;
+}
+
 function readOutputTripIdFromPath(pathname: string) {
   const match = pathname.match(/^\/api\/outputs\/([^/]+)$/u);
   return match?.[1] ?? null;
@@ -213,6 +220,10 @@ function mockFetch(input: RequestInfo | URL, init?: RequestInit) {
 
   if (pathname === "/api/companions" && method === "GET") {
     return jsonResponse({ items: state.companions });
+  }
+
+  if (pathname === "/api/vehicles" && method === "GET") {
+    return jsonResponse({ items: state.vehicles });
   }
 
   if (pathname === "/api/data-backups" && method === "POST") {
@@ -268,6 +279,15 @@ function mockFetch(input: RequestInfo | URL, init?: RequestInit) {
     return jsonResponse({ item: body });
   }
 
+  if (pathname === "/api/vehicles" && method === "POST") {
+    const body = parseBody(init) as Vehicle;
+
+    state.vehicles.push(body);
+    state.vehicles.sort((left, right) => left.name.localeCompare(right.name, "ko"));
+
+    return jsonResponse({ item: body });
+  }
+
   if (pathname === "/api/equipment" && method === "GET") {
     return jsonResponse(state.equipment);
   }
@@ -277,6 +297,7 @@ function mockFetch(input: RequestInfo | URL, init?: RequestInit) {
   }
 
   const companionIdFromPath = readCompanionIdFromPath(pathname);
+  const vehicleIdFromPath = readVehicleIdFromPath(pathname);
 
   if (companionIdFromPath && method === "PUT") {
     const body = parseBody(init) as Companion;
@@ -292,6 +313,23 @@ function mockFetch(input: RequestInfo | URL, init?: RequestInit) {
 
   if (companionIdFromPath && method === "DELETE") {
     state.companions = state.companions.filter((item) => item.id !== companionIdFromPath);
+    return emptyResponse();
+  }
+
+  if (vehicleIdFromPath && method === "PUT") {
+    const body = parseBody(init) as Vehicle;
+    const index = state.vehicles.findIndex((item) => item.id === vehicleIdFromPath);
+
+    if (index >= 0) {
+      state.vehicles[index] = body;
+    }
+
+    state.vehicles.sort((left, right) => left.name.localeCompare(right.name, "ko"));
+    return jsonResponse({ item: body });
+  }
+
+  if (vehicleIdFromPath && method === "DELETE") {
+    state.vehicles = state.vehicles.filter((item) => item.id !== vehicleIdFromPath);
     return emptyResponse();
   }
 
@@ -981,7 +1019,7 @@ describe("App", () => {
   it("renders action results as floating toasts", async () => {
     render(<App />);
 
-    await userEvent.click(await screen.findByRole("button", { name: "관리 설정" }));
+    await userEvent.click(await screen.findByRole("button", { name: "카테고리 설정" }));
     await userEvent.type(screen.getByPlaceholderText("예: 수납"), "수납");
     await userEvent.type(screen.getByPlaceholderText("예: tarp"), "storage-rack");
     await userEvent.click(screen.getByRole("button", { name: "카테고리 추가" }));
@@ -993,7 +1031,7 @@ describe("App", () => {
   it("creates a manual data backup from the management page", async () => {
     render(<App />);
 
-    await userEvent.click(await screen.findByRole("button", { name: "관리 설정" }));
+    await userEvent.click(await screen.findByRole("button", { name: "카테고리 설정" }));
     await userEvent.click(screen.getByRole("button", { name: "지금 백업 생성" }));
 
     expect(await screen.findByText("로컬 데이터 백업 완료")).toBeInTheDocument();
@@ -1040,7 +1078,7 @@ describe("App", () => {
 
     expect(await screen.findByText("초기 로딩 경고")).toBeInTheDocument();
 
-    await userEvent.click(screen.getByRole("button", { name: "관리 설정" }));
+    await userEvent.click(screen.getByRole("button", { name: "카테고리 설정" }));
     await userEvent.type(screen.getByPlaceholderText("예: 수납"), "수납");
     await userEvent.type(screen.getByPlaceholderText("예: tarp"), "storage-rack");
     await userEvent.click(screen.getByRole("button", { name: "카테고리 추가" }));
@@ -1116,63 +1154,62 @@ describe("App", () => {
     );
   });
 
-  it("auto-creates missing companions when saving a trip", async () => {
+  it("selects companions from the managed list and saves their ids", async () => {
     render(<App />);
 
     await userEvent.click(await screen.findByRole("button", { name: "캠핑 계획" }));
+    await userEvent.click(screen.getByRole("button", { name: "새 계획 작성" }));
+    await userEvent.type(screen.getByPlaceholderText("새 캠핑 계획"), "선택 테스트 계획");
 
-    const companionInput = await screen.findByPlaceholderText(
-      "콤마로 구분 (예: self, child-1)",
-    );
+    await userEvent.click(screen.getByRole("checkbox", { name: /^본인/u }));
+    await userEvent.click(screen.getByRole("checkbox", { name: /^첫째/u }));
 
-    await userEvent.clear(companionInput);
-    await userEvent.type(companionInput, "self, ghost");
+    expect(screen.getByText("2명 선택")).toBeInTheDocument();
+    expect(
+      screen.queryByText("동행자를 선택하면 요약 정보가 여기 표시됩니다."),
+    ).toBeNull();
     await userEvent.click(screen.getByRole("button", { name: "계획 저장" }));
 
     await waitFor(() => {
-      expect(state.updateTripCalls).toHaveLength(1);
-      expect(state.companions.some((item) => item.id === "ghost")).toBe(true);
+      expect(state.tripDetails["2026-05-01-new-trip"]).toBeDefined();
     });
 
-    expect(state.updateTripCalls[0]).toEqual(
+    expect(state.tripDetails["2026-05-01-new-trip"]).toEqual(
       expect.objectContaining({
-        body: expect.objectContaining({
-          party: {
-            companion_ids: ["self", "ghost"],
-          },
-        }),
+        party: {
+          companion_ids: ["self", "child-1"],
+        },
       }),
     );
-    expect(await screen.findByText(/기본 프로필로 추가했습니다/u)).toBeInTheDocument();
   });
 
-  it("preserves trailing commas in companion input while saving parsed ids", async () => {
+  it("selects a managed vehicle and saves its snapshot with the trip", async () => {
     render(<App />);
 
     await userEvent.click(await screen.findByRole("button", { name: "캠핑 계획" }));
+    await userEvent.click(screen.getByRole("button", { name: "새 계획 작성" }));
+    await userEvent.type(screen.getByPlaceholderText("새 캠핑 계획"), "차량 선택 테스트");
 
-    const companionInput = await screen.findByPlaceholderText(
-      "콤마로 구분 (예: self, child-1)",
+    await userEvent.selectOptions(
+      screen.getByRole("combobox"),
+      "family-suv",
     );
-
-    await userEvent.clear(companionInput);
-    await userEvent.type(companionInput, "self,");
-
-    expect(companionInput).toHaveValue("self,");
+    expect(screen.getByText("탑승 5명")).toBeInTheDocument();
+    expect(screen.getByText("적재 400kg")).toBeInTheDocument();
 
     await userEvent.click(screen.getByRole("button", { name: "계획 저장" }));
 
     await waitFor(() => {
-      expect(state.updateTripCalls).toHaveLength(1);
+      expect(state.tripDetails["2026-05-01-new-trip"]).toBeDefined();
     });
 
-    expect(state.updateTripCalls[0]).toEqual(
+    expect(state.tripDetails["2026-05-01-new-trip"]).toEqual(
       expect.objectContaining({
-        tripId: "2026-04-18-gapyeong",
-        body: expect.objectContaining({
-          party: {
-            companion_ids: ["self"],
-          },
+        vehicle: expect.objectContaining({
+          id: "family-suv",
+          name: "패밀리 SUV",
+          passenger_capacity: 5,
+          load_capacity_kg: 400,
         }),
       }),
     );
@@ -1183,12 +1220,41 @@ describe("App", () => {
 
     await userEvent.click(await screen.findByRole("button", { name: "캠핑 계획" }));
 
-    const notesInput = screen.getByPlaceholderText("메모를 줄 단위로 입력");
+    const notesInput = screen.getByPlaceholderText(
+      "사이트 특이사항, 출발 전 꼭 챙길 것, 당일 일정 메모, 아직 장비/링크로 옮기지 않은 임시 메모를 줄 단위로 적어두세요.",
+    );
 
     await userEvent.clear(notesInput);
     await userEvent.type(notesInput, "텐트 옆 공간 ");
 
     expect(notesInput).toHaveValue("텐트 옆 공간 ");
+  });
+
+  it("removes a deleted companion from the current trip selection", async () => {
+    render(<App />);
+
+    await userEvent.click(await screen.findByRole("button", { name: "사람 관리" }));
+    await userEvent.click(screen.getByRole("button", { name: /본인 성인/u }));
+    await userEvent.click(screen.getByRole("button", { name: "사람 삭제" }));
+
+    expect(await screen.findByText("동행자 삭제 완료")).toBeInTheDocument();
+
+    await userEvent.click(screen.getByRole("button", { name: "캠핑 계획" }));
+    await userEvent.click(screen.getByRole("button", { name: "계획 저장" }));
+
+    await waitFor(() => {
+      expect(state.updateTripCalls).toHaveLength(1);
+    });
+
+    expect(state.updateTripCalls[0]).toEqual(
+      expect.objectContaining({
+        body: expect.objectContaining({
+          party: {
+            companion_ids: ["child-1"],
+          },
+        }),
+      }),
+    );
   });
 
   it("shows which trip field failed validation when creating a trip", async () => {
@@ -1549,7 +1615,7 @@ describe("App", () => {
     await userEvent.click(await screen.findByRole("button", { name: "장비 관리" }));
     expect(screen.getAllByRole("combobox", { name: "카테고리" }).length).toBeGreaterThan(0);
 
-    await userEvent.click(screen.getByRole("button", { name: "관리 설정" }));
+    await userEvent.click(screen.getByRole("button", { name: "카테고리 설정" }));
     await userEvent.type(screen.getByPlaceholderText("예: 수납"), "수납");
     await userEvent.type(screen.getByPlaceholderText("예: tarp"), "tarp");
     await userEvent.click(screen.getByRole("button", { name: "카테고리 추가" }));
@@ -1561,7 +1627,7 @@ describe("App", () => {
   it("requires a category code when creating a category", async () => {
     render(<App />);
 
-    await userEvent.click(await screen.findByRole("button", { name: "관리 설정" }));
+    await userEvent.click(await screen.findByRole("button", { name: "카테고리 설정" }));
     await userEvent.type(screen.getByPlaceholderText("예: 수납"), "수납");
     await userEvent.click(screen.getByRole("button", { name: "카테고리 추가" }));
 
@@ -1574,7 +1640,7 @@ describe("App", () => {
   it("keeps saved category labels in equipment selects until category save succeeds", async () => {
     render(<App />);
 
-    await userEvent.click(await screen.findByRole("button", { name: "관리 설정" }));
+    await userEvent.click(await screen.findByRole("button", { name: "카테고리 설정" }));
 
     const shelterCard = screen.getByText("shelter").closest("article");
     expect(shelterCard).not.toBeNull();
@@ -1590,7 +1656,7 @@ describe("App", () => {
     expect(screen.getAllByRole("option", { name: "쉘터/텐트" }).length).toBeGreaterThan(0);
     expect(screen.queryAllByRole("option", { name: "임시 라벨" })).toHaveLength(0);
 
-    await userEvent.click(screen.getByRole("button", { name: "관리 설정" }));
+    await userEvent.click(screen.getByRole("button", { name: "카테고리 설정" }));
 
     const updatedShelterCard = screen.getByText("shelter").closest("article");
     expect(updatedShelterCard).not.toBeNull();
@@ -1743,7 +1809,12 @@ describe("App", () => {
           region: "yangpyeong",
         },
         companion_ids: ["self", "child-1"],
+        companion_snapshots: [
+          state.companions[0],
+          state.companions[1],
+        ],
         attendee_count: 2,
+        vehicle_snapshot: state.vehicles[0],
         notes: ["비 예보가 있어 타프를 추가함"],
         archived_at: "2026-03-10T09:00:00.000Z",
         output_path: ".camping-data/outputs/2026-03-08-yangpyeong-plan.md",
@@ -1760,6 +1831,13 @@ describe("App", () => {
           },
           party: {
             companion_ids: ["self", "child-1"],
+          },
+          vehicle: {
+            id: "family-suv",
+            name: "패밀리 SUV",
+            passenger_capacity: 5,
+            load_capacity_kg: 400,
+            notes: [],
           },
           notes: [],
         },
@@ -1800,7 +1878,12 @@ describe("App", () => {
           region: "yangpyeong",
         },
         companion_ids: ["self", "child-1"],
+        companion_snapshots: [
+          state.companions[0],
+          state.companions[1],
+        ],
         attendee_count: 2,
+        vehicle_snapshot: state.vehicles[0],
         notes: [],
         archived_at: "2026-03-10T09:00:00.000Z",
         output_path: ".camping-data/outputs/2026-03-08-yangpyeong-plan.md",
@@ -1818,6 +1901,13 @@ describe("App", () => {
           party: {
             companion_ids: ["self", "child-1"],
           },
+          vehicle: {
+            id: "family-suv",
+            name: "패밀리 SUV",
+            passenger_capacity: 5,
+            load_capacity_kg: 400,
+            notes: [],
+          },
           notes: [],
         },
       },
@@ -1834,7 +1924,9 @@ describe("App", () => {
           region: "sokcho",
         },
         companion_ids: ["self"],
+        companion_snapshots: [state.companions[0]],
         attendee_count: 1,
+        vehicle_snapshot: state.vehicles[0],
         notes: [],
         archived_at: "2026-04-15T09:00:00.000Z",
         output_path: ".camping-data/outputs/2026-04-12-sokcho-plan.md",
@@ -1851,6 +1943,13 @@ describe("App", () => {
           },
           party: {
             companion_ids: ["self"],
+          },
+          vehicle: {
+            id: "family-suv",
+            name: "패밀리 SUV",
+            passenger_capacity: 5,
+            load_capacity_kg: 400,
+            notes: [],
           },
           notes: [],
         },
@@ -1952,6 +2051,13 @@ function createMockState(): MockState {
     party: {
       companion_ids: ["self", "child-1"],
     },
+    vehicle: {
+      id: "family-suv",
+      name: "패밀리 SUV",
+      passenger_capacity: 5,
+      load_capacity_kg: 400,
+      notes: [],
+    },
     conditions: {
       electricity_available: true,
       cooking_allowed: true,
@@ -1998,6 +2104,16 @@ function createMockState(): MockState {
           heat_sensitive: false,
           rain_sensitive: true,
         },
+      },
+    ],
+    vehicles: [
+      {
+        id: "family-suv",
+        name: "패밀리 SUV",
+        description: "가족 캠핑용 기본 차량",
+        passenger_capacity: 5,
+        load_capacity_kg: 400,
+        notes: [],
       },
     ],
     trips: [summarizeTrip(trip)],

@@ -11,7 +11,38 @@ location:
 companion_ids:
   - self
   - child-1
+companion_snapshots:
+  - id: self
+    name: 본인
+    age_group: adult
+    birth_year: 1990
+    health_notes: []
+    required_medications: []
+    traits:
+      cold_sensitive: false
+      heat_sensitive: false
+      rain_sensitive: false
+  - id: child-1
+    name: 첫째
+    age_group: preschooler
+    birth_year: 2021
+    health_notes:
+      - skin_sensitive
+    required_medications:
+      - pediatric-fever-medicine
+    traits:
+      cold_sensitive: true
+      heat_sensitive: false
+      rain_sensitive: true
 attendee_count: 2
+vehicle_snapshot:
+  id: family-suv
+  name: 패밀리 SUV
+  description: 가족 캠핑에 자주 쓰는 기본 차량
+  passenger_capacity: 5
+  load_capacity_kg: 400
+  notes:
+    - 루프박스 장착 가능
 notes:
   - 오전에 바람이 강해서 타프 고정이 중요했음
   - 아이용 침낭은 한 개 더 챙기는 편이 좋았음
@@ -31,6 +62,14 @@ trip_snapshot:
     companion_ids:
       - self
       - child-1
+  vehicle:
+    id: family-suv
+    name: 패밀리 SUV
+    description: 가족 캠핑에 자주 쓰는 기본 차량
+    passenger_capacity: 5
+    load_capacity_kg: 400
+    notes:
+      - 루프박스 장착 가능
   conditions:
     electricity_available: true
     cooking_allowed: true

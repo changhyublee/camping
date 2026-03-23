@@ -17,6 +17,8 @@ import {
   tripDraftSchema,
   tripIdSchema,
   validateTripRequestSchema,
+  vehicleIdSchema,
+  vehicleInputSchema,
 } from "@camping/shared";
 import type { AnalysisService } from "../services/analysis-service";
 import { AppError } from "../services/app-error";
@@ -103,6 +105,16 @@ function readEquipmentCategoryIdParam(value: unknown) {
   return parsed.data;
 }
 
+function readVehicleIdParam(value: unknown) {
+  const parsed = vehicleIdSchema.safeParse(value);
+
+  if (!parsed.success) {
+    throw new AppError("TRIP_INVALID", "차량 ID 형식이 올바르지 않습니다.", 400);
+  }
+
+  return parsed.data;
+}
+
 function parseEquipmentBody(section: string, body: unknown) {
   switch (section) {
     case "durable": {
@@ -133,6 +145,10 @@ function parseEquipmentBody(section: string, body: unknown) {
 
 function parseCompanionBody(body: unknown) {
   return parseBodyOrThrow("동행자 요청", companionInputSchema, body);
+}
+
+function parseVehicleBody(body: unknown) {
+  return parseBodyOrThrow("차량 요청", vehicleInputSchema, body);
 }
 
 function parseBodyOrThrow<T>(
@@ -286,6 +302,37 @@ export async function registerApiRoutes(
     );
 
     return analysisService.deleteCompanion(companionId);
+  });
+
+  app.get("/api/vehicles", async () => ({
+    items: await analysisService.listVehicles(),
+  }));
+
+  app.post("/api/vehicles", async (request) => {
+    return {
+      item: await analysisService.createVehicle(parseVehicleBody(request.body)),
+    };
+  });
+
+  app.put("/api/vehicles/:vehicleId", async (request) => {
+    const vehicleId = readVehicleIdParam(
+      (request.params as { vehicleId?: unknown }).vehicleId,
+    );
+
+    return {
+      item: await analysisService.updateVehicle(
+        vehicleId,
+        parseVehicleBody(request.body),
+      ),
+    };
+  });
+
+  app.delete("/api/vehicles/:vehicleId", async (request) => {
+    const vehicleId = readVehicleIdParam(
+      (request.params as { vehicleId?: unknown }).vehicleId,
+    );
+
+    return analysisService.deleteVehicle(vehicleId);
   });
 
   app.get("/api/trips", async () => ({

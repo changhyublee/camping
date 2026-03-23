@@ -63,6 +63,7 @@ function collectTripWarnings(
 ): string[] {
   const warnings: string[] = [];
   const { trip, caches } = bundle;
+  const selectedVehicle = bundle.selected_vehicle;
   const hasDate = Boolean(trip.date?.start || trip.date?.end);
   const hasLocation = Boolean(
     trip.location?.campsite_name ||
@@ -96,7 +97,7 @@ function collectTripWarnings(
     );
   }
 
-  if (!trip.vehicle?.load_capacity_kg) {
+  if (!selectedVehicle?.load_capacity_kg && !trip.vehicle?.load_capacity_kg) {
     warnings.push(
       "차량 적재량 정보가 없어 적재 최적화 판단이 제한될 수 있습니다.",
     );

@@ -32,6 +32,27 @@ function createBundle(overrides: Partial<TripBundle["trip"]> = {}): TripBundle {
         },
       ],
     },
+    vehicles: {
+      version: 1,
+      vehicles: [
+        {
+          id: "family-suv",
+          name: "패밀리 SUV",
+          description: "주력 가족 차량",
+          passenger_capacity: 5,
+          load_capacity_kg: 400,
+          notes: [],
+        },
+      ],
+    },
+    selected_vehicle: {
+      id: "family-suv",
+      name: "패밀리 SUV",
+      description: "주력 가족 차량",
+      passenger_capacity: 5,
+      load_capacity_kg: 400,
+      notes: [],
+    },
     durableEquipment: {
       version: 1,
       items: [],
@@ -88,6 +109,13 @@ function createBundle(overrides: Partial<TripBundle["trip"]> = {}): TripBundle {
       },
       party: {
         companion_ids: ["self", "child-1"],
+      },
+      vehicle: {
+        id: "family-suv",
+        name: "패밀리 SUV",
+        passenger_capacity: 5,
+        load_capacity_kg: 400,
+        notes: [],
       },
       travel_plan: {
         use_ai_recommendation: true,
