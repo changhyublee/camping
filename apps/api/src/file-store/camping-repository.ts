@@ -62,6 +62,12 @@ import {
 import { parse, stringify } from "yaml";
 import type { AppConfig } from "../config";
 import { AppError } from "../services/app-error";
+import {
+  createTimestampedDataBackup,
+  listTimestampedDataBackups,
+  type DataBackupReason,
+  type DataBackupSnapshot,
+} from "./local-data-backup";
 
 const REQUIRED_DOC_PATHS = [
   "README.md",
@@ -85,6 +91,28 @@ type EquipmentItem = DurableEquipmentItem | ConsumableEquipmentItem | PrecheckIt
 
 export class CampingRepository {
   constructor(private readonly config: AppConfig) {}
+
+  async listDataBackups(): Promise<DataBackupSnapshot[]> {
+    return listTimestampedDataBackups(this.config.backupDir);
+  }
+
+  async createDataBackup(
+    reason: DataBackupReason,
+  ): Promise<DataBackupSnapshot | null> {
+    try {
+      return await createTimestampedDataBackup({
+        sourceDir: this.config.dataDir,
+        backupRootDir: this.config.backupDir,
+        reason,
+      });
+    } catch {
+      throw new AppError(
+        "BACKUP_FAILED",
+        "로컬 운영 데이터 백업을 생성하지 못했습니다.",
+        500,
+      );
+    }
+  }
 
   async listTripSummaries(): Promise<TripSummary[]> {
     const tripFiles = await this.listYamlFiles(this.getTripsDir());

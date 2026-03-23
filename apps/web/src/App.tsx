@@ -148,6 +148,7 @@ export function App() {
   const [precheckDraft, setPrecheckDraft] =
     useState<PrecheckItemInput>(createEmptyPrecheckItem());
   const [appLoading, setAppLoading] = useState(true);
+  const [creatingDataBackup, setCreatingDataBackup] = useState(false);
   const [detailLoading, setDetailLoading] = useState(false);
   const [savingTrip, setSavingTrip] = useState(false);
   const [analyzing, setAnalyzing] = useState(false);
@@ -1584,6 +1585,27 @@ export function App() {
     }
   }
 
+  async function handleCreateDataBackup() {
+    setCreatingDataBackup(true);
+
+    try {
+      const response = await apiClient.createDataBackup();
+      setOperationState({
+        title: "로컬 데이터 백업 완료",
+        tone: "success",
+        description: response.item.backup_path,
+      });
+    } catch (error) {
+      setOperationState({
+        title: "로컬 데이터 백업 실패",
+        tone: "error",
+        description: getErrorMessage(error),
+      });
+    } finally {
+      setCreatingDataBackup(false);
+    }
+  }
+
   return (
     <div className="app-shell">
       <header className="hero hero--global">
@@ -2414,6 +2436,28 @@ export function App() {
               </section>
 
               <section className="page-grid page-grid--two">
+                <section className="panel page-grid__full">
+                  <div className="panel__eyebrow">Backup</div>
+                  <div className="panel__header">
+                    <h2>로컬 운영 데이터 백업</h2>
+                  </div>
+                  <p className="panel__copy">
+                    현재 `.camping-data/` 상태를 `.camping-backups/&lt;timestamp&gt;/`
+                    아래에 수동 백업합니다. 서버 시작 시 자동 백업과 별도로 중요한 수정 전
+                    상태를 직접 남길 때 사용합니다.
+                  </p>
+                  <div className="button-row">
+                    <button
+                      className="button button--primary"
+                      disabled={creatingDataBackup}
+                      onClick={() => void handleCreateDataBackup()}
+                      type="button"
+                    >
+                      {creatingDataBackup ? "백업 생성 중..." : "지금 백업 생성"}
+                    </button>
+                  </div>
+                </section>
+
                 <section className="panel">
                 <div className="panel__eyebrow">Categories</div>
                 <div className="panel__header">

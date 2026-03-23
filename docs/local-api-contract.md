@@ -17,6 +17,8 @@
 ### 공통
 
 - `GET /api/health`
+- `GET /api/data-backups`
+- `POST /api/data-backups`
 
 ### 동행자
 
@@ -229,6 +231,44 @@
 }
 ```
 
+### `GET /api/data-backups`
+
+```json
+{
+  "items": [
+    {
+      "created_at": "2026-03-23T14:30:00.000Z",
+      "reason": "manual",
+      "source_path": "/path/to/project/.camping-data",
+      "backup_path": "/path/to/project/.camping-backups/2026-03-23T14-30-00.000Z",
+      "data_path": "/path/to/project/.camping-backups/2026-03-23T14-30-00.000Z/data"
+    }
+  ]
+}
+```
+
+### `POST /api/data-backups`
+
+```json
+{
+  "item": {
+    "created_at": "2026-03-23T14:30:00.000Z",
+    "reason": "manual",
+    "source_path": "/path/to/project/.camping-data",
+    "backup_path": "/path/to/project/.camping-backups/2026-03-23T14-30-00.000Z",
+    "data_path": "/path/to/project/.camping-backups/2026-03-23T14-30-00.000Z/data"
+  }
+}
+```
+
+백업 규칙:
+
+- 수동 백업은 `POST /api/data-backups` 로 생성한다
+- 서버 시작 시 현재 `.camping-data/` 가 있으면 `reason: startup` 백업을 자동 생성한다
+- 예시 데이터로 재초기화하기 전에 `reason: seed-replace` 백업을 자동 생성할 수 있다
+- 백업은 `.camping-backups/<timestamp>/` 아래에 누적 저장한다
+- 백업 데이터는 `backup.json` 메타데이터와 `data/` 스냅샷으로 분리한다
+
 ## 5. 오류 모델
 
 권장 오류 코드:
@@ -239,6 +279,7 @@
 - `DEPENDENCY_MISSING`
 - `OPENAI_REQUEST_FAILED`
 - `OUTPUT_SAVE_FAILED`
+- `BACKUP_FAILED`
 - `RESOURCE_NOT_FOUND`
 - `CONFLICT`
 - `INTERNAL_ERROR`

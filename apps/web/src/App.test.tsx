@@ -6,6 +6,7 @@ import type {
   AnalyzeTripResponse,
   Companion,
   ConsumableEquipmentItem,
+  DataBackupSnapshot,
   DurableEquipmentItem,
   EquipmentCatalog,
   EquipmentCategoriesData,
@@ -62,6 +63,7 @@ type MockState = {
     tripId: string;
     body: TripData;
   }>;
+  dataBackups: DataBackupSnapshot[];
 };
 
 let state: MockState;
@@ -211,6 +213,19 @@ function mockFetch(input: RequestInfo | URL, init?: RequestInit) {
 
   if (pathname === "/api/companions" && method === "GET") {
     return jsonResponse({ items: state.companions });
+  }
+
+  if (pathname === "/api/data-backups" && method === "POST") {
+    const item: DataBackupSnapshot = {
+      created_at: "2026-03-23T15:00:00.000Z",
+      reason: "manual",
+      source_path: "/workspace/.camping-data",
+      backup_path: `/workspace/.camping-backups/2026-03-23T15-00-00.000Z-${state.dataBackups.length + 1}`,
+      data_path: `/workspace/.camping-backups/2026-03-23T15-00-00.000Z-${state.dataBackups.length + 1}/data`,
+    };
+
+    state.dataBackups.unshift(item);
+    return jsonResponse({ item });
   }
 
   if (pathname === "/api/trips" && method === "POST") {
@@ -973,6 +988,30 @@ describe("App", () => {
 
     expect(await screen.findByText("장비 카테고리 추가 완료")).toBeInTheDocument();
     expect(document.querySelector(".floating-status-layer")).not.toBeNull();
+  });
+
+  it("creates a manual data backup from the management page", async () => {
+    render(<App />);
+
+    await userEvent.click(await screen.findByRole("button", { name: "관리 설정" }));
+    await userEvent.click(screen.getByRole("button", { name: "지금 백업 생성" }));
+
+    expect(await screen.findByText("로컬 데이터 백업 완료")).toBeInTheDocument();
+    expect(
+      screen.getByText(/\/workspace\/\.camping-backups\/2026-03-23T15-00-00\.000Z-1/u),
+    ).toBeInTheDocument();
+
+    const backupCall = fetchMock.mock.calls.find(([input, init]) => {
+      const rawUrl = typeof input === "string" ? input : input.toString();
+      const pathname = new URL(rawUrl, "http://localhost").pathname;
+
+      return (
+        pathname === "/api/data-backups" &&
+        (init?.method?.toUpperCase() ?? "GET") === "POST"
+      );
+    });
+
+    expect(backupCall).toBeDefined();
   });
 
   it("keeps startup warning visible after a later floating toast appears", async () => {
@@ -2015,5 +2054,6 @@ function createMockState(): MockState {
     links: [],
     outputs: {},
     updateTripCalls: [],
+    dataBackups: [],
   };
 }

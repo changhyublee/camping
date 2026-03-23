@@ -69,8 +69,11 @@
 - `schemas/`
   - `codex-trip-analysis-output.schema.json`
 - `scripts/seed-local-data.ts`
-  - `docs/examples/` 를 `.camping-data/` 로 복사
+  - 새 환경에서만 `docs/examples/` 를 `.camping-data/` 로 복사
+  - `--replace` 사용 시 현재 `.camping-data/` 를 `.camping-backups/` 에 먼저 백업
   - `cache/weather`, `cache/places` 디렉토리 생성
+- `scripts/backup-local-data.ts`
+  - 현재 `.camping-data/` 상태를 `.camping-backups/<timestamp>/` 아래에 수동 백업
 - `skills/`
   - 저장소 로컬 Codex skill 패키지
   - 현재 `repeat-review-fix` 스킬 포함
@@ -96,6 +99,7 @@
 pnpm install
 cp .env.example .env
 codex login
+# 새 환경에서 예시 데이터를 처음 채울 때만 실행
 pnpm seed
 pnpm dev:api
 pnpm dev:web
@@ -120,6 +124,21 @@ pnpm test
 pnpm build
 ```
 
+## 로컬 데이터 시드와 백업
+
+`pnpm seed` 는 일반 운영 명령이 아니라 `새 저장소를 처음 실행할 때 예시 데이터를 채우는 초기화 명령` 입니다.
+
+- 언제 해야 하나: 새로 clone 한 뒤 `.camping-data/` 가 아직 없을 때
+- 왜 필요한가: 로컬 UI와 API를 바로 확인할 수 있도록 `docs/examples/` 내용을 운영 데이터 위치로 복사하기 위해
+- 하면 안 되는 때: 이미 내가 입력한 장비, 동행자, 계획, 히스토리가 `.camping-data/` 에 들어 있는 상태
+
+현재는 안전장치가 들어가 있어서 `.camping-data/` 가 이미 있으면 `pnpm seed` 가 그대로 중단됩니다.
+
+- 예시 데이터로 정말 다시 초기화하고 싶으면 `pnpm seed -- --replace`
+- 이 경우 현재 데이터는 먼저 `.camping-backups/<timestamp>/` 아래에 자동 백업됩니다.
+- 수동 백업만 하고 싶으면 `pnpm backup:data`
+- 로컬 API 서버를 시작할 때도 현재 `.camping-data/` 가 있으면 `.camping-backups/<timestamp>/` 아래에 자동 백업을 1회 생성합니다.
+
 ## 문서 시작점
 
 - 문서 인덱스: [`docs/index.md`](docs/index.md)
@@ -139,9 +158,11 @@ pnpm build
 ## 참고 메모
 
 - `.camping-data/` 는 Git 추적 대상이 아닙니다.
+- `.camping-backups/` 도 Git 추적 대상이 아닙니다.
 - 개인 준비물은 사용자가 직접 입력하는 목록이 아니라 분석 결과입니다.
 - 외부 링크는 사용자가 직접 관리하는 링크 데이터입니다.
 - 장비 카테고리는 `equipment/categories.yaml` 에서 관리하며 장비 화면에서는 셀렉트로 선택합니다.
 - 반복 장비는 선택적으로 `purchase_link` 를 저장할 수 있고, 로컬 API의 AI 메타데이터 수집 시 참고 자료로 사용합니다.
 - 브라우저에서 OpenAI API를 직접 호출하지 않습니다.
-- `pnpm seed` 는 기존 `.camping-data/` 를 지우고 `docs/examples/` 기준으로 다시 생성합니다.
+- `pnpm seed` 는 새 환경 초기화용 명령이며, 기존 데이터가 있으면 중단됩니다.
+- `pnpm seed -- --replace` 는 기존 `.camping-data/` 를 `.camping-backups/<timestamp>/` 에 백업한 뒤 `docs/examples/` 기준으로 다시 생성합니다.

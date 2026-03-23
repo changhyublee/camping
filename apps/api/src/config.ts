@@ -17,6 +17,7 @@ export type AppConfig = {
   codexOutputSchemaPath: string;
   projectRoot: string;
   dataDir: string;
+  backupDir: string;
   promptsDir: string;
 };
 
@@ -56,6 +57,7 @@ export function resolveConfig(overrides: ConfigOverrides = {}): AppConfig {
       path.join(projectRoot, "schemas", "codex-trip-analysis-output.schema.json"),
     projectRoot,
     dataDir: overrides.dataDir ?? path.join(projectRoot, ".camping-data"),
+    backupDir: overrides.backupDir ?? path.join(projectRoot, ".camping-backups"),
     promptsDir: overrides.promptsDir ?? path.join(projectRoot, "prompts"),
   };
 }

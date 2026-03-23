@@ -4,6 +4,7 @@ import type {
   Companion,
   CompanionInput,
   ConsumableEquipmentItemInput,
+  CreateDataBackupResponse,
   DurableEquipmentItemInput,
   DurableEquipmentItem,
   EquipmentCatalog,
@@ -81,6 +82,11 @@ async function request<T>(path: string, init?: RequestInit): Promise<T> {
 export const apiClient = {
   async getCompanions(): Promise<{ items: Companion[] }> {
     return request("/api/companions");
+  },
+  async createDataBackup(): Promise<CreateDataBackupResponse> {
+    return request("/api/data-backups", {
+      method: "POST",
+    });
   },
   async createCompanion(input: CompanionInput): Promise<{ item: Companion }> {
     return request("/api/companions", {

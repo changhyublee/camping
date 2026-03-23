@@ -16,6 +16,7 @@
 ├── scripts/
 ├── skills/
 ├── shared/
+├── .camping-backups/
 └── .camping-data/
 ```
 
@@ -37,10 +38,26 @@
   - 공통 타입과 스키마
 - `skills/`
   - 현재 저장소에서 재사용하는 로컬 Codex skill 패키지
+- `.camping-backups/`
+  - 로컬 운영 데이터 스냅샷 백업
 - `.camping-data/`
   - 실제 운영 데이터
 
-## 4. `.camping-data/` 내부 구조
+## 4. `.camping-backups/` 내부 구조
+
+```text
+.camping-backups/
+└── <timestamp>/
+    ├── backup.json
+    └── data/
+        └── ...
+```
+
+- `<timestamp>`: 백업 생성 시각 기반 디렉토리
+- `backup.json`: 백업 생성 시각, 이유, 원본 경로 메타데이터
+- `data/`: 당시의 `.camping-data/` 스냅샷
+
+## 5. `.camping-data/` 내부 구조
 
 ```text
 .camping-data/
@@ -63,10 +80,11 @@
         └── durable/
 ```
 
-## 5. 경로별 책임
+## 6. 경로별 책임
 
 - `trips/`: 예정된 캠핑 계획
 - `history/`: 완료된 캠핑 히스토리
 - `outputs/`: 분석 결과 Markdown
 - `links.yaml`: 사용자 북마크 링크
 - `equipment/categories.yaml`: 장비 섹션별 카테고리 코드와 표시 이름
+- `.camping-backups/<timestamp>/`: 특정 시점의 로컬 운영 데이터 백업 스냅샷

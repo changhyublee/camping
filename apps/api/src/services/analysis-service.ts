@@ -1,9 +1,11 @@
 import type {
   AnalyzeTripRequest,
   AnalyzeTripResponse,
+  CreateDataBackupResponse,
   Companion,
   CompanionInput,
   ConsumableEquipmentItemInput,
+  DataBackupSnapshot,
   DurableEquipmentItemInput,
   EquipmentCatalog,
   EquipmentCategoriesData,
@@ -24,6 +26,8 @@ import type {
   ValidateTripResponse,
 } from "@camping/shared";
 import type { CampingRepository } from "../file-store/camping-repository";
+import type { DataBackupReason } from "../file-store/local-data-backup";
+import { AppError } from "./app-error";
 import { isAppError, toApiError } from "./app-error";
 import type { EquipmentMetadataSearchClient } from "./equipment-metadata-service";
 import type { AnalysisModelClient } from "./openai-client";
@@ -49,6 +53,26 @@ export class AnalysisService {
 
   async getHealthStatus() {
     return this.modelClient.getHealthStatus();
+  }
+
+  async listDataBackups(): Promise<DataBackupSnapshot[]> {
+    return this.repository.listDataBackups();
+  }
+
+  async createDataBackup(
+    reason: DataBackupReason = "manual",
+  ): Promise<CreateDataBackupResponse> {
+    const item = await this.repository.createDataBackup(reason);
+
+    if (!item) {
+      throw new AppError(
+        "RESOURCE_NOT_FOUND",
+        "백업할 로컬 운영 데이터가 없습니다.",
+        404,
+      );
+    }
+
+    return { item };
   }
 
   async getTrip(tripId: TripId) {

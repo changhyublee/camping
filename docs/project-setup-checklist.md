@@ -34,7 +34,7 @@
 - [x] `scripts/`
 - [x] `skills/`
 - [x] `.env.example`
-- [x] `.gitignore` 에 `.camping-data/`, `.env`, `.env.local`, `.env.*.local`, `node_modules/`, `dist/` 반영
+- [x] `.gitignore` 에 `.camping-data/`, `.camping-backups/`, `.env`, `.env.local`, `.env.*.local`, `node_modules/`, `dist/` 반영
 
 ### 웹과 API 구현
 
@@ -73,7 +73,8 @@
 - [ ] `pnpm install`
 - [ ] `cp .env.example .env`
 - [ ] 필요 시 `.env` 에서 메타데이터 수집 전용 키 주석 해제 여부 확인
-- [ ] `pnpm seed`
+- [ ] `.camping-data/` 가 아직 없을 때만 `pnpm seed`
+- [ ] 기존 운영 데이터가 있으면 `pnpm backup:data` 또는 `pnpm seed -- --replace` 기준으로 백업 후 판단
 - [ ] `.camping-data/` 가 예시 파일 기준으로 생성되었는지 확인
 
 ## 4. 새 환경 실행 체크리스트
@@ -82,12 +83,13 @@
 2. `cp .env.example .env`
 3. 필요 시 `.env` 의 `CODEX_METADATA_MODEL`, `CODEX_METADATA_REASONING_EFFORT`, `OPENAI_METADATA_MODEL` 주석 해제
 4. `codex login`
-5. `pnpm seed`
-6. `pnpm dev:api`
-7. `pnpm dev:web`
-8. `GET /api/health` 확인
-9. 웹 UI에서 trip 1건 저장과 분석 실행 확인
-10. 필요하면 `pnpm typecheck`, `pnpm test`, `pnpm build`
+5. 새 환경이면 `pnpm seed`
+6. 기존 운영 데이터를 예시 데이터로 교체해야 할 때만 `pnpm seed -- --replace`
+7. `pnpm dev:api`
+8. `pnpm dev:web`
+9. `GET /api/health` 확인
+10. 웹 UI에서 trip 1건 저장과 분석 실행 확인
+11. 필요하면 `pnpm typecheck`, `pnpm test`, `pnpm build`
 
 ## 5. 환경별 검증이 필요한 항목
 
@@ -102,7 +104,10 @@
 
 ## 6. 참고 메모
 
-- `pnpm seed` 는 기존 `.camping-data/` 를 삭제하고 `docs/examples/` 를 다시 복사한다.
+- `pnpm backup:data` 는 현재 `.camping-data/` 를 `.camping-backups/<timestamp>/` 에 수동 백업한다.
+- `pnpm seed` 는 새 환경 초기화용이며, 기존 `.camping-data/` 가 있으면 중단한다.
+- `pnpm seed -- --replace` 는 기존 `.camping-data/` 를 `.camping-backups/<timestamp>/` 에 백업한 뒤 `docs/examples/` 를 다시 복사한다.
 - `.camping-data/` 는 운영 데이터 경로이며 Git 커밋 대상이 아니다.
+- `.camping-backups/` 는 운영 데이터 백업 경로이며 Git 커밋 대상이 아니다.
 - 개인 준비물은 저장소에서 직접 관리하는 인벤토리가 아니라 분석 결과다.
 - `.env.example` 에는 메타데이터 수집 전용 키가 이미 주석 상태로 포함되어 있다.

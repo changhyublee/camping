@@ -154,6 +154,45 @@ describe("API server", () => {
     await app.close();
   });
 
+  it("creates and lists timestamped local data backups", async () => {
+    const dataDir = await createSeededDataDir();
+    const backupDir = path.join(path.dirname(dataDir), ".camping-backups");
+    const app = await buildServer({
+      dataDir,
+      backupDir,
+      projectRoot,
+      modelClient: new MockAnalysisClient("# sample"),
+    });
+
+    const createResponse = await app.inject({
+      method: "POST",
+      url: "/api/data-backups",
+    });
+
+    expect(createResponse.statusCode).toBe(200);
+    expect(createResponse.json().item).toEqual(
+      expect.objectContaining({
+        reason: "manual",
+        source_path: dataDir,
+      }),
+    );
+
+    const backupSnapshot = createResponse.json().item;
+    expect(
+      await readFile(path.join(backupSnapshot.data_path, "equipment", "durable.yaml"), "utf8"),
+    ).toContain("tunnel-tent-4p-khaki");
+
+    const listResponse = await app.inject({
+      method: "GET",
+      url: "/api/data-backups",
+    });
+
+    expect(listResponse.statusCode).toBe(200);
+    expect(listResponse.json().items).toEqual([backupSnapshot]);
+
+    await app.close();
+  });
+
   it("allows DELETE equipment preflight requests through CORS", async () => {
     const dataDir = await createSeededDataDir();
     const app = await buildServer({

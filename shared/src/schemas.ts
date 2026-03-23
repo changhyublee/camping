@@ -440,6 +440,20 @@ export const refreshDurableEquipmentMetadataResponseSchema = z.object({
   item: durableEquipmentItemSchema,
 });
 
+export const dataBackupReasonSchema = z.enum([
+  "manual",
+  "startup",
+  "seed-replace",
+]);
+
+export const dataBackupSnapshotSchema = z.object({
+  created_at: z.string().datetime(),
+  reason: dataBackupReasonSchema,
+  source_path: z.string().min(1),
+  backup_path: z.string().min(1),
+  data_path: z.string().min(1),
+});
+
 export const apiErrorSchema = z.object({
   code: z.enum([
     "INVALID_TRIP_ID_FORMAT",
@@ -448,6 +462,7 @@ export const apiErrorSchema = z.object({
     "DEPENDENCY_MISSING",
     "OPENAI_REQUEST_FAILED",
     "OUTPUT_SAVE_FAILED",
+    "BACKUP_FAILED",
     "RESOURCE_NOT_FOUND",
     "CONFLICT",
     "INTERNAL_ERROR",
@@ -479,6 +494,14 @@ export const getOutputResponseSchema = z.object({
   trip_id: tripIdSchema,
   output_path: z.string(),
   markdown: z.string(),
+});
+
+export const listDataBackupsResponseSchema = z.object({
+  items: z.array(dataBackupSnapshotSchema).default([]),
+});
+
+export const createDataBackupResponseSchema = z.object({
+  item: dataBackupSnapshotSchema,
 });
 
 export const analysisBackendSchema = z.enum(["codex-cli", "openai"]);

@@ -9,6 +9,7 @@
     "dev": "pnpm --parallel --filter @camping/api --filter @camping/web run dev",
     "dev:api": "pnpm --filter @camping/api run dev",
     "dev:web": "pnpm --filter @camping/web run dev",
+    "backup:data": "tsx scripts/backup-local-data.ts",
     "seed": "tsx scripts/seed-local-data.ts",
     "build": "pnpm -r --if-present run build",
     "typecheck": "pnpm -r --if-present run typecheck",

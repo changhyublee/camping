@@ -9,6 +9,7 @@
 - 원격 서버 없이 로컬 우선 구조를 유지한다
 - 브라우저 UI는 로컬 API만 호출한다
 - 실제 운영 데이터는 `./.camping-data/` 에 저장한다
+- 운영 데이터 백업은 `./.camping-backups/` 에 시점별 스냅샷으로 저장한다
 - 동행자, 장비, 계획, 히스토리, 링크는 YAML로 저장한다
 - 분석 결과는 Markdown으로 저장한다
 - 기본 분석 백엔드는 로컬 `codex exec` 이다
@@ -20,6 +21,7 @@
 브라우저 UI
   -> 로컬 API
     -> .camping-data/ YAML 읽기/쓰기
+    -> .camping-backups/ 시점별 백업 생성
     -> docs/, prompts/, schemas/ 참조
     -> 로컬 codex CLI 또는 fallback AI 백엔드 호출
     -> outputs/*.md 저장
@@ -45,6 +47,8 @@
   - AI 보조 응답 생성
 - `.camping-data`
   - 운영 데이터 저장
+- `.camping-backups`
+  - 운영 데이터 백업 스냅샷 저장
 
 ## 5. 로컬 저장 구조
 
@@ -67,6 +71,11 @@
 └── cache/
     └── equipment-metadata/
         └── durable/
+
+./.camping-backups/
+└── <timestamp>/
+    ├── backup.json
+    └── data/
 ```
 
 ## 6. 메뉴별 기술 책임
@@ -110,6 +119,12 @@
 
 - `links.yaml` 하나로 관리한다
 - 외부 API 연동이 아니라 사용자 북마크 CRUD 를 우선한다
+
+### 로컬 데이터 백업
+
+- 서버 시작 시 현재 `.camping-data/` 가 있으면 `.camping-backups/<timestamp>/` 아래에 자동 백업을 만든다
+- 수동 백업도 같은 구조의 시점별 스냅샷으로 누적 저장한다
+- 백업 경로는 운영 데이터 경로와 분리해 `seed` 같은 초기화 작업이 백업까지 지우지 않도록 한다
 
 ## 7. OpenAI 연동 원칙
 

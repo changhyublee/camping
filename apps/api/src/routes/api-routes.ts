@@ -249,6 +249,14 @@ export async function registerApiRoutes(
 ) {
   app.get("/api/health", async () => analysisService.getHealthStatus());
 
+  app.get("/api/data-backups", async () => ({
+    items: await analysisService.listDataBackups(),
+  }));
+
+  app.post("/api/data-backups", async () => {
+    return analysisService.createDataBackup("manual");
+  });
+
   app.get("/api/companions", async () => ({
     items: await analysisService.listCompanions(),
   }));

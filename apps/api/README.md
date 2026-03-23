@@ -5,6 +5,7 @@
 ## 현재 책임
 
 - `GET /api/health`
+- data backup 조회/생성
 - companions CRUD
 - trips CRUD
 - trip 검증과 분석 실행
@@ -14,6 +15,7 @@
 - equipment category CRUD
 - history 조회/수정/삭제와 trip 아카이브
 - links CRUD
+- 서버 시작 시 로컬 운영 데이터 자동 백업
 
 ## 런타임 기준
 
@@ -52,6 +54,7 @@
   - API 라우트 등록
 - `src/file-store/camping-repository.ts`
   - `.camping-data/` YAML/Markdown 읽기와 쓰기
+  - `.camping-backups/` 스냅샷 백업 생성과 조회
 - `src/services/`
   - 분석, planning assistant, prompt 조합, 검증, 모델 호출
 

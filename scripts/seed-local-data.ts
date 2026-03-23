@@ -1,36 +1,30 @@
-import { cp, mkdir, readdir, rm } from "node:fs/promises";
 import path from "node:path";
-import { fileURLToPath } from "node:url";
+import { fileURLToPath, pathToFileURL } from "node:url";
+import { seedLocalData } from "../apps/api/src/local-data-seed";
 
 const __dirname = path.dirname(fileURLToPath(import.meta.url));
 const projectRoot = path.resolve(__dirname, "..");
 const examplesDir = path.join(projectRoot, "docs", "examples");
 const dataDir = path.join(projectRoot, ".camping-data");
+const backupDir = path.join(projectRoot, ".camping-backups");
 
 async function main() {
-  const entries = await readdir(examplesDir, { withFileTypes: true });
+  const result = await seedLocalData({
+    shouldReplace: process.argv.slice(2).includes("--replace"),
+    examplesPath: examplesDir,
+    dataPath: dataDir,
+    backupPath: backupDir,
+  });
 
-  await rm(dataDir, { recursive: true, force: true });
-  await mkdir(dataDir, { recursive: true });
-
-  for (const entry of entries) {
-    const sourcePath = path.join(examplesDir, entry.name);
-    const targetPath = path.join(dataDir, entry.name);
-
-    if (entry.isDirectory()) {
-      await cp(sourcePath, targetPath, { recursive: true, force: true });
-    } else {
-      await cp(sourcePath, targetPath, { force: true });
-    }
+  if (result.backup) {
+    console.log(`Backed up existing local data into ${result.backup.backup_path}`);
   }
-
-  await mkdir(path.join(dataDir, "cache", "weather"), { recursive: true });
-  await mkdir(path.join(dataDir, "cache", "places"), { recursive: true });
-
-  console.log(`Seeded local data into ${dataDir}`);
+  console.log(`Seeded example data into ${result.dataPath}`);
 }
 
-main().catch((error) => {
-  console.error("Failed to seed local data:", error);
-  process.exitCode = 1;
-});
+if (process.argv[1] && import.meta.url === pathToFileURL(process.argv[1]).href) {
+  main().catch((error) => {
+    console.error("Failed to seed local data:", error);
+    process.exitCode = 1;
+  });
+}

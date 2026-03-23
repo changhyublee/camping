@@ -10,6 +10,9 @@ import type {
   companionSchema,
   companionInputSchema,
   companionsSchema,
+  createDataBackupResponseSchema,
+  dataBackupReasonSchema,
+  dataBackupSnapshotSchema,
   durableEquipmentMetadataSchema,
   durableEquipmentMetadataSourceSchema,
   consumableEquipmentItemSchema,
@@ -33,6 +36,7 @@ import type {
   foodPreferencesSchema,
   getOutputResponseSchema,
   historyRecordSchema,
+  listDataBackupsResponseSchema,
   planningAssistantActionSchema,
   planningAssistantRequestSchema,
   planningAssistantResponseSchema,
@@ -59,6 +63,7 @@ export type ErrorCode =
   | "DEPENDENCY_MISSING"
   | "OPENAI_REQUEST_FAILED"
   | "OUTPUT_SAVE_FAILED"
+  | "BACKUP_FAILED"
   | "RESOURCE_NOT_FOUND"
   | "CONFLICT"
   | "INTERNAL_ERROR";
@@ -132,6 +137,10 @@ export type ValidateTripResponse = z.infer<typeof validateTripResponseSchema>;
 export type SaveOutputRequest = z.infer<typeof saveOutputRequestSchema>;
 export type SaveOutputResponse = z.infer<typeof saveOutputResponseSchema>;
 export type GetOutputResponse = z.infer<typeof getOutputResponseSchema>;
+export type DataBackupReason = z.infer<typeof dataBackupReasonSchema>;
+export type DataBackupSnapshot = z.infer<typeof dataBackupSnapshotSchema>;
+export type ListDataBackupsResponse = z.infer<typeof listDataBackupsResponseSchema>;
+export type CreateDataBackupResponse = z.infer<typeof createDataBackupResponseSchema>;
 export type RefreshDurableEquipmentMetadataResponse = z.infer<
   typeof refreshDurableEquipmentMetadataResponseSchema
 >;
