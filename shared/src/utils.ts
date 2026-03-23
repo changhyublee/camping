@@ -1,4 +1,5 @@
 import type {
+  ConsumableEquipmentItem,
   EquipmentCategoriesData,
   EquipmentCategory,
   HistoryRecord,
@@ -90,6 +91,23 @@ export function humanizeEquipmentCategoryId(categoryId: string): string {
     .split(/[-_]/)
     .filter(Boolean)
     .join(" ");
+}
+
+export function getConsumableStatus(
+  item: Pick<ConsumableEquipmentItem, "quantity_on_hand" | "low_stock_threshold">,
+): "ok" | "low" | "empty" {
+  if (item.quantity_on_hand <= 0) {
+    return "empty";
+  }
+
+  if (
+    typeof item.low_stock_threshold === "number" &&
+    item.quantity_on_hand <= item.low_stock_threshold
+  ) {
+    return "low";
+  }
+
+  return "ok";
 }
 
 function cloneEquipmentCategory(category: EquipmentCategory): EquipmentCategory {

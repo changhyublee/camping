@@ -905,6 +905,54 @@ describe("API server", () => {
     expect(updateEquipmentResponse.statusCode).toBe(200);
     expect(updateEquipmentResponse.json().item.quantity).toBe(2);
 
+    const createConsumableResponse = await app.inject({
+      method: "POST",
+      url: "/api/equipment/consumables/items",
+      payload: {
+        name: "숯",
+        category: "fuel",
+        quantity_on_hand: 1,
+        unit: "bag",
+        low_stock_threshold: 2,
+      },
+    });
+
+    expect(createConsumableResponse.statusCode).toBe(200);
+    expect(createConsumableResponse.json().item).toEqual(
+      expect.objectContaining({
+        name: "숯",
+        category: "fuel",
+        quantity_on_hand: 1,
+        unit: "bag",
+        low_stock_threshold: 2,
+      }),
+    );
+    expect(createConsumableResponse.json().item).not.toHaveProperty("status");
+    const createdConsumableId = createConsumableResponse.json().item.id as string;
+
+    const updateConsumableResponse = await app.inject({
+      method: "PUT",
+      url: `/api/equipment/consumables/items/${createdConsumableId}`,
+      payload: {
+        id: createdConsumableId,
+        name: "숯",
+        category: "fuel",
+        quantity_on_hand: 3,
+        unit: "bag",
+        low_stock_threshold: 2,
+      },
+    });
+
+    expect(updateConsumableResponse.statusCode).toBe(200);
+    expect(updateConsumableResponse.json().item).toEqual(
+      expect.objectContaining({
+        id: createdConsumableId,
+        quantity_on_hand: 3,
+        low_stock_threshold: 2,
+      }),
+    );
+    expect(updateConsumableResponse.json().item).not.toHaveProperty("status");
+
     const createCategoryResponse = await app.inject({
       method: "POST",
       url: "/api/equipment/categories/durable",

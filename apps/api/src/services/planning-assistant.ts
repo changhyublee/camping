@@ -5,6 +5,7 @@ import type {
   PrecheckItem,
   TripBundle,
 } from "@camping/shared";
+import { getConsumableStatus } from "@camping/shared";
 import { collectPlanningWarnings } from "./trip-validation";
 import type { AnalysisModelClient } from "./openai-client";
 
@@ -182,11 +183,7 @@ function buildPlanningAssistantActions(
 
   const butane = bundle.consumables.items.find((item) => item.id === "butane-gas");
 
-  if (
-    butane &&
-    (butane.status === "low" ||
-      butane.quantity_on_hand <= (butane.low_stock_threshold ?? 0))
-  ) {
+  if (butane && getConsumableStatus(butane) !== "ok") {
     actions.push({
       id: "increase-butane",
       section: "consumables",

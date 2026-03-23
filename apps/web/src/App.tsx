@@ -41,6 +41,7 @@ import {
   EQUIPMENT_SECTION_LABELS,
   EXTERNAL_LINK_CATEGORY_LABELS,
   PRECHECK_STATUS_LABELS,
+  getConsumableStatus,
 } from "@camping/shared";
 import { cloneEquipmentCategories } from "@camping/shared";
 import { apiClient, ApiClientError } from "./api/client";
@@ -486,10 +487,7 @@ export function App() {
   const dashboardMetrics = useMemo(() => {
     const lowStockCount =
       (equipment?.consumables.items.filter(
-        (item) =>
-          item.status === "low" ||
-          item.status === "empty" ||
-          item.quantity_on_hand <= (item.low_stock_threshold ?? 0),
+        (item) => getConsumableStatus(item) !== "ok",
       ).length ?? 0) +
       (equipment?.precheck.items.filter((item) => item.status !== "ok").length ?? 0);
 
@@ -2997,23 +2995,6 @@ function handleChangeEquipmentItemCategory(
                             }
                           />
                         </FormField>
-                        <FormField label="상태">
-                          <select
-                            value={consumableDraft.status}
-                            onChange={(event) =>
-                              setConsumableDraft((current) => ({
-                                ...current,
-                                status: event.target.value as ConsumableEquipmentItem["status"],
-                              }))
-                            }
-                          >
-                            {Object.entries(CONSUMABLE_STATUS_LABELS).map(([value, label]) => (
-                              <option key={value} value={value}>
-                                {label}
-                              </option>
-                            ))}
-                          </select>
-                        </FormField>
                         <button
                           className="button button--primary form-grid__full"
                           onClick={() => handleCreateEquipmentItem("consumables")}
@@ -4635,7 +4616,6 @@ function createEmptyConsumableItem(): ConsumableEquipmentItemInput {
     quantity_on_hand: 0,
     unit: "pack",
     low_stock_threshold: undefined,
-    status: "ok",
   };
 }
 
@@ -5214,23 +5194,6 @@ function ConsumableList(props: {
                 }
               />
             </FormField>
-            <FormField label="상태">
-              <select
-                value={item.status}
-                onChange={(event) =>
-                  props.onChange(item.id, (current) => ({
-                    ...current,
-                    status: event.target.value as ConsumableEquipmentItem["status"],
-                  }))
-                }
-              >
-                {Object.entries(CONSUMABLE_STATUS_LABELS).map(([value, label]) => (
-                  <option key={value} value={value}>
-                    {label}
-                  </option>
-                ))}
-              </select>
-            </FormField>
           </div>
           <div className="button-row">
             <button className="button" onClick={() => props.onSave(item.id)} type="button">
@@ -5244,7 +5207,10 @@ function ConsumableList(props: {
       )}
       renderSummaryMeta={(item: ConsumableEquipmentItem) => ({
         quantity: `수량 ${item.quantity_on_hand}${item.unit ? ` ${item.unit}` : ""}`,
-        status: getStatusLabel(CONSUMABLE_STATUS_LABELS, item.status),
+        status: getStatusLabel(
+          CONSUMABLE_STATUS_LABELS,
+          getConsumableStatus(item),
+        ),
       })}
       section={props.section}
     />
@@ -5528,17 +5494,12 @@ function buildDashboardAlerts(catalog: EquipmentCatalog | null) {
   }
 
   const consumableAlerts = catalog.consumables.items
-    .filter(
-      (item) =>
-        item.status === "low" ||
-        item.status === "empty" ||
-        item.quantity_on_hand <= (item.low_stock_threshold ?? -1),
-    )
+    .filter((item) => getConsumableStatus(item) !== "ok")
     .map(
       (item) =>
         `${item.name} ${item.quantity_on_hand}${item.unit ? ` ${item.unit}` : ""} / ${getStatusLabel(
           CONSUMABLE_STATUS_LABELS,
-          item.status,
+          getConsumableStatus(item),
         )}`,
     );
 

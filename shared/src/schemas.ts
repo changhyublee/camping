@@ -214,7 +214,6 @@ export const consumableEquipmentItemSchema = z.object({
   quantity_on_hand: z.number().nonnegative(),
   unit: z.string().min(1),
   low_stock_threshold: z.number().nonnegative().optional(),
-  status: generalStatusSchema,
 });
 
 export const consumableEquipmentItemInputSchema =

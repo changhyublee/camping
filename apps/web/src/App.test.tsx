@@ -476,7 +476,13 @@ function mockFetch(input: RequestInfo | URL, init?: RequestInit) {
     const index = state.equipment[section].items.findIndex((item) => item.id === itemId);
 
     if (index >= 0) {
-      state.equipment[section].items[index] = body as (typeof state.equipment)[typeof section]["items"][number];
+      if (section === "durable") {
+        state.equipment.durable.items[index] = body as DurableEquipmentItem;
+      } else if (section === "consumables") {
+        state.equipment.consumables.items[index] = body as ConsumableEquipmentItem;
+      } else {
+        state.equipment.precheck.items[index] = body as PrecheckItem;
+      }
     }
 
     return jsonResponse({ item: body });
@@ -484,10 +490,19 @@ function mockFetch(input: RequestInfo | URL, init?: RequestInit) {
 
   if (equipmentItemParams?.itemId && method === "DELETE") {
     const { section, itemId } = equipmentItemParams;
-
-    state.equipment[section].items = state.equipment[section].items.filter(
-      (item) => item.id !== itemId,
-    );
+    if (section === "durable") {
+      state.equipment.durable.items = state.equipment.durable.items.filter(
+        (item) => item.id !== itemId,
+      );
+    } else if (section === "consumables") {
+      state.equipment.consumables.items = state.equipment.consumables.items.filter(
+        (item) => item.id !== itemId,
+      );
+    } else {
+      state.equipment.precheck.items = state.equipment.precheck.items.filter(
+        (item) => item.id !== itemId,
+      );
+    }
 
     return emptyResponse();
   }
@@ -1272,7 +1287,7 @@ describe("App", () => {
     ).toBeInTheDocument();
   });
 
-  it("shows low stock threshold and status controls for consumables", async () => {
+  it("shows low stock threshold controls for consumables and derives stock status", async () => {
     state.equipment.consumables.items = [
       {
         id: "butane-gas",
@@ -1281,7 +1296,6 @@ describe("App", () => {
         quantity_on_hand: 1,
         unit: "ea",
         low_stock_threshold: 2,
-        status: "low",
       },
     ];
 
@@ -1295,7 +1309,8 @@ describe("App", () => {
     );
 
     expect(await screen.findAllByText("부족 기준")).toHaveLength(2);
-    expect(screen.getAllByRole("option", { name: "없음" }).length).toBeGreaterThan(0);
+    expect(screen.queryByRole("combobox", { name: "상태" })).toBeNull();
+    expect(screen.getByText("부족")).toBeInTheDocument();
   });
 
   it("renders equipment sections as tabs and switches the tabpanel", async () => {
@@ -1568,7 +1583,6 @@ describe("App", () => {
         category: "fuel",
         quantity_on_hand: 2,
         unit: "ea",
-        status: "ok",
       },
       {
         id: "fire-starter",
@@ -1576,7 +1590,6 @@ describe("App", () => {
         category: "ignition",
         quantity_on_hand: 1,
         unit: "pack",
-        status: "ok",
       },
     ];
 

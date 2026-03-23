@@ -1,6 +1,5 @@
 import type {
   AgeGroup,
-  ConsumableEquipmentItem,
   EquipmentMetadataLookupStatus,
   DurableEquipmentItem,
   EquipmentCategoriesData,
@@ -15,10 +14,7 @@ type DurableStatus = Extract<
   DurableEquipmentItem["status"],
   "ok" | "low" | "needs_check" | "needs_repair"
 >;
-type ConsumableStatus = Extract<
-  ConsumableEquipmentItem["status"],
-  "ok" | "low" | "empty"
->;
+type ConsumableStatus = "ok" | "low" | "empty";
 type PrecheckStatus = Extract<
   PrecheckItem["status"],
   "ok" | "needs_check" | "needs_repair"

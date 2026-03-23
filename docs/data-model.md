@@ -134,7 +134,8 @@
 ### `equipment/consumables.yaml`
 
 - 소모품 재고
-- 부족 상태 관리
+- 현재 수량과 부족 기준 관리
+- 부족 여부는 저장값이 아니라 수량 기준으로 계산
 
 ### `equipment/precheck.yaml`
 
