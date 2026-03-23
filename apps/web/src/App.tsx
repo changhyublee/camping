@@ -64,6 +64,27 @@ const PAGE_LABELS: Record<PageKey, string> = {
   links: "외부 링크",
   management: "관리 설정",
 };
+const NAVIGATION_GROUPS: Array<{
+  title: string;
+  description: string;
+  items: PageKey[];
+}> = [
+  {
+    title: "운영 허브",
+    description: "현재 상태 확인과 계획 실행",
+    items: ["dashboard", "planning", "history"],
+  },
+  {
+    title: "준비 데이터",
+    description: "장비와 참고 정보를 정리",
+    items: ["equipment", "links"],
+  },
+  {
+    title: "관리 설정",
+    description: "카테고리와 백업 기준 관리",
+    items: ["management"],
+  },
+];
 const EQUIPMENT_SECTIONS: EquipmentSection[] = [
   "durable",
   "consumables",
@@ -352,20 +373,6 @@ export function App() {
     }));
   }, [equipmentCategories]);
 
-  const tripCountLabel = useMemo(() => {
-    if (isCreatingTrip) {
-      return "새 캠핑 계획 작성 중";
-    }
-
-    if (!tripDraft) {
-      return "등록된 캠핑 계획을 선택하거나 새로 만들 수 있습니다.";
-    }
-
-    return `${tripDraft.title.trim() || "새 캠핑 계획"} / ${
-      selectedTripId ?? "저장 전 초안"
-    } / 동행 ${tripDraft.party?.companion_ids.length ?? 0}명`;
-  }, [isCreatingTrip, selectedTripId, tripDraft]);
-
   function handleEquipmentTabKeyDown(
     event: ReactKeyboardEvent<HTMLButtonElement>,
     section: EquipmentSection,
@@ -435,6 +442,29 @@ export function App() {
         : null) ?? null,
     [selectedTripId, trips],
   );
+
+  const currentTripLabel =
+    (isCreatingTrip
+      ? tripDraft?.title.trim() || "새 캠핑 계획"
+      : selectedTripSummary?.title) ??
+    formatCompactTripId(selectedTripId) ??
+    "없음";
+  const currentHistoryLabel =
+    selectedHistory?.title ??
+    formatCompactTripId(selectedHistoryId) ??
+    "없음";
+  const currentTripPath = selectedTripId
+    ? `.camping-data/trips/${selectedTripId}.yaml`
+    : ".camping-data/trips/<trip-id>.yaml";
+  const currentOutputPath = analysisResponse?.output_path ?? "분석 실행 후 생성";
+  const activePageLead = {
+    dashboard: "예정 계획과 점검 경고를 먼저 훑고 다음 작업으로 바로 이동하는 운영 허브입니다.",
+    equipment: "보유 장비, 소모품, 출발 전 점검을 읽기 쉬운 목록으로 정리하는 화면입니다.",
+    planning: "trip 원본 입력, AI 보조, 최종 분석 결과를 단계별로 다루는 핵심 작업 화면입니다.",
+    history: "완료된 계획과 저장된 결과 Markdown을 다시 열어보는 기록 보관 화면입니다.",
+    links: "날씨, 장소, 맛집 같은 참고 링크를 카테고리별로 정리하는 화면입니다.",
+    management: "장비 카테고리 기준과 로컬 데이터 백업을 관리하는 설정 화면입니다.",
+  } satisfies Record<PageKey, string>;
 
   async function loadInitialData() {
     setAppLoading(true);
@@ -1606,33 +1636,55 @@ export function App() {
     }
   }
 
+  function renderNavButton(
+    page: PageKey,
+    description: string,
+    meta: string,
+  ) {
+    const isActive = activePage === page;
+
+    return (
+      <button
+        aria-current={isActive ? "page" : undefined}
+        aria-label={PAGE_LABELS[page]}
+        className={navButtonClass(isActive)}
+        onClick={() => setActivePage(page)}
+        type="button"
+      >
+        <span className="nav-button__title">{PAGE_LABELS[page]}</span>
+        <span className="nav-button__description">{description}</span>
+        <span aria-hidden="true" className="nav-button__meta">
+          {meta}
+        </span>
+      </button>
+    );
+  }
+
   return (
     <div className="app-shell">
       <header className="hero hero--global">
         <div className="hero__copy">
-          <div className="hero__eyebrow">Field Note Dashboard</div>
-          <h1>로컬 파일 위에서 계획, 장비, 기록을 한 화면 언어로 다루는 캠핑 운영 도구</h1>
-          <p>{tripCountLabel}</p>
+          <div className="hero__eyebrow">Camp Console</div>
+          <h1>캠핑 운영 콘솔</h1>
+          <p>{activePageLead[activePage]}</p>
           <div className="hero__tags" aria-label="현재 앱 요약">
             <span className="hero-tag">현재 메뉴 {PAGE_LABELS[activePage]}</span>
-            <span className="hero-tag">예정 계획 {dashboardMetrics.trips}건</span>
-            <span className="hero-tag">재고/점검 경고 {dashboardMetrics.alerts}건</span>
+            <span className="hero-tag">선택 계획 {currentTripLabel}</span>
+            <span className="hero-tag">예정 {dashboardMetrics.trips}건</span>
+            <span className="hero-tag">경고 {dashboardMetrics.alerts}건</span>
           </div>
         </div>
         <div className="hero__meta-grid">
           <article className="hero__meta">
             <div className="hero__meta-label">현재 초점</div>
             <strong>{PAGE_LABELS[activePage]}</strong>
-            <span>
-              선택된 계획 {formatCompactTripId(selectedTripId) ?? "없음"} / 히스토리{" "}
-              {formatCompactTripId(selectedHistoryId) ?? "없음"}
-            </span>
+            <span>계획 {currentTripLabel}</span>
+            <span>히스토리 {currentHistoryLabel}</span>
           </article>
           <article className="hero__meta hero__meta--paths">
-            <div className="hero__meta-label">주요 저장 경로</div>
-            <code>.camping-data/trips/&lt;trip-id&gt;.yaml</code>
-            <code>.camping-data/history/&lt;history-id&gt;.yaml</code>
-            <code>.camping-data/links.yaml</code>
+            <div className="hero__meta-label">주 작업 파일</div>
+            <code>{currentTripPath}</code>
+            <code>{currentOutputPath}</code>
           </article>
         </div>
       </header>
@@ -1666,75 +1718,71 @@ export function App() {
 
       <div className="app-layout">
         <aside className="side-nav panel panel--nav">
-          <div className="panel__eyebrow">Workspace</div>
+          <div className="panel__eyebrow">메뉴</div>
           <div className="nav-overview">
-            <strong>필드 노트 운영 메뉴</strong>
+            <strong>읽기 쉬운 작업 흐름</strong>
             <p>
-              메뉴는 항상 열어 두고, 현재 상태를 잃지 않은 채 계획 편집과 운영 점검을
-              오갈 수 있게 구성했습니다.
+              메뉴를 운영 허브, 준비 데이터, 관리 설정으로 나눠 지금 해야 할 일과
+              기준 데이터를 분리했습니다.
             </p>
           </div>
-          <nav className="nav-list">
-            <button
-              className={navButtonClass(activePage === "dashboard")}
-              onClick={() => setActivePage("dashboard")}
-              type="button"
-            >
-              <span>대시보드</span>
-              <span aria-hidden="true" className="nav-button__meta">
-                현황 {dashboardMetrics.trips}/{dashboardMetrics.history}
-              </span>
-            </button>
-            <button
-              className={navButtonClass(activePage === "equipment")}
-              onClick={() => setActivePage("equipment")}
-              type="button"
-            >
-              <span>장비 관리</span>
-              <span aria-hidden="true" className="nav-button__meta">
-                항목 {equipmentMetrics.durable + equipmentMetrics.consumables + equipmentMetrics.precheck}
-              </span>
-            </button>
-            <button
-              className={navButtonClass(activePage === "planning")}
-              onClick={() => setActivePage("planning")}
-              type="button"
-            >
-              <span>캠핑 계획</span>
-              <span aria-hidden="true" className="nav-button__meta">
-                활성 {formatCompactTripId(selectedTripId) ?? "새 초안"}
-              </span>
-            </button>
-            <button
-              className={navButtonClass(activePage === "history")}
-              onClick={() => setActivePage("history")}
-              type="button"
-            >
-              <span>캠핑 히스토리</span>
-              <span aria-hidden="true" className="nav-button__meta">
-                기록 {dashboardMetrics.history}건
-              </span>
-            </button>
-            <button
-              className={navButtonClass(activePage === "links")}
-              onClick={() => setActivePage("links")}
-              type="button"
-            >
-              <span>외부 링크</span>
-              <span aria-hidden="true" className="nav-button__meta">
-                링크 {dashboardMetrics.links}건
-              </span>
-            </button>
-            <button
-              className={navButtonClass(activePage === "management")}
-              onClick={() => setActivePage("management")}
-              type="button"
-            >
-              <span>관리 설정</span>
-              <span aria-hidden="true" className="nav-button__meta">
-                카테고리 {equipmentMetrics.categories}개
-              </span>
-            </button>
+          <nav className="nav-sections" aria-label="주 메뉴">
+            {NAVIGATION_GROUPS.map((group) => (
+              <section className="nav-section" key={group.title}>
+                <div className="nav-section__header">
+                  <span className="nav-section__title">{group.title}</span>
+                  <span className="nav-section__copy">{group.description}</span>
+                </div>
+                <div className="nav-list">
+                  {group.items.includes("dashboard")
+                    ? renderNavButton(
+                        "dashboard",
+                        "예정 계획, 최근 기록, 점검 경고를 먼저 확인합니다.",
+                        `예정 ${dashboardMetrics.trips}건 · 경고 ${dashboardMetrics.alerts}건`,
+                      )
+                    : null}
+                  {group.items.includes("planning")
+                    ? renderNavButton(
+                        "planning",
+                        "trip 원본 입력, AI 보조, 분석을 한 흐름으로 진행합니다.",
+                        `선택 ${currentTripLabel} · 검증 ${validationWarnings.length}건`,
+                      )
+                    : null}
+                  {group.items.includes("history")
+                    ? renderNavButton(
+                        "history",
+                        "완료된 계획과 저장된 결과를 다시 열어봅니다.",
+                        `기록 ${dashboardMetrics.history}건 · 현재 ${currentHistoryLabel}`,
+                      )
+                    : null}
+                  {group.items.includes("equipment")
+                    ? renderNavButton(
+                        "equipment",
+                        "보유 장비, 소모품, 출발 전 점검을 같은 구조로 관리합니다.",
+                        `항목 ${
+                          equipmentMetrics.durable +
+                          equipmentMetrics.consumables +
+                          equipmentMetrics.precheck
+                        }개 · 경고 ${dashboardMetrics.alerts}건`,
+                      )
+                    : null}
+                  {group.items.includes("links")
+                    ? renderNavButton(
+                        "links",
+                        "날씨, 장소, 맛집 같은 참고 링크를 카테고리별로 정리합니다.",
+                        `링크 ${dashboardMetrics.links}건 · 그룹 ${linkGroups.length}개`,
+                      )
+                    : null}
+                  {group.items.includes("management")
+                    ? renderNavButton(
+                        "management",
+                        "장비 카테고리 기준과 로컬 백업을 관리합니다.",
+                        `카테고리 ${equipmentMetrics.categories}개`,
+                      )
+                    : null}
+                </div>
+              </section>
+            ))}
           </nav>
           <div className="nav-actions">
             <button className="button button--primary" onClick={beginCreateTrip} type="button">
@@ -1742,7 +1790,7 @@ export function App() {
             </button>
             <div className="nav-note">
               <span>주 실행 단위</span>
-              <code>.camping-data/trips/&lt;trip-id&gt;.yaml</code>
+              <code>{currentTripPath}</code>
             </div>
           </div>
         </aside>
@@ -1758,11 +1806,11 @@ export function App() {
             <section className="page-stack">
               <section className="page-intro page-intro--dashboard panel">
                 <div className="page-intro__copy">
-                  <div className="panel__eyebrow">Dashboard</div>
+                  <div className="panel__eyebrow">운영 허브</div>
                   <h2>대시보드</h2>
                   <p className="panel__copy">
-                    예정 계획, 최근 기록, 장비 경고, 링크 현황을 한 번에 훑고 바로 다음
-                    작업으로 이동합니다.
+                    오늘 필요한 상태만 먼저 훑고, 계획 작성이나 장비 점검 같은 다음
+                    작업으로 바로 넘어갈 수 있게 정리했습니다.
                   </p>
                 </div>
                 <div className="page-intro__meta">
@@ -1783,7 +1831,7 @@ export function App() {
 
               <section className="dashboard-grid">
                 <section className="panel dashboard-grid__feature">
-                  <div className="panel__eyebrow">Overview</div>
+                  <div className="panel__eyebrow">운영 요약</div>
                   <div className="panel__header">
                     <h2>운영 현황</h2>
                   </div>
@@ -1796,7 +1844,7 @@ export function App() {
                 </section>
 
                 <section className="panel">
-                  <div className="panel__eyebrow">Upcoming</div>
+                  <div className="panel__eyebrow">예정 계획</div>
                   <div className="panel__header">
                     <h2>곧 실행할 계획</h2>
                   </div>
@@ -1822,7 +1870,7 @@ export function App() {
                 </section>
 
                 <section className="panel">
-                  <div className="panel__eyebrow">Recent</div>
+                  <div className="panel__eyebrow">최근 기록</div>
                   <div className="panel__header">
                     <h2>최근 히스토리</h2>
                   </div>
@@ -1853,7 +1901,7 @@ export function App() {
                 </section>
 
                 <section className="panel">
-                  <div className="panel__eyebrow">Alerts</div>
+                  <div className="panel__eyebrow">점검 경고</div>
                   <div className="panel__header">
                     <h2>점검 경고</h2>
                   </div>
@@ -1871,7 +1919,7 @@ export function App() {
                 </section>
 
                 <section className="panel">
-                  <div className="panel__eyebrow">Quick Move</div>
+                  <div className="panel__eyebrow">빠른 작업</div>
                   <div className="panel__header">
                     <h2>빠른 이동</h2>
                   </div>
@@ -1904,7 +1952,7 @@ export function App() {
                 </section>
 
                 <section className="panel">
-                  <div className="panel__eyebrow">Links</div>
+                  <div className="panel__eyebrow">링크 현황</div>
                   <div className="panel__header">
                     <h2>외부 링크 요약</h2>
                   </div>
@@ -1931,10 +1979,10 @@ export function App() {
             <section className="page-stack">
               <section className="page-intro panel">
                 <div className="page-intro__copy">
-                  <div className="panel__eyebrow">Equipment</div>
-                  <h2>장비 운영 상태</h2>
+                  <div className="panel__eyebrow">준비 데이터</div>
+                  <h2>장비 점검과 재고 관리</h2>
                   <p className="panel__copy">
-                    반복 장비, 소모품, 출발 전 점검을 같은 레이아웃에서 보고 현재 상태를
+                    반복 장비, 소모품, 출발 전 점검을 같은 읽기 흐름으로 보고 현재 상태를
                     먼저 파악한 뒤 필요한 항목만 펼쳐 수정합니다.
                   </p>
                 </div>
@@ -1959,12 +2007,12 @@ export function App() {
               </section>
 
               <section className="panel">
-                <div className="panel__eyebrow">Equipment</div>
+                <div className="panel__eyebrow">장비 개요</div>
                 <div className="panel__header">
-                  <h2>장비 탭</h2>
+                  <h2>섹션 전환</h2>
                 </div>
                 <p className="panel__copy">
-                  반복 장비, 소모품, 출발 전 점검을 탭으로 전환하며 관리합니다.
+                  반복 장비, 소모품, 출발 전 점검을 같은 위치에서 전환해 흐름을 유지합니다.
                 </p>
                 <div className="metric-grid metric-grid--compact">
                   <MetricCard label="반복 장비" value={`${equipmentMetrics.durable}개`} />
@@ -2005,7 +2053,7 @@ export function App() {
                 role="tabpanel"
               >
                 <section className="panel">
-                  <div className="panel__eyebrow">Equipment</div>
+                  <div className="panel__eyebrow">목록</div>
                   <div className="panel__header">
                     <h2>{`${currentEquipmentSectionLabel} 목록`}</h2>
                   </div>
@@ -2133,7 +2181,7 @@ export function App() {
 
                 <div className="equipment-side-stack">
                   <section className="panel">
-                    <div className="panel__eyebrow">Current Section</div>
+                    <div className="panel__eyebrow">현재 섹션</div>
                     <div className="panel__header">
                       <h2>{currentEquipmentSectionLabel} 작업 요약</h2>
                     </div>
@@ -2159,7 +2207,7 @@ export function App() {
                   </section>
 
                   <section className="panel">
-                    <div className="panel__eyebrow">Create</div>
+                    <div className="panel__eyebrow">항목 추가</div>
                     <div className="panel__header">
                       <h2>{`${currentEquipmentSectionLabel} 추가`}</h2>
                     </div>
@@ -2412,11 +2460,10 @@ export function App() {
             <section className="page-stack">
               <section className="page-intro panel">
                 <div className="page-intro__copy">
-                  <div className="panel__eyebrow">Management</div>
-                  <h2>관리 설정</h2>
+                  <div className="panel__eyebrow">운영 설정</div>
+                  <h2>카테고리와 백업 관리</h2>
                   <p className="panel__copy">
-                    장비 섹션별 카테고리를 관리하는 화면입니다. 사용자에게 보이는 이름과
-                    내부 식별 코드를 분리해 유지합니다.
+                    장비 섹션별 카테고리 기준과 로컬 운영 데이터 백업을 한곳에서 관리합니다.
                   </p>
                 </div>
                 <div className="page-intro__meta">
@@ -2437,7 +2484,7 @@ export function App() {
 
               <section className="page-grid page-grid--two">
                 <section className="panel page-grid__full">
-                  <div className="panel__eyebrow">Backup</div>
+                  <div className="panel__eyebrow">로컬 백업</div>
                   <div className="panel__header">
                     <h2>로컬 운영 데이터 백업</h2>
                   </div>
@@ -2459,7 +2506,7 @@ export function App() {
                 </section>
 
                 <section className="panel">
-                <div className="panel__eyebrow">Categories</div>
+                <div className="panel__eyebrow">카테고리</div>
                 <div className="panel__header">
                   <h2>장비 카테고리 관리</h2>
                   <span className="pill">{currentEquipmentCategories.length}개</span>
@@ -2561,7 +2608,7 @@ export function App() {
 
                 <div className="stack-list">
                   <section className="panel">
-                    <div className="panel__eyebrow">Rules</div>
+                    <div className="panel__eyebrow">관리 원칙</div>
                     <div className="panel__header">
                       <h2>관리 원칙</h2>
                     </div>
@@ -2573,7 +2620,7 @@ export function App() {
                   </section>
 
                   <section className="panel">
-                    <div className="panel__eyebrow">Create</div>
+                    <div className="panel__eyebrow">새 카테고리</div>
                     <div className="panel__header">
                       <h2>새 카테고리 추가</h2>
                     </div>
@@ -2634,11 +2681,11 @@ export function App() {
             <section className="page-stack">
               <section className="page-intro panel">
                 <div className="page-intro__copy">
-                  <div className="panel__eyebrow">Planning</div>
+                  <div className="panel__eyebrow">계획 실행</div>
                   <h2>캠핑 계획</h2>
                   <p className="panel__copy">
-                    계획 목록, 원본 입력 폼, AI 보조와 분석 결과를 같은 화면에서 다루되
-                    사용자 입력과 AI 제안이 섞여 보이지 않게 분리합니다.
+                    계획 목록, 원본 입력, AI 보조, 분석 결과를 같은 화면에서 다루되
+                    사용자 입력과 AI 제안이 섞여 보이지 않게 작업 순서를 분리했습니다.
                   </p>
                 </div>
                 <div className="page-intro__meta">
@@ -2663,7 +2710,7 @@ export function App() {
 
               <section className="page-grid page-grid--planning">
                 <section className="panel">
-                <div className="panel__eyebrow">Plans</div>
+                <div className="panel__eyebrow">계획 목록</div>
                 <div className="panel__header">
                   <h2>캠핑 계획 목록</h2>
                   <span className="pill">{trips.length}건</span>
@@ -2693,7 +2740,7 @@ export function App() {
               </section>
 
               <section className="panel">
-                <div className="panel__eyebrow">Editor</div>
+                <div className="panel__eyebrow">원본 입력</div>
                 <div className="panel__header">
                   <h2>계획 편집</h2>
                 </div>
@@ -3320,7 +3367,7 @@ export function App() {
 
                 <div className="planning-side-stack">
                   <section className="panel">
-                    <div className="panel__eyebrow">AI Assist</div>
+                    <div className="panel__eyebrow">AI 보조</div>
                     <div className="panel__header">
                       <h2>AI 보조</h2>
                     </div>
@@ -3403,7 +3450,7 @@ export function App() {
                   </section>
 
                   <section className="panel">
-                    <div className="panel__eyebrow">Analysis</div>
+                    <div className="panel__eyebrow">분석 결과</div>
                     <div className="panel__header">
                       <h2>분석 결과</h2>
                     </div>
@@ -3460,11 +3507,11 @@ export function App() {
             <section className="page-stack">
               <section className="page-intro panel page-intro--archive">
                 <div className="page-intro__copy">
-                  <div className="panel__eyebrow">History</div>
-                  <h2>캠핑 히스토리</h2>
+                  <div className="panel__eyebrow">기록 보관</div>
+                  <h2>캠핑 기록 보관</h2>
                   <p className="panel__copy">
-                    완료된 계획을 아카이브 문서처럼 관리하되, 결과 Markdown과 실제 메모를
-                    다시 열어 후속 준비에 참고할 수 있게 유지합니다.
+                    완료된 계획을 아카이브 문서처럼 관리하고, 결과 Markdown과 실제 메모를
+                    다시 열어 다음 준비에 참고할 수 있게 유지합니다.
                   </p>
                 </div>
                 <div className="page-intro__meta">
@@ -3485,7 +3532,7 @@ export function App() {
 
               <section className="page-grid page-grid--two">
                 <section className="panel">
-                <div className="panel__eyebrow">History</div>
+                <div className="panel__eyebrow">기록 목록</div>
                 <div className="panel__header">
                   <h2>캠핑 히스토리 목록</h2>
                 </div>
@@ -3515,7 +3562,7 @@ export function App() {
               </section>
 
               <section className="panel">
-                <div className="panel__eyebrow">Detail</div>
+                <div className="panel__eyebrow">기록 상세</div>
                 <div className="panel__header">
                   <h2>히스토리 상세</h2>
                 </div>
@@ -3645,11 +3692,11 @@ export function App() {
             <section className="page-stack">
               <section className="page-intro panel">
                 <div className="page-intro__copy">
-                  <div className="panel__eyebrow">Links</div>
-                  <h2>외부 링크</h2>
+                  <div className="panel__eyebrow">참고 링크</div>
+                  <h2>참고 링크 관리</h2>
                   <p className="panel__copy">
                     날씨, 장소, 맛집, 장보기 링크를 북마크처럼 빠르게 읽고 수정할 수 있게
-                    카테고리 카드로 묶어 둡니다.
+                    카테고리 단위로 묶었습니다.
                   </p>
                 </div>
                 <div className="page-intro__meta">
@@ -3670,7 +3717,7 @@ export function App() {
 
               <section className="page-grid page-grid--two">
                 <section className="panel">
-                <div className="panel__eyebrow">Links</div>
+                <div className="panel__eyebrow">링크 목록</div>
                 <div className="panel__header">
                   <h2>외부 링크 목록</h2>
                 </div>
@@ -3793,7 +3840,7 @@ export function App() {
               </section>
 
               <section className="panel">
-                <div className="panel__eyebrow">Add Link</div>
+                <div className="panel__eyebrow">새 링크</div>
                 <div className="panel__header">
                   <h2>새 외부 링크</h2>
                 </div>

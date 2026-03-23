@@ -592,8 +592,8 @@ describe("App", () => {
 
     expect(await screen.findByText("테스트 결과")).toBeInTheDocument();
     expect(
-      screen.getByText(".camping-data/outputs/2026-04-18-gapyeong-plan.md"),
-    ).toBeInTheDocument();
+      screen.getAllByText(".camping-data/outputs/2026-04-18-gapyeong-plan.md").length,
+    ).toBeGreaterThan(0);
   });
 
   it("keeps the planning page after remount and restores saved analysis output", async () => {
