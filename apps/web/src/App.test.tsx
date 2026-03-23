@@ -5,10 +5,13 @@ import { EQUIPMENT_CATEGORY_CODE_REQUIRED_MESSAGE } from "@camping/shared";
 import type {
   AnalyzeTripResponse,
   Companion,
+  ConsumableEquipmentItem,
+  DurableEquipmentItem,
   EquipmentCatalog,
   EquipmentCategoriesData,
   GetOutputResponse,
   HistoryRecord,
+  PrecheckItem,
   TripDraft,
   TripData,
   TripSummary,
@@ -163,8 +166,8 @@ function readOutputTripIdFromPath(pathname: string) {
   return match?.[1] ?? null;
 }
 
-function readEquipmentDeleteParams(pathname: string) {
-  const match = pathname.match(/^\/api\/equipment\/([^/]+)\/items\/([^/]+)$/u);
+function readEquipmentItemParams(pathname: string) {
+  const match = pathname.match(/^\/api\/equipment\/([^/]+)\/items(?:\/([^/]+))?$/u);
 
   if (!match) {
     return null;
@@ -172,7 +175,7 @@ function readEquipmentDeleteParams(pathname: string) {
 
   return {
     section: match[1] as "durable" | "consumables" | "precheck",
-    itemId: match[2],
+    itemId: match[2] ?? null,
   };
 }
 
@@ -269,7 +272,7 @@ function mockFetch(input: RequestInfo | URL, init?: RequestInit) {
     return emptyResponse();
   }
 
-  const equipmentDeleteParams = readEquipmentDeleteParams(pathname);
+  const equipmentItemParams = readEquipmentItemParams(pathname);
   const equipmentCategoryParams = readEquipmentCategoryParams(pathname);
 
   if (equipmentCategoryParams && !equipmentCategoryParams.categoryId && method === "POST") {
@@ -344,8 +347,23 @@ function mockFetch(input: RequestInfo | URL, init?: RequestInit) {
     return emptyResponse();
   }
 
-  if (equipmentDeleteParams && method === "DELETE") {
-    const { section, itemId } = equipmentDeleteParams;
+  if (equipmentItemParams?.itemId && method === "PUT") {
+    const { section, itemId } = equipmentItemParams;
+    const body = parseBody(init) as
+      | DurableEquipmentItem
+      | ConsumableEquipmentItem
+      | PrecheckItem;
+    const index = state.equipment[section].items.findIndex((item) => item.id === itemId);
+
+    if (index >= 0) {
+      state.equipment[section].items[index] = body as (typeof state.equipment)[typeof section]["items"][number];
+    }
+
+    return jsonResponse({ item: body });
+  }
+
+  if (equipmentItemParams?.itemId && method === "DELETE") {
+    const { section, itemId } = equipmentItemParams;
 
     state.equipment[section].items = state.equipment[section].items.filter(
       (item) => item.id !== itemId,
@@ -1099,9 +1117,74 @@ describe("App", () => {
 
     await userEvent.click(await screen.findByRole("button", { name: "장비 관리" }));
     await userEvent.click(screen.getByRole("button", { name: "소모품" }));
+    await userEvent.click(
+      await screen.findByRole("button", { name: "부탄가스 상세 펼치기" }),
+    );
 
     expect(await screen.findAllByText("부족 기준")).toHaveLength(2);
     expect(screen.getAllByRole("option", { name: "없음" }).length).toBeGreaterThan(0);
+  });
+
+  it("groups equipment by category and opens item details only when the item name row is clicked", async () => {
+    state.equipment.durable.items = [
+      {
+        id: "sleeping-bag-3season-adult",
+        name: "침낭",
+        category: "sleeping",
+        quantity: 1,
+        status: "ok",
+      },
+      {
+        id: "family-tent",
+        name: "패밀리 텐트",
+        category: "shelter",
+        quantity: 1,
+        status: "needs_repair",
+      },
+    ];
+
+    render(<App />);
+
+    await userEvent.click(await screen.findByRole("button", { name: "장비 관리" }));
+
+    expect(
+      screen.getByRole("button", { name: "침구 카테고리 접기" }),
+    ).toBeInTheDocument();
+    expect(
+      screen.getByRole("button", { name: "쉘터/텐트 카테고리 접기" }),
+    ).toBeInTheDocument();
+    expect(screen.queryByDisplayValue("침낭")).not.toBeInTheDocument();
+
+    await userEvent.click(screen.getByRole("button", { name: "침낭 상세 펼치기" }));
+    expect(await screen.findByDisplayValue("침낭")).toBeInTheDocument();
+
+    const nameInput = screen.getByDisplayValue("침낭");
+    await userEvent.clear(nameInput);
+    await userEvent.type(nameInput, "다운 침낭");
+    await userEvent.click(screen.getByRole("button", { name: "저장" }));
+
+    expect(await screen.findByText("장비 저장 완료")).toBeInTheDocument();
+    expect(
+      fetchMock.mock.calls.some(([input, init]) => {
+        const rawUrl = typeof input === "string" ? input : input.toString();
+        const pathname = new URL(rawUrl, "http://localhost").pathname;
+        return (
+          pathname === "/api/equipment/durable/items/sleeping-bag-3season-adult" &&
+          init?.method === "PUT"
+        );
+      }),
+    ).toBe(true);
+    expect(
+      screen.getByRole("button", { name: "다운 침낭 상세 접기" }),
+    ).toBeInTheDocument();
+
+    await userEvent.click(screen.getByRole("button", { name: "침구 카테고리 접기" }));
+    expect(screen.queryByRole("button", { name: /다운 침낭 상세/u })).not.toBeInTheDocument();
+
+    await userEvent.click(screen.getByRole("button", { name: "침구 카테고리 펼치기" }));
+    expect(
+      await screen.findByRole("button", { name: "다운 침낭 상세 접기" }),
+    ).toBeInTheDocument();
   });
 
   it("renders equipment categories as selects and can add a managed category", async () => {
@@ -1185,6 +1268,9 @@ describe("App", () => {
     render(<App />);
 
     await userEvent.click(await screen.findByRole("button", { name: "장비 관리" }));
+    await userEvent.click(
+      await screen.findByRole("button", { name: "침낭 상세 펼치기" }),
+    );
 
     expect(await screen.findByDisplayValue("침낭")).toBeInTheDocument();
 
@@ -1239,6 +1325,9 @@ describe("App", () => {
     render(<App />);
 
     await userEvent.click(await screen.findByRole("button", { name: "장비 관리" }));
+    await userEvent.click(
+      await screen.findByRole("button", { name: "침낭 상세 펼치기" }),
+    );
     expect(await screen.findByDisplayValue("침낭")).toBeInTheDocument();
 
     await userEvent.click(screen.getByRole("button", { name: "삭제" }));
@@ -1268,6 +1357,9 @@ describe("App", () => {
     render(<App />);
 
     await userEvent.click(await screen.findByRole("button", { name: "장비 관리" }));
+    await userEvent.click(
+      await screen.findByRole("button", { name: "침낭 상세 펼치기" }),
+    );
 
     expect(await screen.findByDisplayValue("침낭")).toBeInTheDocument();
 
