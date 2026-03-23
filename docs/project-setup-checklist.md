@@ -72,6 +72,7 @@
 
 - [ ] `pnpm install`
 - [ ] `cp .env.example .env`
+- [ ] 필요 시 `.env` 에서 메타데이터 수집 전용 키 주석 해제 여부 확인
 - [ ] `pnpm seed`
 - [ ] `.camping-data/` 가 예시 파일 기준으로 생성되었는지 확인
 
@@ -79,13 +80,14 @@
 
 1. `pnpm install`
 2. `cp .env.example .env`
-3. `codex login`
-4. `pnpm seed`
-5. `pnpm dev:api`
-6. `pnpm dev:web`
-7. `GET /api/health` 확인
-8. 웹 UI에서 trip 1건 저장과 분석 실행 확인
-9. 필요하면 `pnpm typecheck`, `pnpm test`, `pnpm build`
+3. 필요 시 `.env` 의 `CODEX_METADATA_MODEL`, `CODEX_METADATA_REASONING_EFFORT`, `OPENAI_METADATA_MODEL` 주석 해제
+4. `codex login`
+5. `pnpm seed`
+6. `pnpm dev:api`
+7. `pnpm dev:web`
+8. `GET /api/health` 확인
+9. 웹 UI에서 trip 1건 저장과 분석 실행 확인
+10. 필요하면 `pnpm typecheck`, `pnpm test`, `pnpm build`
 
 ## 5. 환경별 검증이 필요한 항목
 
@@ -103,3 +105,4 @@
 - `pnpm seed` 는 기존 `.camping-data/` 를 삭제하고 `docs/examples/` 를 다시 복사한다.
 - `.camping-data/` 는 운영 데이터 경로이며 Git 커밋 대상이 아니다.
 - 개인 준비물은 저장소에서 직접 관리하는 인벤토리가 아니라 분석 결과다.
+- `.env.example` 에는 메타데이터 수집 전용 키가 이미 주석 상태로 포함되어 있다.

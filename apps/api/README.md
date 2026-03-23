@@ -32,6 +32,15 @@
 - `CODEX_METADATA_REASONING_EFFORT`
 - `OPENAI_API_KEY`
 - `OPENAI_MODEL`
+- `OPENAI_METADATA_MODEL`
+
+메타데이터 수집 관련 기본값:
+
+- `CODEX_METADATA_MODEL`: `gpt-5.4-mini`
+- `CODEX_METADATA_REASONING_EFFORT`: `low`
+- `OPENAI_METADATA_MODEL`: `gpt-5-mini`
+
+`.env.example` 에는 위 메타데이터 전용 키가 주석 상태로 포함되어 있으며, `.env` 로 복사한 뒤 필요할 때만 주석을 해제해 덮어쓸 수 있다.
 
 ## 현재 소스 구조
 
