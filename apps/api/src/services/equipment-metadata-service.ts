@@ -140,6 +140,8 @@ export class CodexCliEquipmentMetadataClient
           this.options.outputSchemaPath,
           "--output-last-message",
           outputFile,
+          "-c",
+          "mcp_servers.github.enabled=false",
           ...(this.options.reasoningEffort
             ? ["-c", `model_reasoning_effort="${this.options.reasoningEffort}"`]
             : []),
@@ -542,10 +544,13 @@ function extractDomain(url: string) {
 }
 
 function firstMeaningfulLine(output: string) {
-  return output
+  const lines = output
     .split("\n")
-    .map((line) => line.trim())
-    .find(
+    .map((line) => line.trim());
+
+  return (
+    lines.find(isActionableCodexErrorLine) ??
+    lines.find(
       (line) =>
         line.length > 0 &&
         !line.startsWith("WARNING:") &&
@@ -562,6 +567,26 @@ function firstMeaningfulLine(output: string) {
         !line.startsWith("codex") &&
         !line.startsWith("tokens used") &&
         !line.startsWith("mcp:") &&
-        !line.startsWith("mcp startup:"),
-    );
+        !line.startsWith("mcp startup:") &&
+        !line.startsWith("당신은 ") &&
+        !line.startsWith("중요 제약:") &&
+        !line.startsWith("## ") &&
+        !line.startsWith("- 장비명:") &&
+        !line.startsWith("- 모델명:") &&
+        !line.startsWith("- 카테고리:") &&
+        !line.startsWith("- 구매 링크:") &&
+        !line.startsWith("- 기존 메모:"),
+    )
+  );
+}
+
+function isActionableCodexErrorLine(line: string) {
+  return (
+    line.startsWith("ERROR:") ||
+    line.startsWith("thread '") ||
+    line.includes("panicked at") ||
+    line.includes("invalid_request_error") ||
+    line.includes("not supported when using Codex with a ChatGPT account") ||
+    line.includes("Could not create otel exporter")
+  );
 }

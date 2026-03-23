@@ -204,7 +204,12 @@ describe("CodexCliClient", () => {
     );
     expect(runner).toHaveBeenCalledWith(
       expect.objectContaining({
-        args: expect.arrayContaining(["-c", 'model_reasoning_effort="low"']),
+        args: expect.arrayContaining([
+          "-c",
+          "mcp_servers.github.enabled=false",
+          "-c",
+          'model_reasoning_effort="low"',
+        ]),
       }),
     );
   });
@@ -387,6 +392,53 @@ describe("CodexCliClient", () => {
     expect(args).toContain("-m");
     expect(args).toContain("gpt-5.4-mini");
     expect(args).toContain("-c");
+    expect(args).toContain("mcp_servers.github.enabled=false");
     expect(args).toContain('model_reasoning_effort="medium"');
+  });
+
+  it("prefers actionable codex error lines over echoed prompt text", async () => {
+    const schemaPath = path.join(
+      projectRoot,
+      "schemas",
+      "codex-equipment-metadata-output.schema.json",
+    );
+
+    const runner: CommandRunner = vi.fn().mockResolvedValue({
+      exitCode: 1,
+      stdout: [
+        "OpenAI Codex v0.116.0 (research preview)",
+        "--------",
+        "user",
+        "당신은 캠핑 장비 메타데이터를 조사해 JSON으로만 반환하는 실행기다.",
+      ].join("\n"),
+      stderr: [
+        "mcp startup: no servers",
+        'ERROR: {"type":"error","status":400,"error":{"type":"invalid_request_error","message":"The \\"gpt-5-mini\\" model is not supported when using Codex with a ChatGPT account."}}',
+      ].join("\n"),
+    });
+
+    const client = new CodexCliEquipmentMetadataClient({
+      binary: "codex",
+      model: "gpt-5.4-mini",
+      reasoningEffort: "medium",
+      projectRoot: process.cwd(),
+      outputSchemaPath: schemaPath,
+      runner,
+    });
+
+    await expect(
+      client.collectDurableEquipmentMetadata({
+        item: {
+          id: "lumena-lantern",
+          name: "루메나 5.1CH MAX LED 캠핑랜턴",
+          category: "lighting",
+          quantity: 1,
+          status: "ok",
+        },
+        categoryLabel: "조명",
+      }),
+    ).rejects.toMatchObject({
+      message: expect.stringContaining("gpt-5-mini"),
+    });
   });
 });

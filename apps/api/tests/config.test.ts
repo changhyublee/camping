@@ -49,7 +49,7 @@ describe("resolveConfig", () => {
       expect.objectContaining({
         aiBackend: "codex-cli",
         codexModel: "gpt-5.4",
-        codexMetadataModel: "gpt-5-mini",
+        codexMetadataModel: "gpt-5.4-mini",
         codexMetadataReasoningEffort: "low",
       }),
     );

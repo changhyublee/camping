@@ -44,7 +44,7 @@ export function resolveConfig(overrides: ConfigOverrides = {}): AppConfig {
     codexMetadataModel:
       overrides.codexMetadataModel ??
       process.env.CODEX_METADATA_MODEL ??
-      "gpt-5-mini",
+      "gpt-5.4-mini",
     codexMetadataReasoningEffort:
       overrides.codexMetadataReasoningEffort ??
       parseCodexReasoningEffort(
