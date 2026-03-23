@@ -15,17 +15,22 @@
 3. [`docs/index.md`](docs/index.md)
 4. [`docs/technical-architecture.md`](docs/technical-architecture.md)
 5. [`docs/local-ui-transition-plan.md`](docs/local-ui-transition-plan.md)
-6. [`docs/local-api-contract.md`](docs/local-api-contract.md)
-7. [`docs/ui-flow.md`](docs/ui-flow.md)
-8. [`docs/data-model.md`](docs/data-model.md)
-9. [`docs/trip-analysis-workflow.md`](docs/trip-analysis-workflow.md)
-10. [`docs/mvp-scope.md`](docs/mvp-scope.md)
+6. [`docs/design-spec.md`](docs/design-spec.md)
+7. [`docs/local-api-contract.md`](docs/local-api-contract.md)
+8. [`docs/ui-flow.md`](docs/ui-flow.md)
+9. [`docs/data-model.md`](docs/data-model.md)
+10. [`docs/trip-analysis-workflow.md`](docs/trip-analysis-workflow.md)
+11. [`docs/mvp-scope.md`](docs/mvp-scope.md)
 
 작업이 예시 파일이나 세팅과 관련되어 있으면 아래도 함께 읽는다.
 
 - [`docs/example-files.md`](docs/example-files.md)
 - [`docs/project-setup-checklist.md`](docs/project-setup-checklist.md)
 - [`docs/prompt-design.md`](docs/prompt-design.md)
+
+작업이 화면 구성, 스타일 수정, 프론트엔드 UI 구현과 관련되어 있으면 아래 문서를 반드시 함께 읽는다.
+
+- [`docs/design-spec.md`](docs/design-spec.md)
 
 ## 기준 문서
 
@@ -192,6 +197,7 @@ shared/
 - 저장소가 이미 한글 중심이면 그 흐름을 유지한다.
 - 병렬 문서를 새로 만드는 것보다 기존 문서를 확장하는 쪽을 우선한다.
 - 용어가 바뀌면 그 용어를 참조하는 관련 문서도 함께 수정한다.
+- 화면 구현이나 스타일 수정은 `docs/design-spec.md` 의 디자인 방향, 토큰, 레이아웃 규칙을 기본값으로 따른다.
 
 ## 판단이 애매할 때
 

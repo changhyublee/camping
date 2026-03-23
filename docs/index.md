@@ -11,15 +11,16 @@
 3. [`menu-structure.md`](menu-structure.md)
 4. [`technical-architecture.md`](technical-architecture.md)
 5. [`local-ui-transition-plan.md`](local-ui-transition-plan.md)
-6. [`local-api-contract.md`](local-api-contract.md)
-7. [`ui-flow.md`](ui-flow.md)
-8. [`data-model.md`](data-model.md)
-9. [`trip-analysis-workflow.md`](trip-analysis-workflow.md)
-10. [`mvp-scope.md`](mvp-scope.md)
-11. [`directory-structure.md`](directory-structure.md)
-12. [`example-files.md`](example-files.md)
-13. [`project-setup-checklist.md`](project-setup-checklist.md)
-14. [`local-skills.md`](local-skills.md)
+6. [`design-spec.md`](design-spec.md)
+7. [`local-api-contract.md`](local-api-contract.md)
+8. [`ui-flow.md`](ui-flow.md)
+9. [`data-model.md`](data-model.md)
+10. [`trip-analysis-workflow.md`](trip-analysis-workflow.md)
+11. [`mvp-scope.md`](mvp-scope.md)
+12. [`directory-structure.md`](directory-structure.md)
+13. [`example-files.md`](example-files.md)
+14. [`project-setup-checklist.md`](project-setup-checklist.md)
+15. [`local-skills.md`](local-skills.md)
 
 ## 문서별 역할
 
@@ -38,6 +39,8 @@
   - 로컬 웹 UI, 로컬 API, 로컬 파일 저장 구조
 - [`local-ui-transition-plan.md`](local-ui-transition-plan.md)
   - 기존 trip 중심 UI에서 현재 메뉴형 UI로 확장한 기준
+- [`design-spec.md`](design-spec.md)
+  - 최신 트렌드를 반영한 화면 디자인 기준과 에이전트 구현 규칙
 - [`local-api-contract.md`](local-api-contract.md)
   - CRUD 및 분석 API 계약
 - [`ui-flow.md`](ui-flow.md)

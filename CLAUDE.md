@@ -17,6 +17,7 @@
 - 반복 사용 장비는 `id` 를 레코드 고유값으로 두고, 같은 종류를 묶을 때는 `kind` 를 사용한다.
 - 모든 문서 본문은 한글로 작성한다.
 - 사용자 응답, 진행 보고, 리뷰 결과는 기본적으로 한글로 작성하고, 사용자가 다른 언어를 명시적으로 요구한 경우에만 예외를 둔다.
+- 화면 구성이나 스타일 작업 전에는 [`docs/design-spec.md`](docs/design-spec.md)를 읽고 그 규칙을 기본값으로 따른다.
 
 ## 읽기 순서
 
@@ -24,3 +25,4 @@
 2. [`README.md`](README.md)
 3. [`docs/requirements.md`](docs/requirements.md)
 4. [`docs/index.md`](docs/index.md)
+5. [`docs/design-spec.md`](docs/design-spec.md)

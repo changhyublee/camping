@@ -124,6 +124,7 @@ pnpm build
 - 요구사항: [`docs/requirements.md`](docs/requirements.md)
 - 기술 아키텍처: [`docs/technical-architecture.md`](docs/technical-architecture.md)
 - 로컬 UI 전환 계획: [`docs/local-ui-transition-plan.md`](docs/local-ui-transition-plan.md)
+- 디자인 스펙: [`docs/design-spec.md`](docs/design-spec.md)
 - 로컬 API 계약: [`docs/local-api-contract.md`](docs/local-api-contract.md)
 - UI 흐름: [`docs/ui-flow.md`](docs/ui-flow.md)
 - 데이터 모델: [`docs/data-model.md`](docs/data-model.md)

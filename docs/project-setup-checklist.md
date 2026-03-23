@@ -14,6 +14,7 @@
 - [x] `docs/menu-structure.md`
 - [x] `docs/technical-architecture.md`
 - [x] `docs/local-ui-transition-plan.md`
+- [x] `docs/design-spec.md`
 - [x] `docs/local-api-contract.md`
 - [x] `docs/ui-flow.md`
 - [x] `docs/data-model.md`
