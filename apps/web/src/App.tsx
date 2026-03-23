@@ -1,5 +1,5 @@
 import { useEffect, useMemo, useRef, useState } from "react";
-import type { ReactNode } from "react";
+import type { KeyboardEvent as ReactKeyboardEvent, ReactNode } from "react";
 import ReactMarkdown from "react-markdown";
 import type {
   AnalyzeTripResponse,
@@ -53,6 +53,11 @@ const PAGE_KEYS: PageKey[] = [
   "history",
   "links",
   "management",
+];
+const EQUIPMENT_SECTIONS: EquipmentSection[] = [
+  "durable",
+  "consumables",
+  "precheck",
 ];
 const UI_STATE_STORAGE_KEY = "camping.ui-state";
 
@@ -289,6 +294,9 @@ export function App() {
     () => equipmentCategories[equipmentSection],
     [equipmentCategories, equipmentSection],
   );
+  const currentEquipmentSectionLabel = EQUIPMENT_SECTION_LABELS[equipmentSection];
+  const activeEquipmentTabId = getEquipmentSectionTabId(equipmentSection);
+  const activeEquipmentPanelId = getEquipmentSectionPanelId(equipmentSection);
 
   const missingCompanionIds = useMemo(
     () =>
@@ -343,6 +351,33 @@ export function App() {
       selectedTripId ?? "저장 전 초안"
     } / 동행 ${tripDraft.party?.companion_ids.length ?? 0}명`;
   }, [isCreatingTrip, selectedTripId, tripDraft]);
+
+  function handleEquipmentTabKeyDown(
+    event: ReactKeyboardEvent<HTMLButtonElement>,
+    section: EquipmentSection,
+  ) {
+    let nextSection: EquipmentSection | null = null;
+
+    if (event.key === "ArrowRight" || event.key === "ArrowDown") {
+      nextSection = getAdjacentEquipmentSection(section, 1);
+    } else if (event.key === "ArrowLeft" || event.key === "ArrowUp") {
+      nextSection = getAdjacentEquipmentSection(section, -1);
+    } else if (event.key === "Home") {
+      nextSection = EQUIPMENT_SECTIONS[0];
+    } else if (event.key === "End") {
+      nextSection = EQUIPMENT_SECTIONS[EQUIPMENT_SECTIONS.length - 1];
+    }
+
+    if (!nextSection || nextSection === section) {
+      return;
+    }
+
+    event.preventDefault();
+    setEquipmentSection(nextSection);
+    window.requestAnimationFrame(() => {
+      document.getElementById(getEquipmentSectionTabId(nextSection))?.focus();
+    });
+  }
 
   const dashboardMetrics = useMemo(() => {
     const lowStockCount =
@@ -1524,356 +1559,376 @@ export function App() {
 
           {!appLoading && activePage === "equipment" ? (
             <section className="page-grid page-grid--two">
-              <section className="panel">
+              <section className="panel page-grid__full">
                 <div className="panel__eyebrow">Equipment</div>
                 <div className="panel__header">
-                  <h2>장비 섹션</h2>
+                  <h2>장비 탭</h2>
                 </div>
-                <div className="segmented-row">
-                  <button
-                    className={segmentClass(equipmentSection === "durable")}
-                    onClick={() => setEquipmentSection("durable")}
-                    type="button"
-                  >
-                    반복 장비
-                  </button>
-                  <button
-                    className={segmentClass(equipmentSection === "consumables")}
-                    onClick={() => setEquipmentSection("consumables")}
-                    type="button"
-                  >
-                    소모품
-                  </button>
-                  <button
-                    className={segmentClass(equipmentSection === "precheck")}
-                    onClick={() => setEquipmentSection("precheck")}
-                    type="button"
-                  >
-                    출발 전 점검
-                  </button>
+                <p className="panel__copy">
+                  반복 장비, 소모품, 출발 전 점검을 탭으로 전환하며 관리합니다.
+                </p>
+                <div aria-label="장비 섹션" className="equipment-tabs" role="tablist">
+                  {EQUIPMENT_SECTIONS.map((section) => {
+                    const isActive = equipmentSection === section;
+
+                    return (
+                      <button
+                        key={section}
+                        aria-controls={getEquipmentSectionPanelId(section)}
+                        aria-selected={isActive}
+                        className={equipmentTabClass(isActive)}
+                        id={getEquipmentSectionTabId(section)}
+                        onClick={() => setEquipmentSection(section)}
+                        onKeyDown={(event) =>
+                          handleEquipmentTabKeyDown(event, section)
+                        }
+                        role="tab"
+                        tabIndex={isActive ? 0 : -1}
+                        type="button"
+                      >
+                        {EQUIPMENT_SECTION_LABELS[section]}
+                      </button>
+                    );
+                  })}
                 </div>
-
-                {equipmentSection === "durable" ? (
-                  <EquipmentList
-                    section="durable"
-                    categories={equipmentCategories.durable}
-                    collapsedCategoryIds={collapsedEquipmentCategories.durable}
-                    expandedItemIds={expandedEquipmentItems.durable}
-                    items={equipment?.durable.items ?? []}
-                    onDelete={(itemId) => handleDeleteEquipmentItem("durable", itemId)}
-                    onSave={(itemId) => handleSaveEquipmentItem("durable", itemId)}
-                    onToggleCategory={(categoryId) =>
-                      handleToggleEquipmentCategory("durable", categoryId)
-                    }
-                    onToggleItem={(itemId) =>
-                      handleToggleEquipmentItem("durable", itemId)
-                    }
-                    onChange={(itemId, updater) =>
-                      setEquipment((current) =>
-                        current
-                          ? {
-                              ...current,
-                              durable: {
-                                ...current.durable,
-                                items: current.durable.items.map((item) =>
-                                  item.id === itemId ? updater(item) : item,
-                                ),
-                              },
-                            }
-                          : current,
-                      )
-                    }
-                  />
-                ) : null}
-
-                {equipmentSection === "consumables" ? (
-                  <ConsumableList
-                    section="consumables"
-                    categories={equipmentCategories.consumables}
-                    collapsedCategoryIds={collapsedEquipmentCategories.consumables}
-                    expandedItemIds={expandedEquipmentItems.consumables}
-                    items={equipment?.consumables.items ?? []}
-                    onDelete={(itemId) =>
-                      handleDeleteEquipmentItem("consumables", itemId)
-                    }
-                    onSave={(itemId) =>
-                      handleSaveEquipmentItem("consumables", itemId)
-                    }
-                    onToggleCategory={(categoryId) =>
-                      handleToggleEquipmentCategory("consumables", categoryId)
-                    }
-                    onToggleItem={(itemId) =>
-                      handleToggleEquipmentItem("consumables", itemId)
-                    }
-                    onChange={(itemId, updater) =>
-                      setEquipment((current) =>
-                        current
-                          ? {
-                              ...current,
-                              consumables: {
-                                ...current.consumables,
-                                items: current.consumables.items.map((item) =>
-                                  item.id === itemId ? updater(item) : item,
-                                ),
-                              },
-                            }
-                          : current,
-                      )
-                    }
-                  />
-                ) : null}
-
-                {equipmentSection === "precheck" ? (
-                  <PrecheckList
-                    section="precheck"
-                    categories={equipmentCategories.precheck}
-                    collapsedCategoryIds={collapsedEquipmentCategories.precheck}
-                    expandedItemIds={expandedEquipmentItems.precheck}
-                    items={equipment?.precheck.items ?? []}
-                    onDelete={(itemId) => handleDeleteEquipmentItem("precheck", itemId)}
-                    onSave={(itemId) => handleSaveEquipmentItem("precheck", itemId)}
-                    onToggleCategory={(categoryId) =>
-                      handleToggleEquipmentCategory("precheck", categoryId)
-                    }
-                    onToggleItem={(itemId) =>
-                      handleToggleEquipmentItem("precheck", itemId)
-                    }
-                    onChange={(itemId, updater) =>
-                      setEquipment((current) =>
-                        current
-                          ? {
-                              ...current,
-                              precheck: {
-                                ...current.precheck,
-                                items: current.precheck.items.map((item) =>
-                                  item.id === itemId ? updater(item) : item,
-                                ),
-                              },
-                            }
-                          : current,
-                      )
-                    }
-                  />
-                ) : null}
               </section>
 
-              <section className="panel">
-                <div className="panel__eyebrow">Create</div>
-                <div className="panel__header">
-                  <h2>새 항목 추가</h2>
-                </div>
-                {equipmentSection === "durable" ? (
-                  <div className="form-grid">
-                    <FormField label="장비명">
-                      <input
-                        placeholder="예: 3계절 침낭"
-                        value={durableDraft.name}
-                        onChange={(event) =>
-                          setDurableDraft((current) => ({
-                            ...current,
-                            name: event.target.value,
-                          }))
-                        }
-                      />
-                    </FormField>
-                    <FormField label="카테고리">
-                      <EquipmentCategorySelect
-                        categories={equipmentCategories.durable}
-                        value={durableDraft.category}
-                        onChange={(value) =>
-                          setDurableDraft((current) => ({
-                            ...current,
-                            category: value,
-                          }))
-                        }
-                      />
-                    </FormField>
-                    <FormField label="수량">
-                      <input
-                        type="number"
-                        min="1"
-                        placeholder="1"
-                        value={durableDraft.quantity}
-                        onChange={(event) =>
-                          setDurableDraft((current) => ({
-                            ...current,
-                            quantity: Number(event.target.value) || 1,
-                          }))
-                        }
-                      />
-                    </FormField>
-                    <FormField label="상태">
-                      <select
-                        value={durableDraft.status}
-                        onChange={(event) =>
-                          setDurableDraft((current) => ({
-                            ...current,
-                            status: event.target.value as DurableEquipmentItem["status"],
-                          }))
-                        }
-                      >
-                        {Object.entries(DURABLE_STATUS_LABELS).map(([value, label]) => (
-                          <option key={value} value={value}>
-                            {label}
-                          </option>
-                        ))}
-                      </select>
-                    </FormField>
-                    <button
-                      className="button button--primary form-grid__full"
-                      onClick={() => handleCreateEquipmentItem("durable")}
-                      type="button"
-                    >
-                      반복 장비 추가
-                    </button>
+              <section
+                aria-labelledby={activeEquipmentTabId}
+                className="equipment-tab-panel page-grid page-grid--two page-grid__full"
+                id={activeEquipmentPanelId}
+                role="tabpanel"
+              >
+                <section className="panel">
+                  <div className="panel__eyebrow">Equipment</div>
+                  <div className="panel__header">
+                    <h2>{`${currentEquipmentSectionLabel} 목록`}</h2>
                   </div>
-                ) : null}
 
-                {equipmentSection === "consumables" ? (
-                  <div className="form-grid">
-                    <FormField label="소모품명">
-                      <input
-                        placeholder="예: 가스 캔"
-                        value={consumableDraft.name}
-                        onChange={(event) =>
-                          setConsumableDraft((current) => ({
-                            ...current,
-                            name: event.target.value,
-                          }))
-                        }
-                      />
-                    </FormField>
-                    <FormField label="카테고리">
-                      <EquipmentCategorySelect
-                        categories={equipmentCategories.consumables}
-                        value={consumableDraft.category}
-                        onChange={(value) =>
-                          setConsumableDraft((current) => ({
-                            ...current,
-                            category: value,
-                          }))
-                        }
-                      />
-                    </FormField>
-                    <FormField label="단위">
-                      <input
-                        placeholder="예: pack"
-                        value={consumableDraft.unit}
-                        onChange={(event) =>
-                          setConsumableDraft((current) => ({
-                            ...current,
-                            unit: event.target.value,
-                          }))
-                        }
-                      />
-                    </FormField>
-                    <FormField label="현재 수량">
-                      <input
-                        type="number"
-                        min="0"
-                        placeholder="0"
-                        value={consumableDraft.quantity_on_hand}
-                        onChange={(event) =>
-                          setConsumableDraft((current) => ({
-                            ...current,
-                            quantity_on_hand: Number(event.target.value) || 0,
-                          }))
-                        }
-                      />
-                    </FormField>
-                    <FormField label="부족 기준">
-                      <input
-                        type="number"
-                        min="0"
-                        placeholder="예: 2"
-                        value={consumableDraft.low_stock_threshold ?? ""}
-                        onChange={(event) =>
-                          setConsumableDraft((current) => ({
-                            ...current,
-                            low_stock_threshold: parseInteger(event.target.value),
-                          }))
-                        }
-                      />
-                    </FormField>
-                    <FormField label="상태">
-                      <select
-                        value={consumableDraft.status}
-                        onChange={(event) =>
-                          setConsumableDraft((current) => ({
-                            ...current,
-                            status: event.target.value as ConsumableEquipmentItem["status"],
-                          }))
-                        }
-                      >
-                        {Object.entries(CONSUMABLE_STATUS_LABELS).map(([value, label]) => (
-                          <option key={value} value={value}>
-                            {label}
-                          </option>
-                        ))}
-                      </select>
-                    </FormField>
-                    <button
-                      className="button button--primary form-grid__full"
-                      onClick={() => handleCreateEquipmentItem("consumables")}
-                      type="button"
-                    >
-                      소모품 추가
-                    </button>
-                  </div>
-                ) : null}
+                  {equipmentSection === "durable" ? (
+                    <EquipmentList
+                      section="durable"
+                      categories={equipmentCategories.durable}
+                      collapsedCategoryIds={collapsedEquipmentCategories.durable}
+                      expandedItemIds={expandedEquipmentItems.durable}
+                      items={equipment?.durable.items ?? []}
+                      onDelete={(itemId) => handleDeleteEquipmentItem("durable", itemId)}
+                      onSave={(itemId) => handleSaveEquipmentItem("durable", itemId)}
+                      onToggleCategory={(categoryId) =>
+                        handleToggleEquipmentCategory("durable", categoryId)
+                      }
+                      onToggleItem={(itemId) =>
+                        handleToggleEquipmentItem("durable", itemId)
+                      }
+                      onChange={(itemId, updater) =>
+                        setEquipment((current) =>
+                          current
+                            ? {
+                                ...current,
+                                durable: {
+                                  ...current.durable,
+                                  items: current.durable.items.map((item) =>
+                                    item.id === itemId ? updater(item) : item,
+                                  ),
+                                },
+                              }
+                            : current,
+                        )
+                      }
+                    />
+                  ) : null}
 
-                {equipmentSection === "precheck" ? (
-                  <div className="form-grid">
-                    <FormField label="점검 항목명">
-                      <input
-                        placeholder="예: 랜턴 배터리"
-                        value={precheckDraft.name}
-                        onChange={(event) =>
-                          setPrecheckDraft((current) => ({
-                            ...current,
-                            name: event.target.value,
-                          }))
-                        }
-                      />
-                    </FormField>
-                    <FormField label="카테고리">
-                      <EquipmentCategorySelect
-                        categories={equipmentCategories.precheck}
-                        value={precheckDraft.category}
-                        onChange={(value) =>
-                          setPrecheckDraft((current) => ({
-                            ...current,
-                            category: value,
-                          }))
-                        }
-                      />
-                    </FormField>
-                    <FormField label="상태">
-                      <select
-                        value={precheckDraft.status}
-                        onChange={(event) =>
-                          setPrecheckDraft((current) => ({
-                            ...current,
-                            status: event.target.value as PrecheckItem["status"],
-                          }))
-                        }
-                      >
-                        {Object.entries(PRECHECK_STATUS_LABELS).map(([value, label]) => (
-                          <option key={value} value={value}>
-                            {label}
-                          </option>
-                        ))}
-                      </select>
-                    </FormField>
-                    <button
-                      className="button button--primary form-grid__full"
-                      onClick={() => handleCreateEquipmentItem("precheck")}
-                      type="button"
-                    >
-                      점검 항목 추가
-                    </button>
+                  {equipmentSection === "consumables" ? (
+                    <ConsumableList
+                      section="consumables"
+                      categories={equipmentCategories.consumables}
+                      collapsedCategoryIds={collapsedEquipmentCategories.consumables}
+                      expandedItemIds={expandedEquipmentItems.consumables}
+                      items={equipment?.consumables.items ?? []}
+                      onDelete={(itemId) =>
+                        handleDeleteEquipmentItem("consumables", itemId)
+                      }
+                      onSave={(itemId) =>
+                        handleSaveEquipmentItem("consumables", itemId)
+                      }
+                      onToggleCategory={(categoryId) =>
+                        handleToggleEquipmentCategory("consumables", categoryId)
+                      }
+                      onToggleItem={(itemId) =>
+                        handleToggleEquipmentItem("consumables", itemId)
+                      }
+                      onChange={(itemId, updater) =>
+                        setEquipment((current) =>
+                          current
+                            ? {
+                                ...current,
+                                consumables: {
+                                  ...current.consumables,
+                                  items: current.consumables.items.map((item) =>
+                                    item.id === itemId ? updater(item) : item,
+                                  ),
+                                },
+                              }
+                            : current,
+                        )
+                      }
+                    />
+                  ) : null}
+
+                  {equipmentSection === "precheck" ? (
+                    <PrecheckList
+                      section="precheck"
+                      categories={equipmentCategories.precheck}
+                      collapsedCategoryIds={collapsedEquipmentCategories.precheck}
+                      expandedItemIds={expandedEquipmentItems.precheck}
+                      items={equipment?.precheck.items ?? []}
+                      onDelete={(itemId) =>
+                        handleDeleteEquipmentItem("precheck", itemId)
+                      }
+                      onSave={(itemId) => handleSaveEquipmentItem("precheck", itemId)}
+                      onToggleCategory={(categoryId) =>
+                        handleToggleEquipmentCategory("precheck", categoryId)
+                      }
+                      onToggleItem={(itemId) =>
+                        handleToggleEquipmentItem("precheck", itemId)
+                      }
+                      onChange={(itemId, updater) =>
+                        setEquipment((current) =>
+                          current
+                            ? {
+                                ...current,
+                                precheck: {
+                                  ...current.precheck,
+                                  items: current.precheck.items.map((item) =>
+                                    item.id === itemId ? updater(item) : item,
+                                  ),
+                                },
+                              }
+                            : current,
+                        )
+                      }
+                    />
+                  ) : null}
+                </section>
+
+                <section className="panel">
+                  <div className="panel__eyebrow">Create</div>
+                  <div className="panel__header">
+                    <h2>{`${currentEquipmentSectionLabel} 추가`}</h2>
                   </div>
-                ) : null}
+                  {equipmentSection === "durable" ? (
+                    <div className="form-grid">
+                      <FormField label="장비명">
+                        <input
+                          placeholder="예: 3계절 침낭"
+                          value={durableDraft.name}
+                          onChange={(event) =>
+                            setDurableDraft((current) => ({
+                              ...current,
+                              name: event.target.value,
+                            }))
+                          }
+                        />
+                      </FormField>
+                      <FormField label="카테고리">
+                        <EquipmentCategorySelect
+                          categories={equipmentCategories.durable}
+                          value={durableDraft.category}
+                          onChange={(value) =>
+                            setDurableDraft((current) => ({
+                              ...current,
+                              category: value,
+                            }))
+                          }
+                        />
+                      </FormField>
+                      <FormField label="수량">
+                        <input
+                          type="number"
+                          min="1"
+                          placeholder="1"
+                          value={durableDraft.quantity}
+                          onChange={(event) =>
+                            setDurableDraft((current) => ({
+                              ...current,
+                              quantity: Number(event.target.value) || 1,
+                            }))
+                          }
+                        />
+                      </FormField>
+                      <FormField label="상태">
+                        <select
+                          value={durableDraft.status}
+                          onChange={(event) =>
+                            setDurableDraft((current) => ({
+                              ...current,
+                              status: event.target.value as DurableEquipmentItem["status"],
+                            }))
+                          }
+                        >
+                          {Object.entries(DURABLE_STATUS_LABELS).map(([value, label]) => (
+                            <option key={value} value={value}>
+                              {label}
+                            </option>
+                          ))}
+                        </select>
+                      </FormField>
+                      <button
+                        className="button button--primary form-grid__full"
+                        onClick={() => handleCreateEquipmentItem("durable")}
+                        type="button"
+                      >
+                        반복 장비 추가
+                      </button>
+                    </div>
+                  ) : null}
+
+                  {equipmentSection === "consumables" ? (
+                    <div className="form-grid">
+                      <FormField label="소모품명">
+                        <input
+                          placeholder="예: 가스 캔"
+                          value={consumableDraft.name}
+                          onChange={(event) =>
+                            setConsumableDraft((current) => ({
+                              ...current,
+                              name: event.target.value,
+                            }))
+                          }
+                        />
+                      </FormField>
+                      <FormField label="카테고리">
+                        <EquipmentCategorySelect
+                          categories={equipmentCategories.consumables}
+                          value={consumableDraft.category}
+                          onChange={(value) =>
+                            setConsumableDraft((current) => ({
+                              ...current,
+                              category: value,
+                            }))
+                          }
+                        />
+                      </FormField>
+                      <FormField label="단위">
+                        <input
+                          placeholder="예: pack"
+                          value={consumableDraft.unit}
+                          onChange={(event) =>
+                            setConsumableDraft((current) => ({
+                              ...current,
+                              unit: event.target.value,
+                            }))
+                          }
+                        />
+                      </FormField>
+                      <FormField label="현재 수량">
+                        <input
+                          type="number"
+                          min="0"
+                          placeholder="0"
+                          value={consumableDraft.quantity_on_hand}
+                          onChange={(event) =>
+                            setConsumableDraft((current) => ({
+                              ...current,
+                              quantity_on_hand: Number(event.target.value) || 0,
+                            }))
+                          }
+                        />
+                      </FormField>
+                      <FormField label="부족 기준">
+                        <input
+                          type="number"
+                          min="0"
+                          placeholder="예: 2"
+                          value={consumableDraft.low_stock_threshold ?? ""}
+                          onChange={(event) =>
+                            setConsumableDraft((current) => ({
+                              ...current,
+                              low_stock_threshold: parseInteger(event.target.value),
+                            }))
+                          }
+                        />
+                      </FormField>
+                      <FormField label="상태">
+                        <select
+                          value={consumableDraft.status}
+                          onChange={(event) =>
+                            setConsumableDraft((current) => ({
+                              ...current,
+                              status: event.target.value as ConsumableEquipmentItem["status"],
+                            }))
+                          }
+                        >
+                          {Object.entries(CONSUMABLE_STATUS_LABELS).map(([value, label]) => (
+                            <option key={value} value={value}>
+                              {label}
+                            </option>
+                          ))}
+                        </select>
+                      </FormField>
+                      <button
+                        className="button button--primary form-grid__full"
+                        onClick={() => handleCreateEquipmentItem("consumables")}
+                        type="button"
+                      >
+                        소모품 추가
+                      </button>
+                    </div>
+                  ) : null}
+
+                  {equipmentSection === "precheck" ? (
+                    <div className="form-grid">
+                      <FormField label="점검 항목명">
+                        <input
+                          placeholder="예: 랜턴 배터리"
+                          value={precheckDraft.name}
+                          onChange={(event) =>
+                            setPrecheckDraft((current) => ({
+                              ...current,
+                              name: event.target.value,
+                            }))
+                          }
+                        />
+                      </FormField>
+                      <FormField label="카테고리">
+                        <EquipmentCategorySelect
+                          categories={equipmentCategories.precheck}
+                          value={precheckDraft.category}
+                          onChange={(value) =>
+                            setPrecheckDraft((current) => ({
+                              ...current,
+                              category: value,
+                            }))
+                          }
+                        />
+                      </FormField>
+                      <FormField label="상태">
+                        <select
+                          value={precheckDraft.status}
+                          onChange={(event) =>
+                            setPrecheckDraft((current) => ({
+                              ...current,
+                              status: event.target.value as PrecheckItem["status"],
+                            }))
+                          }
+                        >
+                          {Object.entries(PRECHECK_STATUS_LABELS).map(([value, label]) => (
+                            <option key={value} value={value}>
+                              {label}
+                            </option>
+                          ))}
+                        </select>
+                      </FormField>
+                      <button
+                        className="button button--primary form-grid__full"
+                        onClick={() => handleCreateEquipmentItem("precheck")}
+                        type="button"
+                      >
+                        점검 항목 추가
+                      </button>
+                    </div>
+                  ) : null}
+                </section>
               </section>
             </section>
           ) : null}
@@ -3171,6 +3226,34 @@ function navButtonClass(active: boolean) {
 
 function segmentClass(active: boolean) {
   return `segment-button${active ? " segment-button--active" : ""}`;
+}
+
+function equipmentTabClass(active: boolean) {
+  return `equipment-tab${active ? " equipment-tab--active" : ""}`;
+}
+
+function getEquipmentSectionTabId(section: EquipmentSection) {
+  return `equipment-tab-${section}`;
+}
+
+function getEquipmentSectionPanelId(section: EquipmentSection) {
+  return `equipment-panel-${section}`;
+}
+
+function getAdjacentEquipmentSection(
+  section: EquipmentSection,
+  offset: number,
+): EquipmentSection {
+  const currentIndex = EQUIPMENT_SECTIONS.indexOf(section);
+
+  if (currentIndex === -1) {
+    return section;
+  }
+
+  const nextIndex =
+    (currentIndex + offset + EQUIPMENT_SECTIONS.length) % EQUIPMENT_SECTIONS.length;
+
+  return EQUIPMENT_SECTIONS[nextIndex];
 }
 
 function createEmptyTripDraft(): TripDraft {

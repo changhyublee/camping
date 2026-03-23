@@ -156,6 +156,10 @@ code {
   grid-template-columns: minmax(0, 1.2fr) minmax(320px, 0.9fr);
 }
 
+.page-grid__full {
+  grid-column: 1 / -1;
+}
+
 .page-grid--planning {
   grid-template-columns: 300px minmax(0, 1.1fr) minmax(0, 1fr);
 }
@@ -272,6 +276,57 @@ code {
   gap: 10px;
   padding: 0 18px 18px;
   border-top: 1px solid rgba(47, 98, 83, 0.12);
+}
+
+.equipment-tabs {
+  display: flex;
+  gap: 10px;
+  flex-wrap: wrap;
+  padding: 10px;
+  border: 1px solid var(--line);
+  border-radius: 24px;
+  background: rgba(255, 255, 255, 0.34);
+}
+
+.equipment-tab {
+  display: inline-flex;
+  flex: 1 1 180px;
+  align-items: center;
+  justify-content: center;
+  min-height: 52px;
+  padding: 0 18px;
+  border: 1px solid transparent;
+  border-radius: 18px;
+  background: transparent;
+  color: var(--muted);
+  text-align: center;
+  cursor: pointer;
+  transition:
+    transform 120ms ease,
+    background 120ms ease,
+    color 120ms ease,
+    box-shadow 120ms ease;
+}
+
+.equipment-tab:hover {
+  transform: translateY(-1px);
+  background: rgba(47, 98, 83, 0.08);
+  color: var(--text);
+}
+
+.equipment-tab:focus-visible {
+  outline: 2px solid rgba(47, 98, 83, 0.32);
+  outline-offset: 2px;
+}
+
+.equipment-tab--active {
+  background: linear-gradient(135deg, var(--accent), var(--accent-strong));
+  color: #f7f6f2;
+  box-shadow: inset 0 0 0 1px rgba(255, 255, 255, 0.18);
+}
+
+.equipment-tab-panel {
+  min-width: 0;
 }
 
 .nav-button,
@@ -745,12 +800,14 @@ textarea {
   }
 
   .button-row,
-  .segmented-row {
+  .segmented-row,
+  .equipment-tabs {
     width: 100%;
   }
 
   .button,
-  .segment-button {
+  .segment-button,
+  .equipment-tab {
     width: 100%;
   }
 

@@ -1116,13 +1116,63 @@ describe("App", () => {
     render(<App />);
 
     await userEvent.click(await screen.findByRole("button", { name: "장비 관리" }));
-    await userEvent.click(screen.getByRole("button", { name: "소모품" }));
+    await userEvent.click(screen.getByRole("tab", { name: "소모품" }));
     await userEvent.click(
       await screen.findByRole("button", { name: "부탄가스 상세 펼치기" }),
     );
 
     expect(await screen.findAllByText("부족 기준")).toHaveLength(2);
     expect(screen.getAllByRole("option", { name: "없음" }).length).toBeGreaterThan(0);
+  });
+
+  it("renders equipment sections as tabs and switches the tabpanel", async () => {
+    render(<App />);
+
+    await userEvent.click(await screen.findByRole("button", { name: "장비 관리" }));
+
+    const durableTab = screen.getByRole("tab", { name: "반복 장비" });
+    const consumableTab = screen.getByRole("tab", { name: "소모품" });
+
+    expect(screen.getByRole("tablist", { name: "장비 섹션" })).toBeInTheDocument();
+    expect(durableTab).toHaveAttribute("aria-selected", "true");
+    expect(screen.getByRole("tabpanel", { name: "반복 장비" })).toBeInTheDocument();
+
+    await userEvent.click(consumableTab);
+
+    expect(consumableTab).toHaveAttribute("aria-selected", "true");
+    expect(screen.getByRole("tabpanel", { name: "소모품" })).toBeInTheDocument();
+    expect(screen.getByRole("heading", { name: "소모품 목록" })).toBeInTheDocument();
+    expect(screen.getByRole("heading", { name: "소모품 추가" })).toBeInTheDocument();
+  });
+
+  it("moves between equipment tabs with keyboard navigation", async () => {
+    render(<App />);
+
+    await userEvent.click(await screen.findByRole("button", { name: "장비 관리" }));
+
+    const durableTab = screen.getByRole("tab", { name: "반복 장비" });
+
+    durableTab.focus();
+    expect(durableTab).toHaveFocus();
+
+    await userEvent.keyboard("{ArrowRight}");
+    expect(screen.getByRole("tab", { name: "소모품" })).toHaveAttribute(
+      "aria-selected",
+      "true",
+    );
+
+    await userEvent.keyboard("{End}");
+    expect(screen.getByRole("tab", { name: "출발 전 점검" })).toHaveAttribute(
+      "aria-selected",
+      "true",
+    );
+
+    await userEvent.keyboard("{Home}");
+    expect(screen.getByRole("tab", { name: "반복 장비" })).toHaveAttribute(
+      "aria-selected",
+      "true",
+    );
+    expect(screen.getByRole("tabpanel", { name: "반복 장비" })).toBeInTheDocument();
   });
 
   it("groups equipment by category and opens item details only when the item name row is clicked", async () => {
