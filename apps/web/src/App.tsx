@@ -150,7 +150,9 @@ export function App() {
   const [tripDraft, setTripDraft] = useState<TripDraft | null>(null);
   const [isCreatingTrip, setIsCreatingTrip] = useState(false);
   const [validationWarnings, setValidationWarnings] = useState<string[]>([]);
-  const [analysisResponse, setAnalysisResponse] =
+  const [analysisOutput, setAnalysisOutput] =
+    useState<GetOutputResponse | null>(null);
+  const [analysisStatus, setAnalysisStatus] =
     useState<AnalyzeTripResponse | null>(null);
   const [assistantResponse, setAssistantResponse] =
     useState<PlanningAssistantResponse | null>(null);
@@ -192,7 +194,6 @@ export function App() {
   const [creatingDataBackup, setCreatingDataBackup] = useState(false);
   const [detailLoading, setDetailLoading] = useState(false);
   const [savingTrip, setSavingTrip] = useState(false);
-  const [analyzing, setAnalyzing] = useState(false);
   const [bannerState, setBannerState] = useState<OperationState | null>(null);
   const [operationState, setOperationState] = useState<OperationState | null>(
     null,
@@ -203,14 +204,16 @@ export function App() {
   );
   const selectedHistoryIdRef = useRef<string | null>(null);
   const historyOutputRequestIdRef = useRef(0);
-  const planningOutputRequestIdRef = useRef(0);
+  const planningLoadRequestIdRef = useRef(0);
   const durableSearchFingerprintRef = useRef<Record<string, string>>({});
+  const analysisStatusRef = useRef<AnalyzeTripResponse | null>(null);
   const previousEquipmentGroupIdsRef =
     useRef<SectionTrackedIds>(createEmptySectionTrackedIds());
   const previousCategoryEditorIdsRef =
     useRef<SectionTrackedIds>(createEmptySectionTrackedIds());
   const previousEquipmentItemIdsRef =
     useRef<SectionTrackedIds>(createEmptySectionTrackedIds());
+  const isAnalysisPending = isPendingAnalysisStatus(analysisStatus?.status);
 
   useEffect(() => {
     void loadInitialData();
@@ -248,30 +251,36 @@ export function App() {
   }, [operationState]);
 
   useEffect(() => {
+    analysisStatusRef.current = analysisStatus;
+  }, [analysisStatus]);
+
+  useEffect(() => {
     if (isCreatingTrip || !selectedTripId) {
       if (!isCreatingTrip) {
         setTripDraft(null);
         setValidationWarnings([]);
         setCommaInputs(createCommaSeparatedInputs());
-        setAnalysisResponse(null);
-        setAnalyzing(false);
-        planningOutputRequestIdRef.current += 1;
+        setAnalysisOutput(null);
+        setAnalysisStatus(null);
+        analysisStatusRef.current = null;
+        planningLoadRequestIdRef.current += 1;
       }
       return;
     }
 
     let active = true;
-    const requestId = planningOutputRequestIdRef.current + 1;
+    const requestId = planningLoadRequestIdRef.current + 1;
 
-    planningOutputRequestIdRef.current = requestId;
+    planningLoadRequestIdRef.current = requestId;
     setDetailLoading(true);
     setLoadError(null);
     setTripDraft(null);
     setValidationWarnings([]);
     setCommaInputs(createCommaSeparatedInputs());
-    setAnalysisResponse(null);
+    setAnalysisOutput(null);
+    setAnalysisStatus(null);
+    analysisStatusRef.current = null;
     setAssistantResponse(null);
-    setAnalyzing(false);
 
     void Promise.allSettled([
       apiClient.getTrip(selectedTripId),
@@ -283,7 +292,9 @@ export function App() {
         if (tripResult.status === "rejected") {
           setTripDraft(null);
           setValidationWarnings([]);
-          setAnalysisResponse(null);
+          setAnalysisOutput(null);
+          setAnalysisStatus(null);
+          analysisStatusRef.current = null;
           setLoadError(getErrorMessage(tripResult.reason));
           return;
         }
@@ -298,30 +309,30 @@ export function App() {
           setValidationWarnings(toValidationWarnings(validationResult.reason));
         }
 
-        if (planningOutputRequestIdRef.current !== requestId) {
+        if (planningLoadRequestIdRef.current !== requestId) {
           return;
         }
 
-        void apiClient
-          .getOutput(selectedTripId)
-          .then((response) => {
-            if (!active || planningOutputRequestIdRef.current !== requestId) {
-              return;
-            }
+        void loadPlanningOutput(selectedTripId, requestId).catch(() => {
+          if (!active || planningLoadRequestIdRef.current !== requestId) {
+            return;
+          }
+        });
 
-            setAnalysisResponse({
-              trip_id: response.trip_id,
-              status: "completed",
-              warnings: [],
-              markdown: response.markdown,
-              output_path: response.output_path,
-            });
-          })
-          .catch(() => {
-            if (!active || planningOutputRequestIdRef.current !== requestId) {
-              return;
-            }
+        void syncTripAnalysisStatus(selectedTripId, requestId).catch(() => {
+          if (!active || planningLoadRequestIdRef.current !== requestId) {
+            return;
+          }
+
+          applyAnalysisStatus({
+            trip_id: selectedTripId,
+            status: "idle",
+            requested_at: null,
+            started_at: null,
+            finished_at: null,
+            output_path: null,
           });
+        });
       })
       .finally(() => {
         if (active) {
@@ -393,6 +404,35 @@ export function App() {
     setHistoryOutputError(null);
     setHistoryOutputLoading(false);
   }, [selectedHistoryId]);
+
+  useEffect(() => {
+    if (isCreatingTrip || !selectedTripId || !isAnalysisPending) {
+      return;
+    }
+
+    const tripId = selectedTripId;
+    const requestId = planningLoadRequestIdRef.current;
+    const timeoutId = window.setTimeout(() => {
+      void syncTripAnalysisStatus(tripId, requestId, {
+        notifyTransition: true,
+        syncOutputOnComplete: true,
+      }).catch((error) => {
+        if (planningLoadRequestIdRef.current !== requestId) {
+          return;
+        }
+
+        setOperationState({
+          title: "분석 상태 확인 실패",
+          tone: "warning",
+          description: getErrorMessage(error),
+        });
+      });
+    }, 2000);
+
+    return () => {
+      window.clearTimeout(timeoutId);
+    };
+  }, [isAnalysisPending, isCreatingTrip, selectedTripId]);
 
   useEffect(() => {
     setDurableDraft((current) => ({
@@ -527,6 +567,8 @@ export function App() {
         : null) ?? null,
     [selectedTripId, trips],
   );
+  const currentAnalysisOutputPath =
+    analysisOutput?.output_path ?? analysisStatus?.output_path ?? null;
 
   const currentTripLabel =
     (isCreatingTrip
@@ -662,6 +704,97 @@ export function App() {
     }
   }
 
+  function applyAnalysisStatus(status: AnalyzeTripResponse | null) {
+    analysisStatusRef.current = status;
+    setAnalysisStatus(status);
+  }
+
+  async function loadPlanningOutput(
+    tripId: string,
+    requestId: number,
+    options: { preserveCurrent?: boolean } = {},
+  ) {
+    try {
+      const response = await apiClient.getOutput(tripId);
+
+      if (planningLoadRequestIdRef.current !== requestId) {
+        return null;
+      }
+
+      setAnalysisOutput(response);
+      return response;
+    } catch (error) {
+      if (planningLoadRequestIdRef.current !== requestId) {
+        return null;
+      }
+
+      if (error instanceof ApiClientError && error.code === "RESOURCE_NOT_FOUND") {
+        if (!options.preserveCurrent) {
+          setAnalysisOutput(null);
+        }
+
+        return null;
+      }
+
+      throw error;
+    }
+  }
+
+  async function syncTripAnalysisStatus(
+    tripId: string,
+    requestId: number,
+    options: {
+      notifyTransition?: boolean;
+      syncOutputOnComplete?: boolean;
+    } = {},
+  ) {
+    const previousStatus = analysisStatusRef.current;
+    const response = await apiClient.getTripAnalysisStatus(tripId);
+
+    if (planningLoadRequestIdRef.current !== requestId) {
+      return null;
+    }
+
+    applyAnalysisStatus(response);
+
+    if (response.status === "completed" && options.syncOutputOnComplete) {
+      await loadPlanningOutput(tripId, requestId, { preserveCurrent: true });
+    }
+
+    if (
+      options.notifyTransition &&
+      previousStatus &&
+      isPendingAnalysisStatus(previousStatus.status)
+    ) {
+      if (response.status === "completed") {
+        setOperationState({
+          title: "분석 완료",
+          tone: "success",
+          description:
+            response.output_path ??
+            "분석 결과를 저장하고 최신 Markdown을 다시 불러왔습니다.",
+        });
+      } else if (response.status === "failed") {
+        setOperationState({
+          title: "분석 실패",
+          tone: "error",
+          description:
+            response.error?.message ?? "백그라운드 분석 작업이 실패했습니다.",
+        });
+      } else if (response.status === "interrupted") {
+        setOperationState({
+          title: "분석 중단",
+          tone: "warning",
+          description:
+            response.error?.message ??
+            "이전 분석 작업이 중단되었습니다. 다시 실행해 주세요.",
+        });
+      }
+    }
+
+    return response;
+  }
+
   async function refreshEquipmentState() {
     const [catalogResponse, categoriesResponse] = await Promise.allSettled([
       apiClient.getEquipment(),
@@ -762,7 +895,9 @@ export function App() {
     setTripDraft(nextDraft);
     setCommaInputs(createCommaSeparatedInputs(nextDraft));
     setValidationWarnings([]);
-    setAnalysisResponse(null);
+    setAnalysisOutput(null);
+    setAnalysisStatus(null);
+    analysisStatusRef.current = null;
     setAssistantResponse(null);
     setOperationState(null);
     setLoadError(null);
@@ -995,24 +1130,30 @@ export function App() {
       setTripDraft(response.data);
       setCommaInputs(createCommaSeparatedInputs(response.data));
       const savedDescription = `${response.data.title} 계획을 저장했습니다.`;
+      const backgroundAnalysisNotice = isAnalysisPending
+        ? " 현재 분석에는 방금 저장한 변경이 반영되지 않습니다. 완료 후 다시 실행하세요."
+        : "";
 
       try {
         const validation = await apiClient.validateTrip(response.trip_id);
         setValidationWarnings(validation.warnings);
         setOperationState({
           title: "캠핑 계획 저장 완료",
-          tone: validation.warnings.length > 0 ? "warning" : "success",
+          tone:
+            validation.warnings.length > 0 || isAnalysisPending
+              ? "warning"
+              : "success",
           description:
             validation.warnings.length > 0
-              ? `${savedDescription} 검증 경고를 확인하세요.`
-              : savedDescription,
+              ? `${savedDescription} 검증 경고를 확인하세요.${backgroundAnalysisNotice}`
+              : `${savedDescription}${backgroundAnalysisNotice}`,
         });
       } catch (error) {
         setValidationWarnings(toValidationWarnings(error));
         setOperationState({
           title: "캠핑 계획 저장 완료",
           tone: "warning",
-          description: `${savedDescription} 검증 경고를 확인하세요.`,
+          description: `${savedDescription} 검증 경고를 확인하세요.${backgroundAnalysisNotice}`,
         });
       }
     } catch (error) {
@@ -1037,7 +1178,9 @@ export function App() {
       setSelectedTripId(response.items[0]?.trip_id ?? null);
       setTripDraft(null);
       setCommaInputs(createCommaSeparatedInputs());
-      setAnalysisResponse(null);
+      setAnalysisOutput(null);
+      setAnalysisStatus(null);
+      analysisStatusRef.current = null;
       setAssistantResponse(null);
       setOperationState({
         title: "캠핑 계획 삭제 완료",
@@ -1069,7 +1212,9 @@ export function App() {
       setSelectedHistoryId(response.item.history_id);
       setTripDraft(null);
       setCommaInputs(createCommaSeparatedInputs());
-      setAnalysisResponse(null);
+      setAnalysisOutput(null);
+      setAnalysisStatus(null);
+      analysisStatusRef.current = null;
       setAssistantResponse(null);
       setActivePage("history");
       setOperationState({
@@ -1087,35 +1232,58 @@ export function App() {
   }
 
   async function handleAnalyze() {
-    if (!selectedTripId) return;
+    if (!selectedTripId || isAnalysisPending) return;
 
-    const requestId = planningOutputRequestIdRef.current + 1;
-
-    planningOutputRequestIdRef.current = requestId;
-    setAnalyzing(true);
+    const tripId = selectedTripId;
+    const requestId = planningLoadRequestIdRef.current;
     setOperationState(null);
 
     try {
       const response = await apiClient.analyzeTrip({
-        trip_id: selectedTripId,
+        trip_id: tripId,
         save_output: true,
       });
 
-      if (planningOutputRequestIdRef.current !== requestId) {
+      if (planningLoadRequestIdRef.current !== requestId) {
         return;
       }
 
-      setAnalysisResponse(response);
+      applyAnalysisStatus(response);
 
-      if (response.output_path) {
+      if (response.status === "completed") {
+        await loadPlanningOutput(tripId, requestId, { preserveCurrent: true });
         setOperationState({
-          title: "분석 저장 완료",
+          title: "분석 완료",
           tone: "success",
-          description: response.output_path,
+          description:
+            response.output_path ??
+            "분석 결과를 저장하고 최신 Markdown을 다시 불러왔습니다.",
+        });
+      } else if (response.status === "failed") {
+        setOperationState({
+          title: "분석 실패",
+          tone: "error",
+          description:
+            response.error?.message ?? "백그라운드 분석 작업이 실패했습니다.",
+        });
+      } else if (response.status === "interrupted") {
+        setOperationState({
+          title: "분석 중단",
+          tone: "warning",
+          description:
+            response.error?.message ??
+            "이전 분석 작업이 중단되었습니다. 다시 실행해 주세요.",
+        });
+      } else {
+        setOperationState({
+          title: "분석 작업 시작",
+          tone: "success",
+          description:
+            "현재 저장된 계획을 기준으로 백그라운드 분석을 시작했습니다.",
         });
       }
     } catch (error) {
-      if (planningOutputRequestIdRef.current !== requestId) {
+      if (planningLoadRequestIdRef.current !== requestId) {
         return;
       }
 
@@ -1124,10 +1292,6 @@ export function App() {
         tone: "error",
         description: getErrorMessage(error),
       });
-    } finally {
-      if (planningOutputRequestIdRef.current === requestId) {
-        setAnalyzing(false);
-      }
     }
   }
 
@@ -1949,7 +2113,13 @@ function handleChangeEquipmentItemCategory(
                         "help",
                         "주 작업 파일, 결과 파일, 보조 설명을 따로 모아 봅니다.",
                         `trip ${selectedTripId ? "선택됨" : "없음"} · 결과 ${
-                          analysisResponse?.output_path ? "연결됨" : "대기"
+                          currentAnalysisOutputPath
+                            ? isAnalysisPending
+                              ? "분석 중"
+                              : "연결됨"
+                            : isAnalysisPending
+                              ? "분석 중"
+                              : "대기"
                         }`,
                       )
                     : null}
@@ -3338,7 +3508,7 @@ function handleChangeEquipmentItemCategory(
                   </div>
                   <div className="meta-chip">
                     <span>결과 Markdown</span>
-                    <strong>{analysisResponse?.output_path ?? "분석 실행 후 생성"}</strong>
+                    <strong>{currentAnalysisOutputPath ?? "분석 실행 후 생성"}</strong>
                   </div>
                   <div className="meta-chip">
                     <span>히스토리 파일</span>
@@ -3370,7 +3540,7 @@ function handleChangeEquipmentItemCategory(
                     <article className="action-card">
                       <strong>결과 파일</strong>
                       <code className="output-path">
-                        {analysisResponse?.output_path ?? "분석 실행 후 생성"}
+                        {currentAnalysisOutputPath ?? "분석 실행 후 생성"}
                       </code>
                       <p>분석 실행 후 저장되는 Markdown 결과 문서입니다.</p>
                     </article>
@@ -3899,23 +4069,33 @@ function handleChangeEquipmentItemCategory(
                           {savingTrip ? "저장 중..." : "계획 저장"}
                         </button>
                         {!isCreatingTrip ? (
-                          <button className="button" onClick={handleArchiveTrip} type="button">
+                          <button
+                            className="button"
+                            disabled={isAnalysisPending}
+                            onClick={handleArchiveTrip}
+                            type="button"
+                          >
                             히스토리로 이동
                           </button>
                         ) : null}
                         {!isCreatingTrip ? (
-                          <button className="button" onClick={handleDeleteTrip} type="button">
+                          <button
+                            className="button"
+                            disabled={isAnalysisPending}
+                            onClick={handleDeleteTrip}
+                            type="button"
+                          >
                             계획 삭제
                           </button>
                         ) : null}
                         {!isCreatingTrip ? (
                           <button
                             className="button button--primary"
-                            disabled={analyzing}
+                            disabled={isAnalysisPending}
                             onClick={handleAnalyze}
                             type="button"
                           >
-                            {analyzing ? "분석 중..." : "분석 실행"}
+                            {isAnalysisPending ? "분석 중..." : "분석 실행"}
                           </button>
                         ) : null}
                       </div>
@@ -4037,17 +4217,40 @@ function handleChangeEquipmentItemCategory(
                           </p>
                         </div>
 
-                        {analysisResponse?.error?.code === "OUTPUT_SAVE_FAILED" ? (
+                        {analysisStatus?.status === "queued" ||
+                        analysisStatus?.status === "running" ? (
                           <StatusBanner
-                            tone="warning"
-                            title="결과 생성 완료, 저장 실패"
-                            description={analysisResponse.error.message}
+                            tone="info"
+                            title="백그라운드 분석 진행 중"
+                            description="현재 저장된 계획을 기준으로 분석 중입니다. 완료되면 최신 Markdown을 자동으로 다시 불러옵니다."
                           />
                         ) : null}
 
-                        {analysisResponse?.markdown ? (
+                        {analysisStatus?.status === "failed" ? (
+                          <StatusBanner
+                            tone="error"
+                            title="분석 실패"
+                            description={
+                              analysisStatus.error?.message ??
+                              "백그라운드 분석 작업이 실패했습니다."
+                            }
+                          />
+                        ) : null}
+
+                        {analysisStatus?.status === "interrupted" ? (
+                          <StatusBanner
+                            tone="warning"
+                            title="분석 중단"
+                            description={
+                              analysisStatus.error?.message ??
+                              "이전 분석 작업이 중단되었습니다. 다시 실행해 주세요."
+                            }
+                          />
+                        ) : null}
+
+                        {analysisOutput?.markdown ? (
                           <article className="markdown-pane">
-                            <ReactMarkdown>{analysisResponse.markdown}</ReactMarkdown>
+                            <ReactMarkdown>{analysisOutput.markdown}</ReactMarkdown>
                           </article>
                         ) : (
                           <div className="empty-state">
@@ -4056,6 +4259,15 @@ function handleChangeEquipmentItemCategory(
                             표시됩니다.
                           </div>
                         )}
+
+                        {analysisStatus?.status === "completed" &&
+                        !analysisOutput?.markdown ? (
+                          <StatusBanner
+                            tone="warning"
+                            title="결과 동기화 대기"
+                            description="분석은 끝났지만 결과 Markdown을 아직 다시 불러오지 못했습니다."
+                          />
+                        ) : null}
                       </>
                     ) : (
                       <div className="empty-state">
@@ -5868,6 +6080,10 @@ function sortLinks(left: ExternalLink, right: ExternalLink) {
   }
 
   return left.name.localeCompare(right.name, "ko");
+}
+
+function isPendingAnalysisStatus(status?: AnalyzeTripResponse["status"] | null) {
+  return status === "queued" || status === "running";
 }
 
 function getStatusLabel(

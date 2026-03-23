@@ -1,9 +1,10 @@
 import ReactMarkdown from "react-markdown";
-import type { AnalyzeTripResponse } from "@camping/shared";
+import type { AnalyzeTripResponse, GetOutputResponse } from "@camping/shared";
 import { StatusBanner } from "./StatusBanner";
 
 type ResultPaneProps = {
-  response: AnalyzeTripResponse | null;
+  output: GetOutputResponse | null;
+  status: AnalyzeTripResponse | null;
   isAnalyzing: boolean;
   errorMessage: string | null;
   saveMessage: string | null;
@@ -12,23 +13,23 @@ type ResultPaneProps = {
 };
 
 export function ResultPane({
-  response,
+  output,
+  status,
   isAnalyzing,
   errorMessage,
   saveMessage,
   isSaving,
   onSave,
 }: ResultPaneProps) {
-  const partialSaveFailureMessage =
-    response?.error?.code === "OUTPUT_SAVE_FAILED" ? response.error.message : null;
-
   return (
     <section className="panel panel--result">
       <div className="panel__eyebrow">Result</div>
       <div className="panel__header">
         <h2>분석 결과</h2>
-        {response?.output_path ? (
-          <code className="output-path">{response.output_path}</code>
+        {output?.output_path ?? status?.output_path ? (
+          <code className="output-path">
+            {output?.output_path ?? status?.output_path}
+          </code>
         ) : null}
       </div>
 
@@ -40,20 +41,21 @@ export function ResultPane({
         <StatusBanner tone="success" title="저장 완료" description={saveMessage} />
       ) : null}
 
-      {partialSaveFailureMessage ? (
+      {status?.status === "failed" ? (
         <StatusBanner
-          tone="warning"
-          title="결과 생성 완료, 저장 실패"
-          description={partialSaveFailureMessage}
+          tone="error"
+          title="분석 실패"
+          description={status.error?.message ?? "백그라운드 분석 작업이 실패했습니다."}
         />
       ) : null}
 
-      {response?.warnings.length ? (
+      {status?.status === "interrupted" ? (
         <StatusBanner
           tone="warning"
-          title="결과 경고"
-          description="응답은 생성됐지만 제한사항이 있다."
-          items={response.warnings}
+          title="분석 중단"
+          description={
+            status.error?.message ?? "이전 분석 작업이 중단되었습니다. 다시 실행해 주세요."
+          }
         />
       ) : null}
 
@@ -62,7 +64,7 @@ export function ResultPane({
           문서 기준, YAML 데이터, 프롬프트를 조합해 Markdown 결과를 생성하는
           중...
         </div>
-      ) : response?.markdown ? (
+      ) : output?.markdown ? (
         <>
           <div className="action-row action-row--end">
             <button
@@ -75,7 +77,7 @@ export function ResultPane({
             </button>
           </div>
           <article className="markdown-pane">
-            <ReactMarkdown>{response.markdown}</ReactMarkdown>
+            <ReactMarkdown>{output.markdown}</ReactMarkdown>
           </article>
         </>
       ) : (

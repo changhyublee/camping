@@ -1,4 +1,4 @@
-import { cp, mkdtemp, readFile, rm, writeFile } from "node:fs/promises";
+import { cp, mkdir, mkdtemp, readFile, rm, writeFile } from "node:fs/promises";
 import os from "node:os";
 import path from "node:path";
 import { fileURLToPath } from "node:url";
@@ -46,6 +46,34 @@ class CapturingAnalysisClient implements AnalysisModelClient {
   async generateMarkdown(input: { systemPrompt: string; userPrompt: string }) {
     this.lastInput = input;
     return this.markdown;
+  }
+
+  async getHealthStatus(): Promise<BackendHealth> {
+    return {
+      status: "ok",
+      backend: "codex-cli",
+      ready: true,
+      auth_status: "ok",
+      model: "gpt-5.4",
+      message: "Logged in using ChatGPT",
+    };
+  }
+}
+
+class DeferredAnalysisClient implements AnalysisModelClient {
+  public calls = 0;
+  private resolveMarkdown: ((value: string) => void) | null = null;
+  private readonly markdownPromise = new Promise<string>((resolve) => {
+    this.resolveMarkdown = resolve;
+  });
+
+  async generateMarkdown() {
+    this.calls += 1;
+    return this.markdownPromise;
+  }
+
+  complete(markdown: string) {
+    this.resolveMarkdown?.(markdown);
   }
 
   async getHealthStatus(): Promise<BackendHealth> {
@@ -121,6 +149,28 @@ async function createSeededDataDir() {
   });
 
   return path.join(tempRoot, ".camping-data");
+}
+
+async function waitForTripAnalysisStatus(
+  app: Awaited<ReturnType<typeof buildServer>>,
+  tripId: string,
+  expectedStatus: string,
+) {
+  for (let attempt = 0; attempt < 20; attempt += 1) {
+    const response = await app.inject({
+      method: "GET",
+      url: `/api/trips/${tripId}/analysis-status`,
+    });
+    const body = response.json();
+
+    if (body.status === expectedStatus) {
+      return body;
+    }
+
+    await new Promise((resolve) => setTimeout(resolve, 10));
+  }
+
+  throw new Error(`Timed out waiting for analysis status: ${expectedStatus}`);
 }
 
 afterEach(async () => {
@@ -556,13 +606,14 @@ describe("API server", () => {
     await app.close();
   });
 
-  it("analyzes a trip and saves markdown output by default", async () => {
+  it("queues background analysis and saves markdown output after completion", async () => {
     const dataDir = await createSeededDataDir();
     const markdown = "# 테스트 분석 결과";
+    const modelClient = new DeferredAnalysisClient();
     const app = await buildServer({
       dataDir,
       projectRoot,
-      modelClient: new MockAnalysisClient(markdown),
+      modelClient,
     });
 
     const response = await app.inject({
@@ -573,15 +624,17 @@ describe("API server", () => {
       },
     });
 
-    expect(response.statusCode).toBe(200);
+    expect(response.statusCode).toBe(202);
     expect(response.json()).toEqual(
       expect.objectContaining({
         trip_id: "2026-04-18-gapyeong",
-        status: "completed",
-        markdown,
+        status: "queued",
         output_path: ".camping-data/outputs/2026-04-18-gapyeong-plan.md",
       }),
     );
+
+    modelClient.complete(markdown);
+    await waitForTripAnalysisStatus(app, "2026-04-18-gapyeong", "completed");
 
     const saved = await readFile(
       path.join(dataDir, "outputs", "2026-04-18-gapyeong-plan.md"),
@@ -606,11 +659,11 @@ describe("API server", () => {
       url: "/api/analyze-trip",
       payload: {
         trip_id: "2026-04-18-gapyeong",
-        save_output: false,
       },
     });
 
-    expect(response.statusCode).toBe(200);
+    expect(response.statusCode).toBe(202);
+    await waitForTripAnalysisStatus(app, "2026-04-18-gapyeong", "completed");
     expect(modelClient.lastInput?.userPrompt).toContain(
       "## next-camping-recommendation-context",
     );
@@ -623,6 +676,148 @@ describe("API server", () => {
     expect(modelClient.lastInput?.userPrompt).toContain("## links.yaml");
     expect(modelClient.lastInput?.userPrompt).toContain("name: 기상청");
     expect(modelClient.lastInput?.userPrompt).toContain("start: 2026-04-25");
+
+    await app.close();
+  });
+
+  it("returns the current running status instead of starting duplicate analysis for the same trip", async () => {
+    const dataDir = await createSeededDataDir();
+    const modelClient = new DeferredAnalysisClient();
+    const app = await buildServer({
+      dataDir,
+      projectRoot,
+      modelClient,
+    });
+
+    const [firstResponse, secondResponse] = await Promise.all([
+      app.inject({
+        method: "POST",
+        url: "/api/analyze-trip",
+        payload: {
+          trip_id: "2026-04-18-gapyeong",
+        },
+      }),
+      app.inject({
+        method: "POST",
+        url: "/api/analyze-trip",
+        payload: {
+          trip_id: "2026-04-18-gapyeong",
+        },
+      }),
+    ]);
+
+    expect(firstResponse.statusCode).toBe(202);
+    expect(secondResponse.statusCode).toBe(202);
+    expect(["queued", "running"]).toContain(firstResponse.json().status);
+    expect(["queued", "running"]).toContain(secondResponse.json().status);
+
+    modelClient.complete("# 중복 방지 테스트");
+    await waitForTripAnalysisStatus(app, "2026-04-18-gapyeong", "completed");
+    expect(modelClient.calls).toBe(1);
+
+    await app.close();
+  });
+
+  it("marks stale pending analysis as interrupted on startup", async () => {
+    const dataDir = await createSeededDataDir();
+    const statusPath = path.join(
+      dataDir,
+      "cache",
+      "analysis-jobs",
+      "2026-04-18-gapyeong.json",
+    );
+
+    await mkdir(path.dirname(statusPath), { recursive: true });
+    await writeFile(
+      statusPath,
+      JSON.stringify(
+        {
+          trip_id: "2026-04-18-gapyeong",
+          status: "running",
+          requested_at: "2026-03-24T09:00:00.000Z",
+          started_at: "2026-03-24T09:00:05.000Z",
+          finished_at: null,
+          output_path: ".camping-data/outputs/2026-04-18-gapyeong-plan.md",
+        },
+        null,
+        2,
+      ),
+      "utf8",
+    );
+
+    const app = await buildServer({
+      dataDir,
+      projectRoot,
+      modelClient: new MockAnalysisClient("# sample"),
+    });
+
+    const response = await app.inject({
+      method: "GET",
+      url: "/api/trips/2026-04-18-gapyeong/analysis-status",
+    });
+
+    expect(response.statusCode).toBe(200);
+    expect(response.json()).toEqual(
+      expect.objectContaining({
+        trip_id: "2026-04-18-gapyeong",
+        status: "interrupted",
+        error: expect.objectContaining({
+          message: "API 서버 재시작으로 이전 분석이 중단되었습니다.",
+        }),
+      }),
+    );
+
+    await app.close();
+  });
+
+  it("blocks deleting and archiving a trip while analysis is running", async () => {
+    const dataDir = await createSeededDataDir();
+    const modelClient = new DeferredAnalysisClient();
+    const app = await buildServer({
+      dataDir,
+      projectRoot,
+      modelClient,
+    });
+
+    await app.inject({
+      method: "POST",
+      url: "/api/analyze-trip",
+      payload: {
+        trip_id: "2026-04-18-gapyeong",
+      },
+    });
+    await waitForTripAnalysisStatus(app, "2026-04-18-gapyeong", "running");
+
+    const deleteResponse = await app.inject({
+      method: "DELETE",
+      url: "/api/trips/2026-04-18-gapyeong",
+    });
+    const archiveResponse = await app.inject({
+      method: "POST",
+      url: "/api/trips/2026-04-18-gapyeong/archive",
+    });
+
+    expect(deleteResponse.statusCode).toBe(409);
+    expect(deleteResponse.json()).toEqual(
+      expect.objectContaining({
+        status: "failed",
+        error: expect.objectContaining({
+          code: "CONFLICT",
+        }),
+      }),
+    );
+    expect(archiveResponse.statusCode).toBe(409);
+    expect(archiveResponse.json()).toEqual(
+      expect.objectContaining({
+        status: "failed",
+        error: expect.objectContaining({
+          code: "CONFLICT",
+        }),
+      }),
+    );
+
+    modelClient.complete("# 충돌 종료");
+    await waitForTripAnalysisStatus(app, "2026-04-18-gapyeong", "completed");
 
     await app.close();
   });
@@ -1269,10 +1464,9 @@ describe("API server", () => {
     await app.close();
   });
 
-  it("returns markdown with OUTPUT_SAVE_FAILED when analyze-trip save_output cannot write the file", async () => {
+  it("marks the background analysis as failed when output saving fails", async () => {
     const dataDir = await createSeededDataDir();
     const outputsPath = path.join(dataDir, "outputs");
-    const markdown = "# 테스트 분석 결과";
 
     await rm(outputsPath, { recursive: true, force: true });
     await writeFile(outputsPath, "blocked", "utf8");
@@ -1280,7 +1474,7 @@ describe("API server", () => {
     const app = await buildServer({
       dataDir,
       projectRoot,
-      modelClient: new MockAnalysisClient(markdown),
+      modelClient: new MockAnalysisClient("# 테스트 분석 결과"),
     });
 
     const response = await app.inject({
@@ -1292,12 +1486,19 @@ describe("API server", () => {
       },
     });
 
-    expect(response.statusCode).toBe(200);
-    expect(response.json()).toEqual(
+    expect(response.statusCode).toBe(202);
+    await waitForTripAnalysisStatus(app, "2026-04-18-gapyeong", "failed");
+
+    const statusResponse = await app.inject({
+      method: "GET",
+      url: "/api/trips/2026-04-18-gapyeong/analysis-status",
+    });
+
+    expect(statusResponse.statusCode).toBe(200);
+    expect(statusResponse.json()).toEqual(
       expect.objectContaining({
         trip_id: "2026-04-18-gapyeong",
         status: "failed",
-        markdown,
         output_path: null,
         error: expect.objectContaining({
           code: "OUTPUT_SAVE_FAILED",
@@ -1393,6 +1594,37 @@ describe("API server", () => {
         error: expect.objectContaining({
           code: "TRIP_INVALID",
           message: expect.stringContaining("save_output"),
+        }),
+      }),
+    );
+
+    await app.close();
+  });
+
+  it("rejects save_output=false because background analysis always saves the output file", async () => {
+    const dataDir = await createSeededDataDir();
+    const app = await buildServer({
+      dataDir,
+      projectRoot,
+      modelClient: new MockAnalysisClient("# sample"),
+    });
+
+    const response = await app.inject({
+      method: "POST",
+      url: "/api/analyze-trip",
+      payload: {
+        trip_id: "2026-04-18-gapyeong",
+        save_output: false,
+      },
+    });
+
+    expect(response.statusCode).toBe(400);
+    expect(response.json()).toEqual(
+      expect.objectContaining({
+        status: "failed",
+        error: expect.objectContaining({
+          code: "TRIP_INVALID",
+          message: "비동기 분석은 save_output=false 를 지원하지 않습니다.",
         }),
       }),
     );

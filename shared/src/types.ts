@@ -35,6 +35,7 @@ import type {
   externalLinksSchema,
   foodPreferencesSchema,
   getOutputResponseSchema,
+  getTripAnalysisStatusResponseSchema,
   historyRecordSchema,
   listDataBackupsResponseSchema,
   planningAssistantActionSchema,
@@ -49,6 +50,7 @@ import type {
   saveOutputResponseSchema,
   travelPreferencesSchema,
   tripDraftSchema,
+  tripAnalysisStatusSchema,
   tripSchema,
   tripSummarySchema,
   validateTripRequestSchema,
@@ -155,6 +157,10 @@ export type RefreshDurableEquipmentMetadataResponse = z.infer<
 export type ApiError = z.infer<typeof apiErrorSchema>;
 export type AnalysisBackend = z.infer<typeof analysisBackendSchema>;
 export type BackendHealth = z.infer<typeof backendHealthSchema>;
+export type TripAnalysisStatus = z.infer<typeof tripAnalysisStatusSchema>;
+export type GetTripAnalysisStatusResponse = z.infer<
+  typeof getTripAnalysisStatusResponseSchema
+>;
 
 export type TripBundle = {
   profile: ProfileData;

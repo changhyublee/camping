@@ -40,6 +40,7 @@ export async function buildServer(
     modelClient,
     equipmentMetadataClient,
   );
+  await analysisService.initialize();
 
   const app = Fastify({
     logger: options.logger ?? false,

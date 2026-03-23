@@ -491,14 +491,26 @@ export const apiErrorSchema = z.object({
   message: z.string(),
 });
 
+export const tripAnalysisStatusSchema = z.enum([
+  "idle",
+  "queued",
+  "running",
+  "completed",
+  "failed",
+  "interrupted",
+]);
+
 export const analyzeTripResponseSchema = z.object({
   trip_id: tripIdSchema,
-  status: z.enum(["completed", "failed"]),
-  warnings: z.array(z.string()).default([]),
-  markdown: z.string().optional(),
+  status: tripAnalysisStatusSchema,
+  requested_at: z.string().datetime().nullable().optional(),
+  started_at: z.string().datetime().nullable().optional(),
+  finished_at: z.string().datetime().nullable().optional(),
   output_path: z.string().nullable().optional(),
   error: apiErrorSchema.optional(),
 });
+
+export const getTripAnalysisStatusResponseSchema = analyzeTripResponseSchema;
 
 export const validateTripResponseSchema = z.object({
   status: z.enum(["ok", "failed"]),

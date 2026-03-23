@@ -49,6 +49,10 @@ type MockState = {
     ApiResponse<ValidateTripResponse | FailedValidationResponse>
   >;
   analysis: ApiResponse<AnalyzeTripResponse>;
+  analysisStatuses: Record<
+    string,
+    ApiResponse<AnalyzeTripResponse> | ApiResponse<AnalyzeTripResponse>[]
+  >;
   equipment: EquipmentCatalog;
   equipmentCategories: EquipmentCategoriesData;
   history: HistoryRecord[];
@@ -61,6 +65,7 @@ type MockState = {
     sort_order: number;
   }>;
   outputs: Record<string, GetOutputResponse>;
+  outputAvailability: Record<string, boolean>;
   updateTripCalls: Array<{
     tripId: string;
     body: TripData;
@@ -175,6 +180,11 @@ function readOutputTripIdFromPath(pathname: string) {
   return match?.[1] ?? null;
 }
 
+function readTripAnalysisStatusTripId(pathname: string) {
+  const match = pathname.match(/^\/api\/trips\/([^/]+)\/analysis-status$/u);
+  return match?.[1] ?? null;
+}
+
 function readEquipmentItemParams(pathname: string) {
   const match = pathname.match(/^\/api\/equipment\/([^/]+)\/items(?:\/([^/]+))?$/u);
 
@@ -207,6 +217,30 @@ function readEquipmentCategoryParams(pathname: string) {
     section: match[1] as "durable" | "consumables" | "precheck",
     categoryId: match[2] ?? null,
   };
+}
+
+function consumeAnalysisStatusResponse(tripId: string) {
+  const idleResponse: ApiResponse<AnalyzeTripResponse> = {
+    body: {
+      trip_id: tripId,
+      status: "idle",
+      requested_at: null,
+      started_at: null,
+      finished_at: null,
+      output_path: null,
+    },
+  };
+  const response = state.analysisStatuses[tripId];
+
+  if (!response) {
+    return idleResponse;
+  }
+
+  if (Array.isArray(response)) {
+    return response.length > 1 ? response.shift() ?? idleResponse : response[0] ?? idleResponse;
+  }
+
+  return response;
 }
 
 function mockFetch(input: RequestInfo | URL, init?: RequestInit) {
@@ -569,7 +603,29 @@ function mockFetch(input: RequestInfo | URL, init?: RequestInit) {
   }
 
   if (pathname === "/api/analyze-trip" && method === "POST") {
-    return jsonResponse(state.analysis.body, state.analysis.status ?? 200);
+    const body = parseBody(init);
+    const tripId = body?.trip_id as string;
+    const response = state.analysis;
+
+    state.analysisStatuses[tripId] = response;
+
+    if (response.body.status === "completed" && state.outputs[tripId]) {
+      state.outputAvailability[tripId] = true;
+    }
+
+    return jsonResponse(response.body, response.status ?? 202);
+  }
+
+  const analysisStatusTripId = readTripAnalysisStatusTripId(pathname);
+
+  if (analysisStatusTripId && method === "GET") {
+    const response = consumeAnalysisStatusResponse(analysisStatusTripId);
+
+    if (response.body.status === "completed" && state.outputs[analysisStatusTripId]) {
+      state.outputAvailability[analysisStatusTripId] = true;
+    }
+
+    return jsonResponse(response.body, response.status ?? 200);
   }
 
   if (pathname === "/api/outputs" && method === "POST") {
@@ -584,7 +640,7 @@ function mockFetch(input: RequestInfo | URL, init?: RequestInit) {
   if (outputTripIdFromPath && method === "GET") {
     const output = state.outputs[outputTripIdFromPath];
 
-    if (!output) {
+    if (!output || !state.outputAvailability[outputTripIdFromPath]) {
       return jsonResponse(
         {
           status: "failed",
@@ -655,6 +711,7 @@ describe("App", () => {
       output_path: ".camping-data/outputs/2026-04-18-gapyeong-plan.md",
       markdown: "# 저장된 분석 결과\n\n- 자동 복원",
     };
+    state.outputAvailability["2026-04-18-gapyeong"] = true;
 
     const firstRender = render(<App />);
 
@@ -667,6 +724,33 @@ describe("App", () => {
 
     expect(await screen.findByRole("button", { name: "분석 실행" })).toBeInTheDocument();
     expect(await screen.findByText("자동 복원")).toBeInTheDocument();
+  });
+
+  it("restores the analyzing button state after remount when background analysis is still running", async () => {
+    window.sessionStorage.setItem(
+      "camping.ui-state",
+      JSON.stringify({
+        activePage: "planning",
+        selectedTripId: "2026-04-18-gapyeong",
+        selectedHistoryId: null,
+        equipmentSection: "durable",
+      }),
+    );
+    state.analysisStatuses["2026-04-18-gapyeong"] = {
+      body: {
+        trip_id: "2026-04-18-gapyeong",
+        status: "running",
+        requested_at: "2026-03-24T10:00:00.000Z",
+        started_at: "2026-03-24T10:00:01.000Z",
+        finished_at: null,
+        output_path: null,
+      },
+    };
+
+    render(<App />);
+
+    const button = await screen.findByRole("button", { name: "분석 중..." });
+    expect(button).toBeDisabled();
   });
 
   it("does not block planning details while saved output is still loading", async () => {
@@ -759,7 +843,9 @@ describe("App", () => {
       body: {
         trip_id: "2026-04-18-gapyeong",
         status: "failed",
-        warnings: [],
+        requested_at: null,
+        started_at: null,
+        finished_at: "2026-03-24T10:05:00.000Z",
         error: {
           code: "OPENAI_REQUEST_FAILED",
           message: "OpenAI 분석 요청에 실패했습니다.",
@@ -785,14 +871,21 @@ describe("App", () => {
     });
   });
 
-  it("keeps markdown visible when auto-save fails after analysis", async () => {
+  it("keeps the previous markdown visible when background analysis fails", async () => {
+    state.outputAvailability["2026-04-18-gapyeong"] = true;
+    state.outputs["2026-04-18-gapyeong"] = {
+      trip_id: "2026-04-18-gapyeong",
+      output_path: ".camping-data/outputs/2026-04-18-gapyeong-plan.md",
+      markdown: "# 이전 분석 결과\n\n- 그대로 유지",
+    };
     state.analysis = {
       body: {
         trip_id: "2026-04-18-gapyeong",
         status: "failed",
-        warnings: [],
-        markdown: "# 분석은 완료됨\n\n- 저장만 실패",
-        output_path: null,
+        requested_at: "2026-03-24T10:00:00.000Z",
+        started_at: "2026-03-24T10:00:01.000Z",
+        finished_at: "2026-03-24T10:00:05.000Z",
+        output_path: ".camping-data/outputs/2026-04-18-gapyeong-plan.md",
         error: {
           code: "OUTPUT_SAVE_FAILED",
           message: "분석 결과를 저장하지 못했습니다: 2026-04-18-gapyeong",
@@ -803,15 +896,17 @@ describe("App", () => {
     render(<App />);
 
     await userEvent.click(await screen.findByRole("button", { name: "캠핑 계획" }));
+    expect(await screen.findByText("그대로 유지")).toBeInTheDocument();
     await userEvent.click(await screen.findByRole("button", { name: "분석 실행" }));
 
     expect(
-      await screen.findByText("결과 생성 완료, 저장 실패"),
-    ).toBeInTheDocument();
-    expect(
-      screen.getByText("분석 결과를 저장하지 못했습니다: 2026-04-18-gapyeong"),
-    ).toBeInTheDocument();
-    expect(screen.getByText("저장만 실패")).toBeInTheDocument();
+      (
+        await screen.findAllByText(
+          "분석 결과를 저장하지 못했습니다: 2026-04-18-gapyeong",
+        )
+      ).length,
+    ).toBeGreaterThan(0);
+    expect(screen.getByText("그대로 유지")).toBeInTheDocument();
   });
 
   it("always requests analysis with automatic output saving", async () => {
@@ -894,8 +989,9 @@ describe("App", () => {
     deferredAnalysis.resolve({
       trip_id: "2026-04-18-gapyeong",
       status: "completed",
-      warnings: [],
-      markdown: "# 늦게 도착한 분석\n\n- 이전 계획 결과",
+      requested_at: "2026-03-24T10:00:00.000Z",
+      started_at: "2026-03-24T10:00:01.000Z",
+      finished_at: "2026-03-24T10:00:10.000Z",
       output_path: ".camping-data/outputs/2026-04-18-gapyeong-plan.md",
     });
 
@@ -1915,6 +2011,7 @@ describe("App", () => {
       output_path: ".camping-data/outputs/2026-03-08-yangpyeong-plan.md",
       markdown: "# 양평 히스토리 결과\n\n- 타프와 난방 장비 확인",
     };
+    state.outputAvailability["2026-03-08-yangpyeong"] = true;
 
     render(<App />);
 
@@ -2027,11 +2124,13 @@ describe("App", () => {
       output_path: ".camping-data/outputs/2026-03-08-yangpyeong-plan.md",
       markdown: "# 늦게 도착한 양평 결과\n\n- stale 응답",
     };
+    state.outputAvailability["2026-03-08-yangpyeong"] = true;
     state.outputs["2026-04-12-sokcho"] = {
       trip_id: "2026-04-12-sokcho",
       output_path: ".camping-data/outputs/2026-04-12-sokcho-plan.md",
       markdown: "# 속초 결과\n\n- 현재 선택 결과",
     };
+    state.outputAvailability["2026-04-12-sokcho"] = true;
 
     let resolveDelayedOutput:
       | ((response: Response) => void)
@@ -2199,9 +2298,22 @@ function createMockState(): MockState {
       body: {
         trip_id: "2026-04-18-gapyeong",
         status: "completed",
-        warnings: [],
-        markdown: "# 4월 가평 가족 캠핑 분석 결과\n\n## 1. 요약\n\n- 테스트 결과",
+        requested_at: "2026-03-24T10:00:00.000Z",
+        started_at: "2026-03-24T10:00:01.000Z",
+        finished_at: "2026-03-24T10:00:10.000Z",
         output_path: ".camping-data/outputs/2026-04-18-gapyeong-plan.md",
+      },
+    },
+    analysisStatuses: {
+      [trip.trip_id]: {
+        body: {
+          trip_id: trip.trip_id,
+          status: "idle",
+          requested_at: null,
+          started_at: null,
+          finished_at: null,
+          output_path: null,
+        },
       },
     },
     equipment: {
@@ -2235,7 +2347,14 @@ function createMockState(): MockState {
     },
     history: [],
     links: [],
-    outputs: {},
+    outputs: {
+      [trip.trip_id]: {
+        trip_id: trip.trip_id,
+        output_path: ".camping-data/outputs/2026-04-18-gapyeong-plan.md",
+        markdown: "# 4월 가평 가족 캠핑 분석 결과\n\n## 1. 요약\n\n- 테스트 결과",
+      },
+    },
+    outputAvailability: {},
     updateTripCalls: [],
     dataBackups: [],
   };

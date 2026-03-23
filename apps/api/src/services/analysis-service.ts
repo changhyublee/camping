@@ -30,7 +30,7 @@ import type {
 import type { CampingRepository } from "../file-store/camping-repository";
 import type { DataBackupReason } from "../file-store/local-data-backup";
 import { AppError } from "./app-error";
-import { isAppError, toApiError } from "./app-error";
+import { AnalysisJobManager } from "./analysis-job-manager";
 import type { EquipmentMetadataSearchClient } from "./equipment-metadata-service";
 import type { AnalysisModelClient } from "./openai-client";
 import { runPlanningAssistant } from "./planning-assistant";
@@ -43,11 +43,22 @@ type EquipmentItemInput =
   | PrecheckItemInput;
 
 export class AnalysisService {
+  private readonly analysisJobManager: AnalysisJobManager;
+
   constructor(
     private readonly repository: CampingRepository,
     private readonly modelClient: AnalysisModelClient,
     private readonly equipmentMetadataClient: EquipmentMetadataSearchClient,
-  ) {}
+  ) {
+    this.analysisJobManager = new AnalysisJobManager(
+      repository,
+      async (input) => this.executeTripAnalysis(input),
+    );
+  }
+
+  async initialize() {
+    await this.analysisJobManager.recoverInterruptedJobs();
+  }
 
   async listTrips() {
     return this.repository.listTripSummaries();
@@ -90,11 +101,13 @@ export class AnalysisService {
   }
 
   async deleteTrip(tripId: TripId) {
+    await this.ensureTripNotAnalyzing(tripId, "삭제");
     await this.repository.deleteTrip(tripId);
     return { status: "deleted" as const };
   }
 
   async archiveTrip(tripId: TripId) {
+    await this.ensureTripNotAnalyzing(tripId, "히스토리 이동");
     return this.repository.archiveTrip(tripId);
   }
 
@@ -259,6 +272,41 @@ export class AnalysisService {
   }
 
   async analyzeTrip(input: AnalyzeTripRequest): Promise<AnalyzeTripResponse> {
+    if (input.save_output === false) {
+      throw new AppError(
+        "TRIP_INVALID",
+        "비동기 분석은 save_output=false 를 지원하지 않습니다.",
+        400,
+      );
+    }
+
+    await this.repository.readTrip(input.trip_id);
+    return this.analysisJobManager.enqueueTripAnalysis(input);
+  }
+
+  async saveOutput(input: SaveOutputRequest): Promise<SaveOutputResponse> {
+    await this.repository.readTrip(input.trip_id);
+    const outputPath = await this.repository.saveOutput(
+      input.trip_id,
+      input.markdown,
+    );
+
+    return {
+      status: "saved",
+      output_path: outputPath,
+    };
+  }
+
+  async getOutput(tripId: TripId): Promise<GetOutputResponse> {
+    return this.repository.readOutput(tripId);
+  }
+
+  async getTripAnalysisStatus(tripId: TripId): Promise<AnalyzeTripResponse> {
+    await this.repository.readTrip(tripId);
+    return this.analysisJobManager.getTripAnalysisStatus(tripId);
+  }
+
+  private async executeTripAnalysis(input: AnalyzeTripRequest): Promise<string> {
     const bundle = await this.repository.loadTripBundle(input.trip_id);
     const { warnings } = validateTripBundle(bundle);
     const [prompts, referenceDocuments] = await Promise.all([
@@ -279,56 +327,16 @@ export class AnalysisService {
       userPrompt,
     });
 
-    if (input.save_output === false) {
-      return {
-        trip_id: input.trip_id,
-        status: "completed",
-        warnings,
-        markdown,
-        output_path: null,
-      };
-    }
-
-    try {
-      const outputPath = await this.repository.saveOutput(input.trip_id, markdown);
-
-      return {
-        trip_id: input.trip_id,
-        status: "completed",
-        warnings,
-        markdown,
-        output_path: outputPath,
-      };
-    } catch (error) {
-      if (isAppError(error) && error.code === "OUTPUT_SAVE_FAILED") {
-        return {
-          trip_id: input.trip_id,
-          status: "failed",
-          warnings,
-          markdown,
-          output_path: null,
-          error: toApiError(error),
-        };
-      }
-
-      throw error;
-    }
+    return this.repository.saveOutput(input.trip_id, markdown);
   }
 
-  async saveOutput(input: SaveOutputRequest): Promise<SaveOutputResponse> {
-    await this.repository.readTrip(input.trip_id);
-    const outputPath = await this.repository.saveOutput(
-      input.trip_id,
-      input.markdown,
-    );
-
-    return {
-      status: "saved",
-      output_path: outputPath,
-    };
-  }
-
-  async getOutput(tripId: TripId): Promise<GetOutputResponse> {
-    return this.repository.readOutput(tripId);
+  private async ensureTripNotAnalyzing(tripId: TripId, actionLabel: string) {
+    if (await this.analysisJobManager.hasPendingTripAnalysis(tripId)) {
+      throw new AppError(
+        "CONFLICT",
+        `현재 분석이 진행 중이라 계획을 ${actionLabel}할 수 없습니다: ${tripId}`,
+        409,
+      );
+    }
   }
 }

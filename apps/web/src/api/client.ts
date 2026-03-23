@@ -16,6 +16,7 @@ import type {
   ExternalLink,
   ExternalLinkInput,
   GetOutputResponse,
+  GetTripAnalysisStatusResponse,
   HistoryRecord,
   PlanningAssistantResponse,
   PrecheckItemInput,
@@ -184,6 +185,11 @@ export const apiClient = {
       method: "POST",
       body: JSON.stringify(input),
     });
+  },
+  async getTripAnalysisStatus(
+    tripId: string,
+  ): Promise<GetTripAnalysisStatusResponse> {
+    return request(`/api/trips/${tripId}/analysis-status`);
   },
   async saveOutput(input: SaveOutputRequest): Promise<SaveOutputResponse> {
     return request("/api/outputs", {

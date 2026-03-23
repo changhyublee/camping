@@ -8,6 +8,7 @@ import {
 } from "node:fs/promises";
 import path from "node:path";
 import {
+  analyzeTripResponseSchema,
   cloneEquipmentCategories,
   companionSchema,
   companionsSchema,
@@ -50,12 +51,14 @@ import {
   type ExternalLink,
   type ExternalLinkInput,
   type ExternalLinksData,
+  type GetTripAnalysisStatusResponse,
   type GetOutputResponse,
   type HistoryRecord,
   type PrecheckData,
   type PrecheckItem,
   type PrecheckItemInput,
   type TripBundle,
+  type TripAnalysisStatus,
   type TripData,
   type TripDraft,
   type TripId,
@@ -188,6 +191,7 @@ export class CampingRepository {
     await this.readTrip(tripId);
     await rm(this.getTripFilePath(tripId), { force: true });
     await rm(this.getTripOutputPath(tripId), { force: true });
+    await rm(this.getTripAnalysisStatusPath(tripId), { force: true });
   }
 
   async archiveTrip(tripId: TripId): Promise<HistoryRecord> {
@@ -234,6 +238,7 @@ export class CampingRepository {
 
     await this.writeYamlFile(this.getHistoryFilePath(history.history_id), history);
     await rm(this.getTripFilePath(tripId), { force: true });
+    await rm(this.getTripAnalysisStatusPath(tripId), { force: true });
 
     return history;
   }
@@ -924,6 +929,92 @@ export class CampingRepository {
     };
   }
 
+  async readTripAnalysisStatus(
+    tripId: TripId,
+  ): Promise<GetTripAnalysisStatusResponse | null> {
+    const statusPath = this.getTripAnalysisStatusPath(tripId);
+
+    if (!(await fileExists(statusPath))) {
+      return null;
+    }
+
+    try {
+      const raw = await readFile(statusPath, "utf8");
+      const parsed = analyzeTripResponseSchema.safeParse(JSON.parse(raw));
+      return parsed.success ? parsed.data : null;
+    } catch {
+      return null;
+    }
+  }
+
+  async createIdleTripAnalysisStatus(
+    tripId: TripId,
+  ): Promise<GetTripAnalysisStatusResponse> {
+    return {
+      trip_id: tripId,
+      status: "idle",
+      requested_at: null,
+      started_at: null,
+      finished_at: null,
+      output_path: await this.findTripOutputPath(tripId),
+    };
+  }
+
+  async saveTripAnalysisStatus(
+    value: GetTripAnalysisStatusResponse,
+  ): Promise<GetTripAnalysisStatusResponse> {
+    await this.writeJsonFile(this.getTripAnalysisStatusPath(value.trip_id), value);
+    return value;
+  }
+
+  async deleteTripAnalysisStatus(tripId: TripId): Promise<void> {
+    await rm(this.getTripAnalysisStatusPath(tripId), { force: true });
+  }
+
+  async findTripOutputPath(tripId: TripId): Promise<string | null> {
+    return (await fileExists(this.getTripOutputPath(tripId)))
+      ? getTripOutputRelativePath(tripId)
+      : null;
+  }
+
+  async markPendingTripAnalysisStatusesInterrupted() {
+    const jobFiles = await this.listJsonFiles(this.getTripAnalysisJobDir());
+    const interruptedStatuses = await Promise.all(
+      jobFiles.map(async (fileName) => {
+        const tripId = fileName.replace(/\.json$/u, "");
+
+        if (!isTripId(tripId)) {
+          return null;
+        }
+
+        const status = await this.readTripAnalysisStatus(tripId);
+
+        if (!status || !isPendingTripAnalysisStatus(status.status)) {
+          return null;
+        }
+
+        return this.saveTripAnalysisStatus({
+          trip_id: tripId,
+          status: "interrupted",
+          requested_at: status.requested_at ?? null,
+          started_at: status.started_at ?? null,
+          finished_at: new Date().toISOString(),
+          output_path: await this.findTripOutputPath(tripId),
+          error: {
+            code: "INTERNAL_ERROR",
+            message: "API 서버 재시작으로 이전 분석이 중단되었습니다.",
+          },
+        });
+      }),
+    );
+
+    return interruptedStatuses.filter(
+      (
+        item,
+      ): item is GetTripAnalysisStatusResponse => item !== null,
+    );
+  }
+
   private async createDurableItem(
     input: DurableEquipmentItemInput,
   ): Promise<DurableEquipmentItem> {
@@ -1445,6 +1536,14 @@ export class CampingRepository {
     return path.join(this.config.dataDir, "outputs", getTripOutputFilename(tripId));
   }
 
+  private getTripAnalysisJobDir() {
+    return path.join(this.config.dataDir, "cache", "analysis-jobs");
+  }
+
+  private getTripAnalysisStatusPath(tripId: string) {
+    return path.join(this.getTripAnalysisJobDir(), `${tripId}.json`);
+  }
+
   private getHistoryDir() {
     return path.join(this.config.dataDir, "history");
   }
@@ -1510,13 +1609,15 @@ export class CampingRepository {
   }
 
   private async isTripArtifactPresent(tripId: string): Promise<boolean> {
-    const [tripExists, historyExists, outputExists] = await Promise.all([
-      fileExists(this.getTripFilePath(tripId)),
-      fileExists(this.getHistoryFilePath(tripId)),
-      fileExists(this.getTripOutputPath(tripId)),
-    ]);
+    const [tripExists, historyExists, outputExists, analysisStatusExists] =
+      await Promise.all([
+        fileExists(this.getTripFilePath(tripId)),
+        fileExists(this.getHistoryFilePath(tripId)),
+        fileExists(this.getTripOutputPath(tripId)),
+        fileExists(this.getTripAnalysisStatusPath(tripId)),
+      ]);
 
-    return tripExists || historyExists || outputExists;
+    return tripExists || historyExists || outputExists || analysisStatusExists;
   }
 
   private async createUniqueLinkId(name: string): Promise<string> {
@@ -1650,6 +1751,10 @@ function normalizeTripDraft(draft: TripDraft, tripId: string): TripData {
   }
 
   return parsed.data;
+}
+
+function isPendingTripAnalysisStatus(status: TripAnalysisStatus) {
+  return status === "queued" || status === "running";
 }
 
 function buildCompanionSnapshots(

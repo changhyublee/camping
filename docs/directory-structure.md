@@ -76,6 +76,7 @@
 ├── outputs/
 ├── links.yaml
 └── cache/
+    ├── analysis-jobs/
     └── equipment-metadata/
         └── durable/
 ```
@@ -85,6 +86,7 @@
 - `trips/`: 예정된 캠핑 계획
 - `history/`: 완료된 캠핑 히스토리
 - `outputs/`: 분석 결과 Markdown
+- `cache/analysis-jobs/`: 계획별 백그라운드 분석 상태 JSON
 - `links.yaml`: 사용자 북마크 링크
 - `equipment/categories.yaml`: 장비 섹션별 카테고리 코드와 표시 이름
 - `.camping-backups/<timestamp>/`: 특정 시점의 로컬 운영 데이터 백업 스냅샷

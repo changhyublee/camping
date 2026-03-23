@@ -424,8 +424,8 @@ export async function registerApiRoutes(
     return analysisService.validateTrip(body.trip_id);
   });
 
-  app.post("/api/analyze-trip", async (request) => {
-    return analysisService.analyzeTrip(
+  app.post("/api/analyze-trip", async (request, reply) => {
+    const response = await analysisService.analyzeTrip(
       parseBodyOrThrow(
         "analyze-trip 요청",
         analyzeTripRequestSchema,
@@ -436,6 +436,17 @@ export async function registerApiRoutes(
         },
       ),
     );
+
+    return reply.status(202).send(response);
+  });
+
+  app.get("/api/trips/:tripId/analysis-status", async (request) => {
+    const tripId = readIdParam(
+      (request.params as { tripId?: unknown }).tripId,
+      "trip_id",
+    );
+
+    return analysisService.getTripAnalysisStatus(tripId);
   });
 
   app.get("/api/outputs/:tripId", async (request) => {

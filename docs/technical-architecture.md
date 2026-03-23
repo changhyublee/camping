@@ -12,6 +12,7 @@
 - 운영 데이터 백업은 `./.camping-backups/` 에 시점별 스냅샷으로 저장한다
 - 동행자, 차량, 장비, 계획, 히스토리, 링크는 YAML로 저장한다
 - 분석 결과는 Markdown으로 저장한다
+- 분석 실행 상태는 `cache/analysis-jobs/*.json` 으로 분리해 저장한다
 - 기본 분석 백엔드는 로컬 `codex exec` 이다
 - 반복 장비 메타데이터처럼 AI가 수집한 보강 정보는 `cache/` 아래 별도 파일로 저장하고 API에서 병합한다
 
@@ -23,8 +24,10 @@
     -> .camping-data/ YAML 읽기/쓰기
     -> .camping-backups/ 시점별 백업 생성
     -> docs/, prompts/, schemas/ 참조
-    -> 로컬 codex CLI 또는 fallback AI 백엔드 호출
+    -> analyze-trip 요청은 작업 상태를 queued/running 으로 저장하고 즉시 응답
+    -> 로컬 codex CLI 또는 fallback AI 백엔드를 백그라운드에서 호출
     -> outputs/*.md 저장
+    -> cache/analysis-jobs/*.json 상태 갱신
 ```
 
 ## 4. 상위 역할 분리
@@ -73,6 +76,7 @@
 ├── outputs/
 ├── links.yaml
 └── cache/
+    ├── analysis-jobs/
     └── equipment-metadata/
         └── durable/
 
@@ -125,6 +129,10 @@
 - 계획에는 선택한 사람 ID와 차량 스냅샷을 함께 저장한다
 - AI 보조는 제안을 반환하지만 자동 저장하지 않는다
 - 분석 결과 저장은 `outputs/*.md` 로 분리한다
+- 분석 상태는 `cache/analysis-jobs/<trip-id>.json` 에 저장한다
+- 같은 `trip_id` 가 이미 `queued` 또는 `running` 상태면 중복 실행하지 않고 현재 상태를 그대로 반환한다
+- 분석 중에는 계획 삭제와 히스토리 아카이브를 막는다
+- API 서버가 재시작되면 남아 있던 `queued` 또는 `running` 상태는 `interrupted` 로 전환한다
 
 초기 로딩 원칙:
 
