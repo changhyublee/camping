@@ -222,7 +222,7 @@ export class AnalysisService {
       userPrompt,
     });
 
-    if (!input.save_output) {
+    if (input.save_output === false) {
       return {
         trip_id: input.trip_id,
         status: "completed",

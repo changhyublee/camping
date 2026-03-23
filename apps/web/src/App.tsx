@@ -46,6 +46,16 @@ type PageKey =
   | "links"
   | "management";
 
+const PAGE_KEYS: PageKey[] = [
+  "dashboard",
+  "equipment",
+  "planning",
+  "history",
+  "links",
+  "management",
+];
+const UI_STATE_STORAGE_KEY = "camping.ui-state";
+
 type OperationState = {
   title: string;
   tone: "success" | "warning" | "error";
@@ -59,17 +69,29 @@ type CommaSeparatedInputs = {
   requestedStops: string;
 };
 
+type PersistedUiState = {
+  activePage: PageKey;
+  selectedTripId: string | null;
+  selectedHistoryId: string | null;
+  equipmentSection: EquipmentSection;
+};
+
 type CategoryDrafts = Record<EquipmentSection, EquipmentCategoryCreateInput>;
 type CategoryLabelDrafts = Record<EquipmentSection, Record<string, string>>;
 
 export function App() {
-  const [activePage, setActivePage] = useState<PageKey>("dashboard");
+  const [persistedUiState] = useState(() => readPersistedUiState());
+  const [activePage, setActivePage] = useState<PageKey>(
+    persistedUiState?.activePage ?? "dashboard",
+  );
   const [companions, setCompanions] = useState<Companion[]>([]);
   const [companionDraft, setCompanionDraft] =
     useState<Companion>(createEmptyCompanion());
   const [editingCompanionId, setEditingCompanionId] = useState<string | null>(null);
   const [trips, setTrips] = useState<TripSummary[]>([]);
-  const [selectedTripId, setSelectedTripId] = useState<string | null>(null);
+  const [selectedTripId, setSelectedTripId] = useState<string | null>(
+    persistedUiState?.selectedTripId ?? null,
+  );
   const [tripDraft, setTripDraft] = useState<TripDraft | null>(null);
   const [isCreatingTrip, setIsCreatingTrip] = useState(false);
   const [validationWarnings, setValidationWarnings] = useState<string[]>([]);
@@ -83,13 +105,15 @@ export function App() {
   const [equipmentCategories, setEquipmentCategories] =
     useState<EquipmentCategoriesData>(cloneEquipmentCategories());
   const [equipmentSection, setEquipmentSection] =
-    useState<EquipmentSection>("durable");
+    useState<EquipmentSection>(persistedUiState?.equipmentSection ?? "durable");
   const [categoryDrafts, setCategoryDrafts] =
     useState<CategoryDrafts>(createEmptyCategoryDrafts());
   const [categoryLabelDrafts, setCategoryLabelDrafts] =
     useState<CategoryLabelDrafts>(createEmptyCategoryLabelDrafts());
   const [history, setHistory] = useState<HistoryRecord[]>([]);
-  const [selectedHistoryId, setSelectedHistoryId] = useState<string | null>(null);
+  const [selectedHistoryId, setSelectedHistoryId] = useState<string | null>(
+    persistedUiState?.selectedHistoryId ?? null,
+  );
   const [historyOutput, setHistoryOutput] = useState<GetOutputResponse | null>(null);
   const [historyOutputLoading, setHistoryOutputLoading] = useState(false);
   const [historyOutputError, setHistoryOutputError] = useState<string | null>(null);
@@ -105,8 +129,6 @@ export function App() {
   const [detailLoading, setDetailLoading] = useState(false);
   const [savingTrip, setSavingTrip] = useState(false);
   const [analyzing, setAnalyzing] = useState(false);
-  const [saveOutput, setSaveOutput] = useState(true);
-  const [savingOutput, setSavingOutput] = useState(false);
   const [bannerState, setBannerState] = useState<OperationState | null>(null);
   const [operationState, setOperationState] = useState<OperationState | null>(
     null,
@@ -117,10 +139,20 @@ export function App() {
   );
   const selectedHistoryIdRef = useRef<string | null>(null);
   const historyOutputRequestIdRef = useRef(0);
+  const planningOutputRequestIdRef = useRef(0);
 
   useEffect(() => {
     void loadInitialData();
   }, []);
+
+  useEffect(() => {
+    writePersistedUiState({
+      activePage,
+      selectedTripId,
+      selectedHistoryId,
+      equipmentSection,
+    });
+  }, [activePage, equipmentSection, selectedHistoryId, selectedTripId]);
 
   useEffect(() => {
     if (!operationState) {
@@ -150,11 +182,17 @@ export function App() {
         setTripDraft(null);
         setValidationWarnings([]);
         setCommaInputs(createCommaSeparatedInputs());
+        setAnalysisResponse(null);
+        setAnalyzing(false);
+        planningOutputRequestIdRef.current += 1;
       }
       return;
     }
 
     let active = true;
+    const requestId = planningOutputRequestIdRef.current + 1;
+
+    planningOutputRequestIdRef.current = requestId;
     setDetailLoading(true);
     setLoadError(null);
     setTripDraft(null);
@@ -162,6 +200,7 @@ export function App() {
     setCommaInputs(createCommaSeparatedInputs());
     setAnalysisResponse(null);
     setAssistantResponse(null);
+    setAnalyzing(false);
 
     void Promise.allSettled([
       apiClient.getTrip(selectedTripId),
@@ -173,6 +212,7 @@ export function App() {
         if (tripResult.status === "rejected") {
           setTripDraft(null);
           setValidationWarnings([]);
+          setAnalysisResponse(null);
           setLoadError(getErrorMessage(tripResult.reason));
           return;
         }
@@ -183,10 +223,34 @@ export function App() {
 
         if (validationResult.status === "fulfilled") {
           setValidationWarnings(validationResult.value.warnings);
+        } else {
+          setValidationWarnings(toValidationWarnings(validationResult.reason));
+        }
+
+        if (planningOutputRequestIdRef.current !== requestId) {
           return;
         }
 
-        setValidationWarnings(toValidationWarnings(validationResult.reason));
+        void apiClient
+          .getOutput(selectedTripId)
+          .then((response) => {
+            if (!active || planningOutputRequestIdRef.current !== requestId) {
+              return;
+            }
+
+            setAnalysisResponse({
+              trip_id: response.trip_id,
+              status: "completed",
+              warnings: [],
+              markdown: response.markdown,
+              output_path: response.output_path,
+            });
+          })
+          .catch(() => {
+            if (!active || planningOutputRequestIdRef.current !== requestId) {
+              return;
+            }
+          });
       })
       .finally(() => {
         if (active) {
@@ -342,10 +406,17 @@ export function App() {
       setHistory(historyResponse.value.items);
       setLinks(linkResponse.value.items);
       setSelectedTripId(
-        (current) => current ?? tripResponse.value.items?.[0]?.trip_id ?? null,
+        (current) =>
+          current && tripResponse.value.items.some((item) => item.trip_id === current)
+            ? current
+            : tripResponse.value.items?.[0]?.trip_id ?? null,
       );
       setSelectedHistoryId(
-        (current) => current ?? historyResponse.value.items?.[0]?.history_id ?? null,
+        (current) =>
+          current &&
+          historyResponse.value.items.some((item) => item.history_id === current)
+            ? current
+            : historyResponse.value.items?.[0]?.history_id ?? null,
       );
 
       if (companionResponse.status === "fulfilled") {
@@ -701,14 +772,22 @@ export function App() {
   async function handleAnalyze() {
     if (!selectedTripId) return;
 
+    const requestId = planningOutputRequestIdRef.current + 1;
+
+    planningOutputRequestIdRef.current = requestId;
     setAnalyzing(true);
     setOperationState(null);
 
     try {
       const response = await apiClient.analyzeTrip({
         trip_id: selectedTripId,
-        save_output: saveOutput,
+        save_output: true,
       });
+
+      if (planningOutputRequestIdRef.current !== requestId) {
+        return;
+      }
+
       setAnalysisResponse(response);
 
       if (response.output_path) {
@@ -719,48 +798,19 @@ export function App() {
         });
       }
     } catch (error) {
+      if (planningOutputRequestIdRef.current !== requestId) {
+        return;
+      }
+
       setOperationState({
         title: "분석 실패",
         tone: "error",
         description: getErrorMessage(error),
       });
     } finally {
-      setAnalyzing(false);
-    }
-  }
-
-  async function handleSaveOutput() {
-    if (!selectedTripId || !analysisResponse?.markdown) return;
-
-    setSavingOutput(true);
-
-    try {
-      const response = await apiClient.saveOutput({
-        trip_id: selectedTripId,
-        markdown: analysisResponse.markdown,
-      });
-      setAnalysisResponse((current) =>
-        current
-          ? {
-              ...current,
-              output_path: response.output_path,
-              error: undefined,
-            }
-          : current,
-      );
-      setOperationState({
-        title: "결과 저장 완료",
-        tone: "success",
-        description: response.output_path,
-      });
-    } catch (error) {
-      setOperationState({
-        title: "결과 저장 실패",
-        tone: "error",
-        description: getErrorMessage(error),
-      });
-    } finally {
-      setSavingOutput(false);
+      if (planningOutputRequestIdRef.current === requestId) {
+        setAnalyzing(false);
+      }
     }
   }
 
@@ -2557,14 +2607,6 @@ export function App() {
                     )}
 
                     <div className="action-row">
-                      <label className="checkbox-row">
-                        <input
-                          checked={saveOutput}
-                          onChange={(event) => setSaveOutput(event.target.checked)}
-                          type="checkbox"
-                        />
-                        분석 후 결과 저장
-                      </label>
                       <div className="button-row">
                         <button
                           className="button"
@@ -2668,21 +2710,9 @@ export function App() {
                     ) : null}
 
                     {analysisResponse?.markdown ? (
-                      <>
-                        <div className="action-row action-row--end">
-                          <button
-                            className="button"
-                            disabled={savingOutput}
-                            onClick={handleSaveOutput}
-                            type="button"
-                          >
-                            {savingOutput ? "저장 중..." : "결과 저장"}
-                          </button>
-                        </div>
-                        <article className="markdown-pane">
-                          <ReactMarkdown>{analysisResponse.markdown}</ReactMarkdown>
-                        </article>
-                      </>
+                      <article className="markdown-pane">
+                        <ReactMarkdown>{analysisResponse.markdown}</ReactMarkdown>
+                      </article>
                     ) : (
                       <div className="empty-state">
                         계획을 저장한 뒤 분석을 실행하면 결과가 여기에 표시됩니다.
@@ -3562,6 +3592,58 @@ function appendSyncWarnings(base: string, warnings: string[]) {
   }
 
   return `${base} / ${warnings.join(" / ")}`;
+}
+
+function readPersistedUiState(): PersistedUiState | null {
+  if (typeof window === "undefined") {
+    return null;
+  }
+
+  try {
+    const raw = window.sessionStorage.getItem(UI_STATE_STORAGE_KEY);
+
+    if (!raw) {
+      return null;
+    }
+
+    const parsed = JSON.parse(raw) as Partial<PersistedUiState>;
+
+    if (
+      !parsed.activePage ||
+      !PAGE_KEYS.includes(parsed.activePage) ||
+      !parsed.equipmentSection ||
+      !isEquipmentSection(parsed.equipmentSection)
+    ) {
+      return null;
+    }
+
+    return {
+      activePage: parsed.activePage,
+      selectedTripId:
+        typeof parsed.selectedTripId === "string" ? parsed.selectedTripId : null,
+      selectedHistoryId:
+        typeof parsed.selectedHistoryId === "string" ? parsed.selectedHistoryId : null,
+      equipmentSection: parsed.equipmentSection,
+    };
+  } catch {
+    return null;
+  }
+}
+
+function writePersistedUiState(state: PersistedUiState) {
+  if (typeof window === "undefined") {
+    return;
+  }
+
+  try {
+    window.sessionStorage.setItem(UI_STATE_STORAGE_KEY, JSON.stringify(state));
+  } catch {
+    // Ignore storage write failures so the app remains usable.
+  }
+}
+
+function isEquipmentSection(value: string): value is EquipmentSection {
+  return value === "durable" || value === "consumables" || value === "precheck";
 }
 
 function omitDraftLabel(drafts: Record<string, string>, categoryId: string) {

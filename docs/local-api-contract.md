@@ -39,6 +39,12 @@
 - `GET /api/outputs/:tripId`
 - `POST /api/outputs`
 
+분석 실행 규칙:
+
+- `POST /api/analyze-trip` 는 기본적으로 결과 Markdown을 자동 저장한다
+- `save_output` 을 생략하거나 `true` 로 보내면 `.camping-data/outputs/<trip-id>-plan.md` 에 저장한다
+- `save_output` 을 `false` 로 보내면 Markdown만 반환하고 파일 저장은 생략한다
+
 ### 장비 관리
 
 - `GET /api/equipment`

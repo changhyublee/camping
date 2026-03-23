@@ -66,6 +66,7 @@ beforeEach(() => {
   state = createMockState();
   fetchMock.mockImplementation(mockFetch);
   vi.spyOn(window, "confirm").mockReturnValue(true);
+  window.sessionStorage.clear();
 });
 
 afterEach(() => {
@@ -94,6 +95,26 @@ function emptyResponse(status = 204) {
     },
     text: async () => "",
   } as unknown as Response);
+}
+
+function createDeferredResponse() {
+  let resolve: ((value: Response) => void) | null = null;
+
+  const promise = new Promise<Response>((nextResolve) => {
+    resolve = nextResolve;
+  });
+
+  return {
+    promise,
+    resolve: (body: unknown, status = 200) => {
+      resolve?.({
+        ok: status >= 200 && status < 300,
+        status,
+        json: async () => body,
+        text: async () => JSON.stringify(body),
+      } as Response);
+    },
+  };
 }
 
 function parseBody(init?: RequestInit) {
@@ -458,6 +479,104 @@ describe("App", () => {
     ).toBeInTheDocument();
   });
 
+  it("keeps the planning page after remount and restores saved analysis output", async () => {
+    state.outputs["2026-04-18-gapyeong"] = {
+      trip_id: "2026-04-18-gapyeong",
+      output_path: ".camping-data/outputs/2026-04-18-gapyeong-plan.md",
+      markdown: "# 저장된 분석 결과\n\n- 자동 복원",
+    };
+
+    const firstRender = render(<App />);
+
+    await userEvent.click(await screen.findByRole("button", { name: "캠핑 계획" }));
+    expect(await screen.findByText("자동 복원")).toBeInTheDocument();
+
+    firstRender.unmount();
+
+    render(<App />);
+
+    expect(await screen.findByRole("button", { name: "분석 실행" })).toBeInTheDocument();
+    expect(await screen.findByText("자동 복원")).toBeInTheDocument();
+  });
+
+  it("does not block planning details while saved output is still loading", async () => {
+    const deferredOutput = createDeferredResponse();
+
+    fetchMock.mockImplementation((input, init) => {
+      const rawUrl = typeof input === "string" ? input : input.toString();
+      const pathname = new URL(rawUrl, "http://localhost").pathname;
+      const method = init?.method?.toUpperCase() ?? "GET";
+
+      if (pathname === "/api/outputs/2026-04-18-gapyeong" && method === "GET") {
+        return deferredOutput.promise;
+      }
+
+      return mockFetch(input, init);
+    });
+
+    render(<App />);
+
+    await userEvent.click(await screen.findByRole("button", { name: "캠핑 계획" }));
+    expect(await screen.findByDisplayValue("4월 가평 가족 캠핑")).toBeInTheDocument();
+
+    deferredOutput.resolve({
+      trip_id: "2026-04-18-gapyeong",
+      output_path: ".camping-data/outputs/2026-04-18-gapyeong-plan.md",
+      markdown: "# 지연된 저장 결과\n\n- 나중에 도착",
+    });
+
+    expect(await screen.findByText("나중에 도착")).toBeInTheDocument();
+  });
+
+  it("does not show saved output when the trip detail request fails", async () => {
+    window.sessionStorage.setItem(
+      "camping.ui-state",
+      JSON.stringify({
+        activePage: "planning",
+        selectedTripId: "2026-04-18-gapyeong",
+        selectedHistoryId: null,
+        equipmentSection: "durable",
+      }),
+    );
+
+    fetchMock.mockImplementation((input, init) => {
+      const rawUrl = typeof input === "string" ? input : input.toString();
+      const pathname = new URL(rawUrl, "http://localhost").pathname;
+      const method = init?.method?.toUpperCase() ?? "GET";
+
+      if (pathname === "/api/trips/2026-04-18-gapyeong" && method === "GET") {
+        return jsonResponse(
+          {
+            status: "failed",
+            error: {
+              code: "TRIP_NOT_FOUND",
+              message: "trip 파일을 찾을 수 없습니다: 2026-04-18-gapyeong",
+            },
+          },
+          404,
+        );
+      }
+
+      if (pathname === "/api/outputs/2026-04-18-gapyeong" && method === "GET") {
+        return jsonResponse({
+          trip_id: "2026-04-18-gapyeong",
+          output_path: ".camping-data/outputs/2026-04-18-gapyeong-plan.md",
+          markdown: "# 남아 있는 결과\n\n- stale output",
+        });
+      }
+
+      return mockFetch(input, init);
+    });
+
+    render(<App />);
+
+    expect(await screen.findByText("초기 로딩 실패")).toBeInTheDocument();
+    expect(
+      screen.getByText("trip 파일을 찾을 수 없습니다: 2026-04-18-gapyeong"),
+    ).toBeInTheDocument();
+    expect(screen.queryByText("stale output")).toBeNull();
+  });
+
   it("shows analysis API errors in the planning page", async () => {
     state.validations["2026-04-18-gapyeong"] = {
       body: {
@@ -523,6 +642,97 @@ describe("App", () => {
       screen.getByText("분석 결과를 저장하지 못했습니다: 2026-04-18-gapyeong"),
     ).toBeInTheDocument();
     expect(screen.getByText("저장만 실패")).toBeInTheDocument();
+  });
+
+  it("always requests analysis with automatic output saving", async () => {
+    render(<App />);
+
+    await userEvent.click(await screen.findByRole("button", { name: "캠핑 계획" }));
+    await userEvent.click(await screen.findByRole("button", { name: "분석 실행" }));
+
+    const analyzeCall = fetchMock.mock.calls.find(([input]) => {
+      const rawUrl = typeof input === "string" ? input : input.toString();
+      return new URL(rawUrl, "http://localhost").pathname === "/api/analyze-trip";
+    });
+
+    expect(analyzeCall).toBeDefined();
+    expect(parseBody(analyzeCall?.[1])).toEqual(
+      expect.objectContaining({
+        trip_id: "2026-04-18-gapyeong",
+        save_output: true,
+      }),
+    );
+    expect(screen.queryByLabelText("분석 후 결과 저장")).toBeNull();
+    expect(screen.queryByRole("button", { name: "결과 저장" })).toBeNull();
+  });
+
+  it("ignores stale analysis responses after switching to another trip", async () => {
+    const deferredAnalysis = createDeferredResponse();
+
+    state.trips.push({
+      trip_id: "2026-04-20-yangyang",
+      title: "양양 테스트 캠핑",
+      start_date: "2026-04-20",
+      region: "yangyang",
+      companion_count: 1,
+    });
+    state.tripDetails["2026-04-20-yangyang"] = {
+      version: 1,
+      trip_id: "2026-04-20-yangyang",
+      title: "양양 테스트 캠핑",
+      date: {
+        start: "2026-04-20",
+        end: "2026-04-21",
+      },
+      location: {
+        region: "yangyang",
+      },
+      party: {
+        companion_ids: ["self"],
+      },
+      notes: [],
+    };
+    state.validations["2026-04-20-yangyang"] = {
+      body: {
+        status: "ok",
+        warnings: [],
+      },
+    };
+
+    fetchMock.mockImplementation((input, init) => {
+      const rawUrl = typeof input === "string" ? input : input.toString();
+      const pathname = new URL(rawUrl, "http://localhost").pathname;
+      const method = init?.method?.toUpperCase() ?? "GET";
+
+      if (pathname === "/api/analyze-trip" && method === "POST") {
+        return deferredAnalysis.promise;
+      }
+
+      return mockFetch(input, init);
+    });
+
+    render(<App />);
+
+    await userEvent.click(await screen.findByRole("button", { name: "캠핑 계획" }));
+    await userEvent.click(await screen.findByRole("button", { name: "분석 실행" }));
+    await userEvent.click(
+      await screen.findByRole("button", { name: /양양 테스트 캠핑/u }),
+    );
+
+    expect(await screen.findByDisplayValue("양양 테스트 캠핑")).toBeInTheDocument();
+
+    deferredAnalysis.resolve({
+      trip_id: "2026-04-18-gapyeong",
+      status: "completed",
+      warnings: [],
+      markdown: "# 늦게 도착한 분석\n\n- 이전 계획 결과",
+      output_path: ".camping-data/outputs/2026-04-18-gapyeong-plan.md",
+    });
+
+    await waitFor(() => {
+      expect(screen.queryByText("이전 계획 결과")).toBeNull();
+    });
+    expect(screen.getByDisplayValue("양양 테스트 캠핑")).toBeInTheDocument();
   });
 
   it("keeps the app usable when companion loading fails on startup", async () => {

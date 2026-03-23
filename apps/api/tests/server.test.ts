@@ -345,7 +345,7 @@ describe("API server", () => {
     await app.close();
   });
 
-  it("analyzes a trip and saves markdown output", async () => {
+  it("analyzes a trip and saves markdown output by default", async () => {
     const dataDir = await createSeededDataDir();
     const markdown = "# 테스트 분석 결과";
     const app = await buildServer({
@@ -359,7 +359,6 @@ describe("API server", () => {
       url: "/api/analyze-trip",
       payload: {
         trip_id: "2026-04-18-gapyeong",
-        save_output: true,
       },
     });
 
