@@ -215,6 +215,7 @@ function buildPlanningPrompt(
     actions.length > 0
       ? actions.map((action) => `- ${action.title}: ${action.reason}`).join("\n")
       : "- 현재 자동 제안 액션 없음";
+  const equipmentLines = buildEquipmentMetadataLines(bundle);
 
   return [
     "## 사용자 메시지",
@@ -231,6 +232,9 @@ function buildPlanningPrompt(
     "",
     "## 자동 제안 액션",
     actionLines,
+    "",
+    "## 장비 메타데이터 요약",
+    equipmentLines,
     "",
     "짧고 실용적으로 지금 폼에서 먼저 바꿀 것과 장비에서 바로 확인할 것을 안내하라.",
   ].join("\n");
@@ -260,6 +264,61 @@ function buildFallbackAssistantMessage(
   }
 
   return lines.join("\n");
+}
+
+function buildEquipmentMetadataLines(bundle: TripBundle) {
+  const items = bundle.durableEquipment.items;
+
+  if (items.length === 0) {
+    return "- 등록된 반복 장비가 없음";
+  }
+
+  return items
+    .slice(0, 12)
+    .map((item) => {
+      const metadata = item.metadata;
+
+      if (!metadata) {
+        return `- ${item.name}: 메타데이터 없음`;
+      }
+
+      if (metadata.lookup_status === "not_found") {
+        return `- ${item.name}: 재원 정보 미확인`;
+      }
+
+      if (metadata.lookup_status === "failed") {
+        return `- ${item.name}: 메타데이터 수집 실패`;
+      }
+
+      const size = metadata.packing
+        ? [
+            metadata.packing.width_cm,
+            metadata.packing.depth_cm,
+            metadata.packing.height_cm,
+          ]
+            .filter((value): value is number => typeof value === "number")
+            .join("x")
+        : "";
+      const weight =
+        typeof metadata.packing?.weight_kg === "number"
+          ? `${metadata.packing.weight_kg}kg`
+          : "";
+      const setup =
+        typeof metadata.planning?.setup_time_minutes === "number"
+          ? `${metadata.planning.setup_time_minutes}분`
+          : "";
+
+      return `- ${item.name}: ${
+        [
+          size ? `포장 ${size}cm` : "",
+          weight ? `무게 ${weight}` : "",
+          setup ? `설치 ${setup}` : "",
+        ]
+          .filter(Boolean)
+          .join(", ") || "수집 완료"
+      }`;
+    })
+    .join("\n");
 }
 
 function buildDurableSuggestion(input: {

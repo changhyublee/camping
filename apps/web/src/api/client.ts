@@ -5,6 +5,7 @@ import type {
   CompanionInput,
   ConsumableEquipmentItemInput,
   DurableEquipmentItemInput,
+  DurableEquipmentItem,
   EquipmentCatalog,
   EquipmentCategoriesData,
   EquipmentCategory,
@@ -17,6 +18,7 @@ import type {
   HistoryRecord,
   PlanningAssistantResponse,
   PrecheckItemInput,
+  RefreshDurableEquipmentMetadataResponse,
   SaveOutputRequest,
   SaveOutputResponse,
   TripData,
@@ -197,7 +199,7 @@ export const apiClient = {
   async createEquipmentItem(
     section: EquipmentSection,
     input: EquipmentItemInput,
-  ): Promise<{ item: EquipmentItemInput }> {
+  ): Promise<{ item: DurableEquipmentItem | EquipmentItemInput }> {
     return request(`/api/equipment/${section}/items`, {
       method: "POST",
       body: JSON.stringify(input),
@@ -207,10 +209,17 @@ export const apiClient = {
     section: EquipmentSection,
     itemId: string,
     input: EquipmentItemInput,
-  ): Promise<{ item: EquipmentItemInput }> {
+  ): Promise<{ item: DurableEquipmentItem | EquipmentItemInput }> {
     return request(`/api/equipment/${section}/items/${itemId}`, {
       method: "PUT",
       body: JSON.stringify(input),
+    });
+  },
+  async refreshDurableEquipmentMetadata(
+    itemId: string,
+  ): Promise<RefreshDurableEquipmentMetadataResponse> {
+    return request(`/api/equipment/durable/items/${itemId}/metadata/refresh`, {
+      method: "POST",
     });
   },
   async deleteEquipmentItem(

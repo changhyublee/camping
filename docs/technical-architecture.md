@@ -12,6 +12,7 @@
 - 동행자, 장비, 계획, 히스토리, 링크는 YAML로 저장한다
 - 분석 결과는 Markdown으로 저장한다
 - 기본 분석 백엔드는 로컬 `codex exec` 이다
+- 반복 장비 메타데이터처럼 AI가 수집한 보강 정보는 `cache/` 아래 별도 파일로 저장하고 API에서 병합한다
 
 ## 3. 권장 구조
 
@@ -64,6 +65,8 @@
 ├── outputs/
 ├── links.yaml
 └── cache/
+    └── equipment-metadata/
+        └── durable/
 ```
 
 ## 6. 메뉴별 기술 책임

@@ -25,6 +25,7 @@ import type {
 } from "@camping/shared";
 import type { CampingRepository } from "../file-store/camping-repository";
 import { isAppError, toApiError } from "./app-error";
+import type { EquipmentMetadataSearchClient } from "./equipment-metadata-service";
 import type { AnalysisModelClient } from "./openai-client";
 import { runPlanningAssistant } from "./planning-assistant";
 import { buildAnalysisPrompt } from "./prompt-builder";
@@ -39,6 +40,7 @@ export class AnalysisService {
   constructor(
     private readonly repository: CampingRepository,
     private readonly modelClient: AnalysisModelClient,
+    private readonly equipmentMetadataClient: EquipmentMetadataSearchClient,
   ) {}
 
   async listTrips() {
@@ -153,6 +155,18 @@ export class AnalysisService {
   async deleteEquipmentItem(section: EquipmentSection, itemId: string) {
     await this.repository.deleteEquipmentItem(section, itemId);
     return { status: "deleted" as const };
+  }
+
+  async refreshDurableEquipmentMetadata(itemId: string) {
+    const item = await this.repository.readDurableItem(itemId);
+    const categoryLabel = await this.repository.readDurableCategoryLabel(item.category);
+    const metadata = await this.equipmentMetadataClient.collectDurableEquipmentMetadata({
+      item,
+      categoryLabel,
+    });
+
+    await this.repository.saveDurableEquipmentMetadata(itemId, metadata);
+    return this.repository.readEnrichedDurableItem(itemId);
   }
 
   async listLinks() {

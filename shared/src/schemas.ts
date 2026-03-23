@@ -107,11 +107,56 @@ export const companionsSchema = z.object({
   companions: z.array(companionSchema),
 });
 
-export const durableEquipmentItemSchema = z.object({
+export const equipmentMetadataLookupStatusSchema = z.enum([
+  "found",
+  "not_found",
+  "failed",
+]);
+
+export const durableEquipmentMetadataSourceSchema = z.object({
+  title: z.string().min(1),
+  url: z.string().url(),
+  domain: z.string().min(1),
+});
+
+export const durableEquipmentMetadataSchema = z.object({
+  lookup_status: equipmentMetadataLookupStatusSchema,
+  searched_at: z.string().min(1),
+  query: z.string().min(1),
+  summary: z.string().min(1).optional(),
+  product: z
+    .object({
+      brand: z.string().min(1).optional(),
+      official_name: z.string().min(1).optional(),
+      model: z.string().min(1).optional(),
+    })
+    .optional(),
+  packing: z
+    .object({
+      width_cm: z.number().positive().optional(),
+      depth_cm: z.number().positive().optional(),
+      height_cm: z.number().positive().optional(),
+      weight_kg: z.number().positive().optional(),
+    })
+    .optional(),
+  planning: z
+    .object({
+      setup_time_minutes: z.number().int().positive().optional(),
+      recommended_people: z.number().int().positive().optional(),
+      capacity_people: z.number().int().positive().optional(),
+      season_notes: z.array(z.string()).default([]),
+      weather_notes: z.array(z.string()).default([]),
+    })
+    .optional(),
+  sources: z.array(durableEquipmentMetadataSourceSchema).default([]),
+});
+
+export const durableEquipmentItemBaseSchema = z.object({
   id: z.string().min(1),
   kind: z.string().min(1).optional(),
   name: z.string().min(1),
   model: z.string().min(1).optional(),
+  purchase_link: z.string().url().optional(),
   category: z.string().min(1),
   quantity: z.number().int().positive().default(1),
   capacity: z
@@ -132,7 +177,11 @@ export const durableEquipmentItemSchema = z.object({
   notes: z.string().optional(),
 });
 
-export const durableEquipmentItemInputSchema = durableEquipmentItemSchema.extend({
+export const durableEquipmentItemSchema = durableEquipmentItemBaseSchema.extend({
+  metadata: durableEquipmentMetadataSchema.optional(),
+});
+
+export const durableEquipmentItemInputSchema = durableEquipmentItemBaseSchema.extend({
   id: z.string().min(1).optional(),
 });
 
@@ -385,6 +434,10 @@ export const planningAssistantResponseSchema = z.object({
   warnings: z.array(z.string()).default([]),
   assistant_message: z.string().min(1),
   actions: z.array(planningAssistantActionSchema).default([]),
+});
+
+export const refreshDurableEquipmentMetadataResponseSchema = z.object({
+  item: durableEquipmentItemSchema,
 });
 
 export const apiErrorSchema = z.object({

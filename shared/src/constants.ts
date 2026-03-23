@@ -1,6 +1,7 @@
 import type {
   AgeGroup,
   ConsumableEquipmentItem,
+  EquipmentMetadataLookupStatus,
   DurableEquipmentItem,
   EquipmentCategoriesData,
   EquipmentCategory,
@@ -65,6 +66,15 @@ export const DURABLE_STATUS_LABELS: Record<DurableStatus, string> = {
   low: "부족",
   needs_check: "점검 필요",
   needs_repair: "수리 필요",
+};
+
+export const DURABLE_METADATA_STATUS_LABELS: Record<
+  EquipmentMetadataLookupStatus,
+  string
+> = {
+  found: "수집 완료",
+  not_found: "재원 미확인",
+  failed: "수집 실패",
 };
 
 export const CONSUMABLE_STATUS_LABELS: Record<ConsumableStatus, string> = {

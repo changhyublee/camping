@@ -119,4 +119,68 @@ describe("buildAnalysisPrompt", () => {
     expect(prompt).toContain("family_friendly_required: true");
     expect(prompt).toContain("name: 기상청");
   });
+
+  it("includes enriched durable equipment metadata in the analysis context", () => {
+    const prompt = buildAnalysisPrompt({
+      bundle: createBundle({
+        notes: [],
+      }),
+      analysisPrompt: "# 분석 규칙",
+      referenceDocuments: [],
+      warnings: [],
+      referenceDate: new Date("2026-03-23T12:00:00.000Z"),
+    });
+
+    const enrichedBundle = createBundle();
+    enrichedBundle.durableEquipment.items = [
+      {
+        id: "tunnel-tent-4p-khaki",
+        name: "4인용 터널 텐트 카키",
+        model: "A사 패밀리 터널 4P",
+        purchase_link: "https://example.com/product",
+        category: "shelter",
+        quantity: 1,
+        status: "ok",
+        metadata: {
+          lookup_status: "found",
+          searched_at: "2026-03-23T12:00:00.000Z",
+          query: "4인용 터널 텐트 카키",
+          summary: "포장 크기와 설치 시간을 확인함.",
+          packing: {
+            width_cm: 68,
+            depth_cm: 34,
+            height_cm: 30,
+            weight_kg: 14.5,
+          },
+          planning: {
+            setup_time_minutes: 20,
+            recommended_people: 2,
+            capacity_people: 4,
+            season_notes: ["봄, 여름, 가을 중심"],
+            weather_notes: ["우천 시 플라이 확인 필요"],
+          },
+          sources: [
+            {
+              title: "A사 패밀리 터널 4P",
+              url: "https://example.com/product",
+              domain: "example.com",
+            },
+          ],
+        },
+      },
+    ];
+
+    const enrichedPrompt = buildAnalysisPrompt({
+      bundle: enrichedBundle,
+      analysisPrompt: "# 분석 규칙",
+      referenceDocuments: [],
+      warnings: [],
+      referenceDate: new Date("2026-03-23T12:00:00.000Z"),
+    });
+
+    expect(prompt).not.toContain("purchase_link");
+    expect(enrichedPrompt).toContain("purchase_link: https://example.com/product");
+    expect(enrichedPrompt).toContain("lookup_status: found");
+    expect(enrichedPrompt).toContain("setup_time_minutes: 20");
+  });
 });

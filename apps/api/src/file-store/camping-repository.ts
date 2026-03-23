@@ -12,6 +12,7 @@ import {
   companionSchema,
   companionsSchema,
   consumableEquipmentSchema,
+  durableEquipmentMetadataSchema,
   durableEquipmentSchema,
   equipmentCategoriesSchema,
   externalLinksSchema,
@@ -37,6 +38,7 @@ import {
   type DurableEquipmentData,
   type DurableEquipmentItem,
   type DurableEquipmentItemInput,
+  type DurableEquipmentMetadata,
   type EquipmentCategoriesData,
   type EquipmentCategory,
   type EquipmentCategoryCreateInput,
@@ -457,7 +459,7 @@ export class CampingRepository {
       : cloneEquipmentCategories();
 
     const [durable, consumables, precheck] = await Promise.all([
-      this.readDurableEquipment(),
+      this.readDurableEquipmentBase(),
       this.readConsumables(),
       this.readPrecheck(),
     ]);
@@ -631,6 +633,38 @@ export class CampingRepository {
     }
   }
 
+  async readDurableItem(itemId: string): Promise<DurableEquipmentItem> {
+    const item = (await this.readDurableEquipment()).items.find(
+      (candidate) => candidate.id === itemId,
+    );
+
+    if (!item) {
+      throw new AppError(
+        "RESOURCE_NOT_FOUND",
+        `장비를 찾을 수 없습니다: ${itemId}`,
+        404,
+      );
+    }
+
+    return item;
+  }
+
+  async readDurableCategoryLabel(categoryId: string): Promise<string | undefined> {
+    const categories = await this.readEquipmentCategories();
+    return categories.durable.find((item) => item.id === categoryId)?.label;
+  }
+
+  async saveDurableEquipmentMetadata(
+    itemId: string,
+    metadata: DurableEquipmentMetadata,
+  ): Promise<void> {
+    await this.writeJsonFile(this.getDurableEquipmentMetadataPath(itemId), metadata);
+  }
+
+  async readEnrichedDurableItem(itemId: string): Promise<DurableEquipmentItem> {
+    return this.readDurableItem(itemId);
+  }
+
   async loadTripBundle(tripId: TripId): Promise<TripBundle> {
     const trip = await this.readTrip(tripId);
 
@@ -752,7 +786,7 @@ export class CampingRepository {
   private async createDurableItem(
     input: DurableEquipmentItemInput,
   ): Promise<DurableEquipmentItem> {
-    const data = await this.readDurableEquipment();
+    const data = await this.readDurableEquipmentBase();
     const itemId =
       input.id ?? (await this.createUniqueEquipmentId("durable", input.name));
 
@@ -773,14 +807,14 @@ export class CampingRepository {
     data.items.push(item);
     data.items.sort(sortByName);
     await this.writeYamlFile(this.getDurablePath(), data);
-    return item;
+    return this.enrichDurableItem(item);
   }
 
   private async updateDurableItem(
     itemId: string,
     input: DurableEquipmentItemInput,
   ): Promise<DurableEquipmentItem> {
-    const data = await this.readDurableEquipment();
+    const data = await this.readDurableEquipmentBase();
     const index = data.items.findIndex((item) => item.id === itemId);
 
     if (index < 0) {
@@ -796,16 +830,25 @@ export class CampingRepository {
       ...input,
       id: itemId,
     };
+    const previousItem = data.items[index];
+    const metadataSearchInputChanged =
+      buildDurableMetadataFingerprint(previousItem) !==
+      buildDurableMetadataFingerprint(item);
 
     await this.ensureEquipmentCategoryRegistered("durable", item.category);
     data.items[index] = item;
     data.items.sort(sortByName);
     await this.writeYamlFile(this.getDurablePath(), data);
-    return item;
+
+    if (metadataSearchInputChanged) {
+      await rm(this.getDurableEquipmentMetadataPath(itemId), { force: true });
+    }
+
+    return this.enrichDurableItem(item);
   }
 
   private async deleteDurableItem(itemId: string): Promise<void> {
-    const data = await this.readDurableEquipment();
+    const data = await this.readDurableEquipmentBase();
     const nextItems = data.items.filter((item) => item.id !== itemId);
 
     if (nextItems.length === data.items.length) {
@@ -820,6 +863,7 @@ export class CampingRepository {
       version: data.version,
       items: nextItems,
     });
+    await rm(this.getDurableEquipmentMetadataPath(itemId), { force: true });
   }
 
   private async createConsumableItem(
@@ -967,6 +1011,23 @@ export class CampingRepository {
   }
 
   private async readDurableEquipment(): Promise<DurableEquipmentData> {
+    const data = await this.readDurableEquipmentBase();
+    const metadataByItemId = await this.readDurableEquipmentMetadataMap();
+
+    return {
+      version: data.version,
+      items: data.items.map((item) =>
+        metadataByItemId.has(item.id)
+          ? {
+              ...item,
+              metadata: metadataByItemId.get(item.id),
+            }
+          : item,
+      ),
+    };
+  }
+
+  private async readDurableEquipmentBase(): Promise<DurableEquipmentData> {
     return this.readYamlFile(
       this.getDurablePath(),
       durableEquipmentSchema,
@@ -999,6 +1060,57 @@ export class CampingRepository {
     );
   }
 
+  private async readDurableEquipmentMetadataMap() {
+    const metadataDir = this.getDurableEquipmentMetadataDir();
+    const files = await this.listJsonFiles(metadataDir);
+    const pairs = await Promise.all(
+      files.map(async (fileName) => {
+        const itemId = fileName.replace(/\.json$/u, "");
+        const metadata = await this.readDurableEquipmentMetadata(itemId);
+        return metadata ? [itemId, metadata] : null;
+      }),
+    );
+
+    return new Map(
+      pairs.filter(
+        (
+          entry,
+        ): entry is [string, DurableEquipmentMetadata] => entry !== null,
+      ),
+    );
+  }
+
+  private async readDurableEquipmentMetadata(
+    itemId: string,
+  ): Promise<DurableEquipmentMetadata | null> {
+    const metadataPath = this.getDurableEquipmentMetadataPath(itemId);
+
+    if (!(await fileExists(metadataPath))) {
+      return null;
+    }
+
+    try {
+      const raw = await readFile(metadataPath, "utf8");
+      const parsed = durableEquipmentMetadataSchema.safeParse(JSON.parse(raw));
+      return parsed.success ? parsed.data : null;
+    } catch {
+      return null;
+    }
+  }
+
+  private async enrichDurableItem(
+    item: DurableEquipmentItem,
+  ): Promise<DurableEquipmentItem> {
+    const metadata = await this.readDurableEquipmentMetadata(item.id);
+
+    return metadata
+      ? {
+          ...item,
+          metadata,
+        }
+      : item;
+  }
+
   private async ensureEquipmentCategoryRegistered(
     section: EquipmentSection,
     categoryId: string,
@@ -1025,7 +1137,7 @@ export class CampingRepository {
   ): Promise<number> {
     switch (section) {
       case "durable":
-        return (await this.readDurableEquipment()).items.filter(
+        return (await this.readDurableEquipmentBase()).items.filter(
           (item) => item.category === categoryId,
         ).length;
       case "consumables":
@@ -1044,6 +1156,18 @@ export class CampingRepository {
       const entries = await readdir(directory, { withFileTypes: true });
       return entries
         .filter((entry) => entry.isFile() && /\.ya?ml$/u.test(entry.name))
+        .map((entry) => entry.name)
+        .sort();
+    } catch {
+      return [];
+    }
+  }
+
+  private async listJsonFiles(directory: string): Promise<string[]> {
+    try {
+      const entries = await readdir(directory, { withFileTypes: true });
+      return entries
+        .filter((entry) => entry.isFile() && /\.json$/u.test(entry.name))
         .map((entry) => entry.name)
         .sort();
     } catch {
@@ -1163,6 +1287,11 @@ export class CampingRepository {
     await writeFile(filePath, stringify(value), "utf8");
   }
 
+  private async writeJsonFile(filePath: string, value: unknown): Promise<void> {
+    await mkdir(path.dirname(filePath), { recursive: true });
+    await writeFile(filePath, JSON.stringify(value, null, 2), "utf8");
+  }
+
   private getTripsDir() {
     return path.join(this.config.dataDir, "trips");
   }
@@ -1193,6 +1322,14 @@ export class CampingRepository {
 
   private getDurablePath() {
     return path.join(this.config.dataDir, "equipment", "durable.yaml");
+  }
+
+  private getDurableEquipmentMetadataDir() {
+    return path.join(this.config.dataDir, "cache", "equipment-metadata", "durable");
+  }
+
+  private getDurableEquipmentMetadataPath(itemId: string) {
+    return path.join(this.getDurableEquipmentMetadataDir(), `${itemId}.json`);
   }
 
   private getConsumablesPath() {
@@ -1411,6 +1548,14 @@ function derivePreferredId(
 
 function sortByName<T extends { name: string }>(left: T, right: T) {
   return left.name.localeCompare(right.name, "ko");
+}
+
+function buildDurableMetadataFingerprint(
+  item: Pick<DurableEquipmentItem, "name" | "model" | "purchase_link" | "category">,
+) {
+  return [item.name, item.model ?? "", item.purchase_link ?? "", item.category].join(
+    "::",
+  );
 }
 
 function sortLinks(left: ExternalLink, right: ExternalLink) {

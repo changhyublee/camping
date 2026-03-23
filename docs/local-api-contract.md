@@ -54,6 +54,7 @@
 - `DELETE /api/equipment/categories/:section/:categoryId`
 - `POST /api/equipment/:section/items`
 - `PUT /api/equipment/:section/items/:itemId`
+- `POST /api/equipment/durable/items/:itemId/metadata/refresh`
 - `DELETE /api/equipment/:section/items/:itemId`
 
 `section` 값:
@@ -142,6 +143,24 @@
   "precheck": { "version": 1, "items": [] }
 }
 ```
+
+반복 장비 응답 추가 필드:
+
+- `purchase_link`
+- `metadata.lookup_status`
+- `metadata.searched_at`
+- `metadata.query`
+- `metadata.product`
+- `metadata.packing`
+- `metadata.planning`
+- `metadata.summary`
+- `metadata.sources`
+
+메타데이터 수집 규칙:
+
+- 구매 링크가 있으면 AI 메타데이터 수집 시 참고 자료로 우선 사용한다
+- `POST /api/equipment/durable/items/:itemId/metadata/refresh` 는 반복 장비 1건의 메타데이터를 재수집한다
+- 메타데이터를 찾지 못하면 오류 대신 `metadata.lookup_status: not_found` 로 저장해 반환한다
 
 ### `GET /api/equipment/categories`
 

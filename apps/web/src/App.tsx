@@ -6,6 +6,7 @@ import type {
   Companion,
   ConsumableEquipmentItem,
   ConsumableEquipmentItemInput,
+  DurableEquipmentMetadata,
   DurableEquipmentItem,
   DurableEquipmentItemInput,
   EquipmentCatalog,
@@ -28,6 +29,7 @@ import type {
 import {
   AGE_GROUP_LABELS,
   CONSUMABLE_STATUS_LABELS,
+  DURABLE_METADATA_STATUS_LABELS,
   DURABLE_STATUS_LABELS,
   EQUIPMENT_CATEGORY_CODE_REQUIRED_MESSAGE,
   EQUIPMENT_SECTION_LABELS,
@@ -116,6 +118,8 @@ export function App() {
     useState<SectionTrackedIds>(createEmptySectionTrackedIds());
   const [expandedEquipmentItems, setExpandedEquipmentItems] =
     useState<SectionTrackedIds>(createEmptySectionTrackedIds());
+  const [refreshingDurableMetadataIds, setRefreshingDurableMetadataIds] =
+    useState<string[]>([]);
   const [categoryDrafts, setCategoryDrafts] =
     useState<CategoryDrafts>(createEmptyCategoryDrafts());
   const [categoryLabelDrafts, setCategoryLabelDrafts] =
@@ -150,6 +154,7 @@ export function App() {
   const selectedHistoryIdRef = useRef<string | null>(null);
   const historyOutputRequestIdRef = useRef(0);
   const planningOutputRequestIdRef = useRef(0);
+  const durableSearchFingerprintRef = useRef<Record<string, string>>({});
 
   useEffect(() => {
     void loadInitialData();
@@ -374,9 +379,7 @@ export function App() {
 
     event.preventDefault();
     setEquipmentSection(nextSection);
-    window.requestAnimationFrame(() => {
-      document.getElementById(getEquipmentSectionTabId(nextSection))?.focus();
-    });
+    document.getElementById(getEquipmentSectionTabId(nextSection))?.focus();
   }
 
   const dashboardMetrics = useMemo(() => {
@@ -437,6 +440,9 @@ export function App() {
 
       setTrips(tripResponse.value.items);
       setEquipment(equipmentResponse.value);
+      durableSearchFingerprintRef.current = buildDurableFingerprintMap(
+        equipmentResponse.value,
+      );
       setEquipmentCategories(
         equipmentCategoryResponse.status === "fulfilled"
           ? equipmentCategoryResponse.value
@@ -504,6 +510,9 @@ export function App() {
 
     if (catalogResponse.status === "fulfilled") {
       setEquipment(catalogResponse.value);
+      durableSearchFingerprintRef.current = buildDurableFingerprintMap(
+        catalogResponse.value,
+      );
     } else {
       warnings.push(`장비 목록 동기화 실패: ${getErrorMessage(catalogResponse.reason)}`);
     }
@@ -517,6 +526,70 @@ export function App() {
     }
 
     return warnings;
+  }
+
+  function setDurableMetadataRefreshing(itemId: string, refreshing: boolean) {
+    setRefreshingDurableMetadataIds((current) =>
+      refreshing
+        ? current.includes(itemId)
+          ? current
+          : [...current, itemId]
+        : current.filter((candidate) => candidate !== itemId),
+    );
+  }
+
+  async function refreshDurableMetadata(
+    itemId: string,
+    options: { manual: boolean },
+  ) {
+    setDurableMetadataRefreshing(itemId, true);
+
+    try {
+      const response = await apiClient.refreshDurableEquipmentMetadata(itemId);
+      durableSearchFingerprintRef.current = {
+        ...durableSearchFingerprintRef.current,
+        [itemId]: buildDurableMetadataFingerprint(response.item),
+      };
+      setEquipment((current) =>
+        current
+          ? {
+              ...current,
+              durable: {
+                ...current.durable,
+                items: current.durable.items.map((item) =>
+                  item.id === itemId ? response.item : item,
+                ),
+              },
+            }
+          : current,
+      );
+
+      return { warning: null as string | null };
+    } catch (error) {
+      const warning = `장비 메타데이터 수집 실패: ${getErrorMessage(error)}`;
+
+      if (options.manual) {
+        throw error;
+      }
+
+      return { warning };
+    } finally {
+      setDurableMetadataRefreshing(itemId, false);
+    }
+  }
+
+  async function maybeAutoRefreshDurableMetadata(item: DurableEquipmentItem) {
+    const savedFingerprint = durableSearchFingerprintRef.current[item.id];
+
+    if (
+      savedFingerprint === buildDurableMetadataFingerprint(item) &&
+      item.metadata
+    ) {
+      return null;
+    }
+
+    const result = await refreshDurableMetadata(item.id, { manual: false });
+    return result.warning;
   }
 
   function beginCreateTrip() {
@@ -952,8 +1025,16 @@ export function App() {
 
   async function handleCreateEquipmentItem(section: EquipmentSection) {
     try {
+      const additionalWarnings: string[] = [];
+
       if (section === "durable") {
-        await apiClient.createEquipmentItem(section, durableDraft);
+        const response = await apiClient.createEquipmentItem(section, durableDraft);
+        const metadataWarning = await maybeAutoRefreshDurableMetadata(
+          response.item as DurableEquipmentItem,
+        );
+        if (metadataWarning) {
+          additionalWarnings.push(metadataWarning);
+        }
         setDurableDraft((current) => ({
           ...createEmptyDurableItem(),
           category: resolveCategorySelection(
@@ -985,7 +1066,10 @@ export function App() {
         }));
       }
 
-      const syncWarnings = await refreshEquipmentState();
+      const syncWarnings = [
+        ...(await refreshEquipmentState()),
+        ...additionalWarnings,
+      ];
       setOperationState({
         title: "장비 항목 추가 완료",
         tone: syncWarnings.length > 0 ? "warning" : "success",
@@ -1010,10 +1094,16 @@ export function App() {
     if (!equipment) return;
 
     try {
+      const additionalWarnings: string[] = [];
+
       if (section === "durable") {
         const item = equipment.durable.items.find((candidate) => candidate.id === itemId);
         if (item) {
-          await apiClient.updateEquipmentItem(section, itemId, item);
+          await apiClient.updateEquipmentItem(section, itemId, toDurableEquipmentInput(item));
+          const metadataWarning = await maybeAutoRefreshDurableMetadata(item);
+          if (metadataWarning) {
+            additionalWarnings.push(metadataWarning);
+          }
         }
       }
 
@@ -1035,7 +1125,10 @@ export function App() {
         }
       }
 
-      const syncWarnings = await refreshEquipmentState();
+      const syncWarnings = [
+        ...(await refreshEquipmentState()),
+        ...additionalWarnings,
+      ];
       setOperationState({
         title: "장비 저장 완료",
         tone: syncWarnings.length > 0 ? "warning" : "success",
@@ -1067,6 +1160,34 @@ export function App() {
     } catch (error) {
       setOperationState({
         title: "장비 삭제 실패",
+        tone: "error",
+        description: getErrorMessage(error),
+      });
+    }
+  }
+
+  async function handleRefreshDurableMetadata(itemId: string) {
+    const currentItem = equipment?.durable.items.find((item) => item.id === itemId);
+
+    try {
+      if (currentItem) {
+        await apiClient.updateEquipmentItem(
+          "durable",
+          itemId,
+          toDurableEquipmentInput(currentItem),
+        );
+      }
+
+      await refreshDurableMetadata(itemId, { manual: true });
+      const syncWarnings = await refreshEquipmentState();
+      setOperationState({
+        title: "장비 메타데이터 재수집 완료",
+        tone: syncWarnings.length > 0 ? "warning" : "success",
+        description: appendSyncWarnings(itemId, syncWarnings),
+      });
+    } catch (error) {
+      setOperationState({
+        title: "장비 메타데이터 재수집 실패",
         tone: "error",
         description: getErrorMessage(error),
       });
@@ -1661,7 +1782,9 @@ export function App() {
                       collapsedCategoryIds={collapsedEquipmentCategories.durable}
                       expandedItemIds={expandedEquipmentItems.durable}
                       items={equipment?.durable.items ?? []}
+                      refreshingMetadataIds={refreshingDurableMetadataIds}
                       onDelete={(itemId) => handleDeleteEquipmentItem("durable", itemId)}
+                      onRefreshMetadata={(itemId) => handleRefreshDurableMetadata(itemId)}
                       onSave={(itemId) => handleSaveEquipmentItem("durable", itemId)}
                       onToggleCategory={(categoryId) =>
                         handleToggleEquipmentCategory("durable", categoryId)
@@ -1792,6 +1915,18 @@ export function App() {
                           }
                         />
                       </FormField>
+                      <FormField label="모델명">
+                        <input
+                          placeholder="예: 머미형 800g"
+                          value={durableDraft.model ?? ""}
+                          onChange={(event) =>
+                            setDurableDraft((current) => ({
+                              ...current,
+                              model: event.target.value || undefined,
+                            }))
+                          }
+                        />
+                      </FormField>
                       <FormField label="카테고리">
                         <EquipmentCategorySelect
                           categories={equipmentCategories.durable}
@@ -1835,6 +1970,21 @@ export function App() {
                           ))}
                         </select>
                       </FormField>
+                      <FormField label="구매 링크" full>
+                        <input
+                          placeholder="https://"
+                          value={durableDraft.purchase_link ?? ""}
+                          onChange={(event) =>
+                            setDurableDraft((current) => ({
+                              ...current,
+                              purchase_link: event.target.value || undefined,
+                            }))
+                          }
+                        />
+                      </FormField>
+                      <p className="equipment-helper-copy form-grid__full">
+                        구매 링크가 있으면 AI 메타데이터 수집 시 우선 참고합니다.
+                      </p>
                       <button
                         className="button button--primary form-grid__full"
                         onClick={() => handleCreateEquipmentItem("durable")}
@@ -3583,12 +3733,14 @@ function EquipmentList(props: {
   collapsedCategoryIds: string[];
   expandedItemIds: string[];
   items: DurableEquipmentItem[];
+  refreshingMetadataIds: string[];
   onToggleCategory: (categoryId: string) => void;
   onToggleItem: (itemId: string) => void;
   onChange: (itemId: string, updater: (item: DurableEquipmentItem) => DurableEquipmentItem) => void;
   onCategoryChange: (itemId: string, categoryId: string) => void;
   onSave: (itemId: string) => void;
   onDelete: (itemId: string) => void;
+  onRefreshMetadata: (itemId: string) => void;
 }) {
   return (
     <GroupedEquipmentList<DurableEquipmentItem>
@@ -3610,6 +3762,18 @@ function EquipmentList(props: {
                   props.onChange(item.id, (current) => ({
                     ...current,
                     name: event.target.value,
+                  }))
+                }
+              />
+            </FormField>
+            <FormField label="모델명">
+              <input
+                placeholder="예: 패밀리 터널 4P"
+                value={item.model ?? ""}
+                onChange={(event) =>
+                  props.onChange(item.id, (current) => ({
+                    ...current,
+                    model: event.target.value || undefined,
                   }))
                 }
               />
@@ -3652,10 +3816,36 @@ function EquipmentList(props: {
                 ))}
               </select>
             </FormField>
+            <FormField label="구매 링크" full>
+              <input
+                placeholder="https://"
+                value={item.purchase_link ?? ""}
+                onChange={(event) =>
+                  props.onChange(item.id, (current) => ({
+                    ...current,
+                    purchase_link: event.target.value || undefined,
+                  }))
+                }
+              />
+            </FormField>
           </div>
+          <p className="equipment-helper-copy">
+            장비명, 모델명, 구매 링크는 AI 메타데이터 검색의 기준으로 사용됩니다.
+          </p>
+          <DurableMetadataSection metadata={item.metadata} />
           <div className="button-row">
             <button className="button" onClick={() => props.onSave(item.id)} type="button">
               저장
+            </button>
+            <button
+              className="button"
+              disabled={props.refreshingMetadataIds.includes(item.id)}
+              onClick={() => props.onRefreshMetadata(item.id)}
+              type="button"
+            >
+              {props.refreshingMetadataIds.includes(item.id)
+                ? "메타데이터 수집 중..."
+                : "메타데이터 재수집"}
             </button>
             <button className="button" onClick={() => props.onDelete(item.id)} type="button">
               삭제
@@ -3669,6 +3859,132 @@ function EquipmentList(props: {
       })}
       section={props.section}
     />
+  );
+}
+
+function DurableMetadataSection(props: {
+  metadata?: DurableEquipmentMetadata;
+}) {
+  const metadata = props.metadata;
+
+  if (!metadata) {
+    return (
+      <section className="metadata-card">
+        <div className="metadata-card__header">
+          <strong>장비 메타데이터</strong>
+          <span className="equipment-item-summary__badge">미수집</span>
+        </div>
+        <p className="metadata-card__copy">
+          아직 수집된 메타데이터가 없습니다. 저장 후 자동 수집되거나 수동으로 재수집할 수 있습니다.
+        </p>
+      </section>
+    );
+  }
+
+  const sizeText = formatPackedSize(metadata);
+  const sourceCount = metadata.sources.length;
+
+  return (
+    <section className="metadata-card">
+      <div className="metadata-card__header">
+        <strong>장비 메타데이터</strong>
+        <span className="equipment-item-summary__badge">
+          {DURABLE_METADATA_STATUS_LABELS[metadata.lookup_status]}
+        </span>
+      </div>
+      <p className="metadata-card__copy">
+        마지막 수집: {formatRelativeDate(metadata.searched_at)} / 검색 질의: {metadata.query}
+      </p>
+      {metadata.summary ? <p className="metadata-card__copy">{metadata.summary}</p> : null}
+      <div className="metadata-grid">
+        <div className="metadata-grid__item">
+          <span>공식명</span>
+          <strong>{metadata.product?.official_name ?? "-"}</strong>
+        </div>
+        <div className="metadata-grid__item">
+          <span>브랜드/모델</span>
+          <strong>
+            {[metadata.product?.brand, metadata.product?.model].filter(Boolean).join(" / ") ||
+              "-"}
+          </strong>
+        </div>
+        <div className="metadata-grid__item">
+          <span>포장 크기</span>
+          <strong>{sizeText ?? "-"}</strong>
+        </div>
+        <div className="metadata-grid__item">
+          <span>무게</span>
+          <strong>
+            {typeof metadata.packing?.weight_kg === "number"
+              ? `${metadata.packing.weight_kg} kg`
+              : "-"}
+          </strong>
+        </div>
+        <div className="metadata-grid__item">
+          <span>설치 시간</span>
+          <strong>
+            {typeof metadata.planning?.setup_time_minutes === "number"
+              ? `${metadata.planning.setup_time_minutes}분`
+              : "-"}
+          </strong>
+        </div>
+        <div className="metadata-grid__item">
+          <span>추천 인원</span>
+          <strong>
+            {typeof metadata.planning?.recommended_people === "number"
+              ? `${metadata.planning.recommended_people}명`
+              : "-"}
+          </strong>
+        </div>
+        <div className="metadata-grid__item">
+          <span>수용 인원</span>
+          <strong>
+            {typeof metadata.planning?.capacity_people === "number"
+              ? `${metadata.planning.capacity_people}명`
+              : "-"}
+          </strong>
+        </div>
+        <div className="metadata-grid__item">
+          <span>출처</span>
+          <strong>{sourceCount > 0 ? `${sourceCount}건` : "-"}</strong>
+        </div>
+      </div>
+      {metadata.planning?.season_notes?.length ? (
+        <div className="metadata-list">
+          <span>계절 메모</span>
+          <ul>
+            {metadata.planning.season_notes.map((note) => (
+              <li key={note}>{note}</li>
+            ))}
+          </ul>
+        </div>
+      ) : null}
+      {metadata.planning?.weather_notes?.length ? (
+        <div className="metadata-list">
+          <span>날씨 메모</span>
+          <ul>
+            {metadata.planning.weather_notes.map((note) => (
+              <li key={note}>{note}</li>
+            ))}
+          </ul>
+        </div>
+      ) : null}
+      {metadata.sources.length ? (
+        <div className="metadata-list">
+          <span>참고 출처</span>
+          <ul>
+            {metadata.sources.map((source) => (
+              <li key={source.url}>
+                <a href={source.url} rel="noreferrer" target="_blank">
+                  {source.title}
+                </a>
+                <span>{source.domain}</span>
+              </li>
+            ))}
+          </ul>
+        </div>
+      ) : null}
+    </section>
   );
 }
 
@@ -3992,6 +4308,55 @@ function appendSyncWarnings(base: string, warnings: string[]) {
   }
 
   return `${base} / ${warnings.join(" / ")}`;
+}
+
+function toDurableEquipmentInput(item: DurableEquipmentItem): DurableEquipmentItemInput {
+  return {
+    id: item.id,
+    kind: item.kind,
+    name: item.name,
+    model: item.model,
+    purchase_link: item.purchase_link,
+    category: item.category,
+    quantity: item.quantity,
+    capacity: item.capacity,
+    season_support: item.season_support,
+    tags: item.tags,
+    status: item.status,
+    notes: item.notes,
+  };
+}
+
+function buildDurableMetadataFingerprint(
+  item: Pick<DurableEquipmentItem, "name" | "model" | "purchase_link" | "category">,
+) {
+  return [item.name, item.model ?? "", item.purchase_link ?? "", item.category].join("::");
+}
+
+function buildDurableFingerprintMap(catalog: EquipmentCatalog) {
+  return Object.fromEntries(
+    catalog.durable.items.map((item) => [item.id, buildDurableMetadataFingerprint(item)]),
+  );
+}
+
+function formatPackedSize(metadata: DurableEquipmentMetadata) {
+  const values = [
+    metadata.packing?.width_cm,
+    metadata.packing?.depth_cm,
+    metadata.packing?.height_cm,
+  ].filter((value): value is number => typeof value === "number");
+
+  return values.length === 3 ? `${values.join(" x ")} cm` : null;
+}
+
+function formatRelativeDate(value: string) {
+  const parsed = new Date(value);
+
+  if (Number.isNaN(parsed.getTime())) {
+    return value;
+  }
+
+  return parsed.toLocaleString("ko-KR");
 }
 
 function readPersistedUiState(): PersistedUiState | null {

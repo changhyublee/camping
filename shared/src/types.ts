@@ -10,9 +10,12 @@ import type {
   companionSchema,
   companionInputSchema,
   companionsSchema,
+  durableEquipmentMetadataSchema,
+  durableEquipmentMetadataSourceSchema,
   consumableEquipmentItemSchema,
   consumableEquipmentItemInputSchema,
   consumableEquipmentSchema,
+  equipmentMetadataLookupStatusSchema,
   equipmentCategoriesSchema,
   equipmentCategoryIdSchema,
   equipmentCategoryCreateInputSchema,
@@ -37,6 +40,7 @@ import type {
   precheckItemInputSchema,
   precheckSchema,
   profileSchema,
+  refreshDurableEquipmentMetadataResponseSchema,
   saveOutputRequestSchema,
   saveOutputResponseSchema,
   travelPreferencesSchema,
@@ -64,6 +68,15 @@ export type CompanionId = z.infer<typeof companionIdSchema>;
 export type Companion = z.infer<typeof companionSchema>;
 export type CompanionInput = z.infer<typeof companionInputSchema>;
 export type CompanionsData = z.infer<typeof companionsSchema>;
+export type EquipmentMetadataLookupStatus = z.infer<
+  typeof equipmentMetadataLookupStatusSchema
+>;
+export type DurableEquipmentMetadataSource = z.infer<
+  typeof durableEquipmentMetadataSourceSchema
+>;
+export type DurableEquipmentMetadata = z.infer<
+  typeof durableEquipmentMetadataSchema
+>;
 export type DurableEquipmentItem = z.infer<typeof durableEquipmentItemSchema>;
 export type DurableEquipmentItemInput = z.infer<
   typeof durableEquipmentItemInputSchema
@@ -119,6 +132,9 @@ export type ValidateTripResponse = z.infer<typeof validateTripResponseSchema>;
 export type SaveOutputRequest = z.infer<typeof saveOutputRequestSchema>;
 export type SaveOutputResponse = z.infer<typeof saveOutputResponseSchema>;
 export type GetOutputResponse = z.infer<typeof getOutputResponseSchema>;
+export type RefreshDurableEquipmentMetadataResponse = z.infer<
+  typeof refreshDurableEquipmentMetadataResponseSchema
+>;
 export type ApiError = z.infer<typeof apiErrorSchema>;
 export type AnalysisBackend = z.infer<typeof analysisBackendSchema>;
 export type BackendHealth = z.infer<typeof backendHealthSchema>;

@@ -59,6 +59,8 @@
 ├── outputs/
 ├── links.yaml
 └── cache/
+    └── equipment-metadata/
+        └── durable/
 ```
 
 ## 5. 경로별 책임

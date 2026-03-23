@@ -11,6 +11,7 @@ const ENV_KEYS = [
   "CODEX_MODEL",
   "OPENAI_API_KEY",
   "OPENAI_MODEL",
+  "OPENAI_METADATA_MODEL",
   "API_PORT",
 ] as const;
 
@@ -47,6 +48,7 @@ describe("resolveConfig", () => {
         "AI_BACKEND=openai",
         "OPENAI_API_KEY=test-key",
         "OPENAI_MODEL=gpt-test",
+        "OPENAI_METADATA_MODEL=gpt-meta-test",
         "CODEX_BIN=codex-custom",
         "CODEX_MODEL=gpt-5.5",
         "API_PORT=9898",
@@ -61,6 +63,7 @@ describe("resolveConfig", () => {
         aiBackend: "openai",
         openaiApiKey: "test-key",
         openaiModel: "gpt-test",
+        openaiMetadataModel: "gpt-meta-test",
         codexBin: "codex-custom",
         codexModel: "gpt-5.5",
         apiPort: 9898,

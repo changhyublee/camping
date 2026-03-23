@@ -179,6 +179,14 @@ function readEquipmentItemParams(pathname: string) {
   };
 }
 
+function readDurableEquipmentMetadataRefreshId(pathname: string) {
+  const match = pathname.match(
+    /^\/api\/equipment\/durable\/items\/([^/]+)\/metadata\/refresh$/u,
+  );
+
+  return match?.[1] ?? null;
+}
+
 function readEquipmentCategoryParams(pathname: string) {
   const match = pathname.match(/^\/api\/equipment\/categories\/([^/]+)(?:\/([^/]+))?$/u);
 
@@ -274,6 +282,7 @@ function mockFetch(input: RequestInfo | URL, init?: RequestInit) {
 
   const equipmentItemParams = readEquipmentItemParams(pathname);
   const equipmentCategoryParams = readEquipmentCategoryParams(pathname);
+  const durableMetadataRefreshId = readDurableEquipmentMetadataRefreshId(pathname);
 
   if (equipmentCategoryParams && !equipmentCategoryParams.categoryId && method === "POST") {
     const body = parseBody(init) as { id?: string; label: string };
@@ -345,6 +354,64 @@ function mockFetch(input: RequestInfo | URL, init?: RequestInit) {
     ].filter((item) => item.id !== equipmentCategoryParams.categoryId);
 
     return emptyResponse();
+  }
+
+  if (durableMetadataRefreshId && method === "POST") {
+    const index = state.equipment.durable.items.findIndex(
+      (item) => item.id === durableMetadataRefreshId,
+    );
+
+    if (index < 0) {
+      return jsonResponse(
+        {
+          status: "failed",
+          error: {
+            code: "RESOURCE_NOT_FOUND",
+            message: `장비를 찾을 수 없습니다: ${durableMetadataRefreshId}`,
+          },
+        },
+        404,
+      );
+    }
+
+    const currentItem = state.equipment.durable.items[index];
+    const nextItem = {
+      ...currentItem,
+      metadata: {
+        lookup_status: "found" as const,
+        searched_at: "2026-03-23T12:00:00.000Z",
+        query: `${currentItem.name} ${currentItem.model ?? ""}`.trim(),
+        summary: "포장 크기와 설치 시간을 확인했습니다.",
+        product: {
+          brand: "테스트 브랜드",
+          official_name: currentItem.name,
+          model: currentItem.model,
+        },
+        packing: {
+          width_cm: 68,
+          depth_cm: 34,
+          height_cm: 30,
+          weight_kg: 14.5,
+        },
+        planning: {
+          setup_time_minutes: 20,
+          recommended_people: 2,
+          capacity_people: 4,
+          season_notes: ["봄, 여름, 가을 중심으로 적합"],
+          weather_notes: ["우천 시 플라이를 먼저 확인"],
+        },
+        sources: [
+          {
+            title: "테스트 상품 페이지",
+            url: currentItem.purchase_link ?? "https://example.com/product",
+            domain: "example.com",
+          },
+        ],
+      },
+    };
+
+    state.equipment.durable.items[index] = nextItem;
+    return jsonResponse({ item: nextItem });
   }
 
   if (equipmentItemParams?.itemId && method === "PUT") {
@@ -1278,6 +1345,77 @@ describe("App", () => {
     expect(
       screen.getByRole("button", { name: "쉘터/텐트 카테고리 접기" }),
     ).toBeInTheDocument();
+  });
+
+  it("shows durable metadata in the detail panel and allows manual recollection", async () => {
+    state.equipment.durable.items = [
+      {
+        id: "family-tent",
+        name: "패밀리 텐트",
+        model: "리빙쉘 4P",
+        purchase_link: "https://example.com/product",
+        category: "shelter",
+        quantity: 1,
+        status: "ok",
+      },
+    ];
+
+    render(<App />);
+
+    await userEvent.click(await screen.findByRole("button", { name: "장비 관리" }));
+    await userEvent.click(screen.getByRole("button", { name: "패밀리 텐트 상세 펼치기" }));
+
+    const modelInput = screen.getByDisplayValue("리빙쉘 4P");
+
+    expect(modelInput).toBeInTheDocument();
+    expect(screen.getByDisplayValue("https://example.com/product")).toBeInTheDocument();
+    expect(screen.getByText("장비 메타데이터")).toBeInTheDocument();
+    expect(screen.getByText("미수집")).toBeInTheDocument();
+
+    await userEvent.clear(modelInput);
+    await userEvent.type(modelInput, "리빙쉘 5P");
+
+    await userEvent.click(screen.getByRole("button", { name: "메타데이터 재수집" }));
+
+    expect(await screen.findByText("장비 메타데이터 재수집 완료")).toBeInTheDocument();
+    expect(screen.getByText("수집 완료")).toBeInTheDocument();
+    expect(screen.getByText("68 x 34 x 30 cm")).toBeInTheDocument();
+    expect(screen.getByText(/검색 질의: 패밀리 텐트 리빙쉘 5P/u)).toBeInTheDocument();
+    expect(screen.getByRole("link", { name: "테스트 상품 페이지" })).toHaveAttribute(
+      "href",
+      "https://example.com/product",
+    );
+    const updateCallIndex = fetchMock.mock.calls.findIndex(([input, init]) => {
+      const rawUrl = typeof input === "string" ? input : input.toString();
+      const pathname = new URL(rawUrl, "http://localhost").pathname;
+
+      return pathname === "/api/equipment/durable/items/family-tent" && init?.method === "PUT";
+    });
+    const refreshCallIndex = fetchMock.mock.calls.findIndex(([input, init]) => {
+      const rawUrl = typeof input === "string" ? input : input.toString();
+      const pathname = new URL(rawUrl, "http://localhost").pathname;
+
+      return (
+        pathname === "/api/equipment/durable/items/family-tent/metadata/refresh" &&
+        init?.method === "POST"
+      );
+    });
+
+    expect(updateCallIndex).toBeGreaterThanOrEqual(0);
+    expect(refreshCallIndex).toBeGreaterThan(updateCallIndex);
+    expect(
+      parseBody(fetchMock.mock.calls[updateCallIndex]?.[1])?.model,
+    ).toBe("리빙쉘 5P");
+    expect(
+      fetchMock.mock.calls.some(([input, init]) => {
+        const rawUrl = typeof input === "string" ? input : input.toString();
+        const pathname = new URL(rawUrl, "http://localhost").pathname;
+        return (
+          pathname === "/api/equipment/durable/items/family-tent/metadata/refresh" &&
+          init?.method === "POST"
+        );
+      }),
+    ).toBe(true);
   });
 
   it("keeps a consumable visible when its category changes into a collapsed category", async () => {

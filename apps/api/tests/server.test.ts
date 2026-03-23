@@ -4,8 +4,9 @@ import path from "node:path";
 import { fileURLToPath } from "node:url";
 import { afterEach, describe, expect, it } from "vitest";
 import { parse, stringify } from "yaml";
-import type { BackendHealth } from "@camping/shared";
+import type { BackendHealth, DurableEquipmentMetadata } from "@camping/shared";
 import { buildServer } from "../src/server";
+import type { EquipmentMetadataSearchClient } from "../src/services/equipment-metadata-service";
 import type { AnalysisModelClient } from "../src/services/openai-client";
 
 const __dirname = path.dirname(fileURLToPath(import.meta.url));
@@ -56,6 +57,58 @@ class CapturingAnalysisClient implements AnalysisModelClient {
       model: "gpt-5.4",
       message: "Logged in using ChatGPT",
     };
+  }
+}
+
+class MockEquipmentMetadataClient implements EquipmentMetadataSearchClient {
+  public lastItem:
+    | {
+        id: string;
+        name: string;
+        model?: string;
+        purchase_link?: string;
+      }
+    | null = null;
+
+  constructor(
+    private readonly metadata: DurableEquipmentMetadata = {
+      lookup_status: "found",
+      searched_at: "2026-03-23T12:00:00.000Z",
+      query: "4인용 터널 텐트 카키 A사 패밀리 터널 4P",
+      summary: "패밀리 터널형 4인 텐트로 포장 크기와 설치 시간이 확인됨.",
+      product: {
+        brand: "A사",
+        official_name: "A사 패밀리 터널 4P",
+        model: "패밀리 터널 4P",
+      },
+      packing: {
+        width_cm: 68,
+        depth_cm: 34,
+        height_cm: 30,
+        weight_kg: 14.5,
+      },
+      planning: {
+        setup_time_minutes: 20,
+        recommended_people: 2,
+        capacity_people: 4,
+        season_notes: ["봄, 여름, 가을 중심으로 사용 적합"],
+        weather_notes: ["우천 시 플라이와 배수 동선 확인 필요"],
+      },
+      sources: [
+        {
+          title: "A사 패밀리 터널 4P",
+          url: "https://example.com/product",
+          domain: "example.com",
+        },
+      ],
+    },
+  ) {}
+
+  async collectDurableEquipmentMetadata(input: {
+    item: { id: string; name: string; model?: string; purchase_link?: string };
+  }) {
+    this.lastItem = input.item;
+    return this.metadata;
   }
 }
 
@@ -729,6 +782,210 @@ describe("API server", () => {
     });
 
     expect(deleteCategoryResponse.statusCode).toBe(200);
+
+    await app.close();
+  });
+
+  it("refreshes durable equipment metadata and merges it into the equipment catalog", async () => {
+    const dataDir = await createSeededDataDir();
+    const metadataClient = new MockEquipmentMetadataClient();
+    const app = await buildServer({
+      dataDir,
+      projectRoot,
+      modelClient: new MockAnalysisClient("# sample"),
+      equipmentMetadataClient: metadataClient,
+    });
+
+    const updateResponse = await app.inject({
+      method: "PUT",
+      url: "/api/equipment/durable/items/tunnel-tent-4p-khaki",
+      payload: {
+        id: "tunnel-tent-4p-khaki",
+        kind: "tunnel-tent-4p",
+        name: "4인용 터널 텐트 카키",
+        model: "A사 패밀리 터널 4P",
+        purchase_link: "https://example.com/product",
+        category: "shelter",
+        quantity: 1,
+        capacity: {
+          people: 4,
+        },
+        season_support: {
+          spring: true,
+          summer: true,
+          autumn: true,
+          winter: false,
+        },
+        tags: ["family", "rain_cover"],
+        status: "ok",
+      },
+    });
+
+    expect(updateResponse.statusCode).toBe(200);
+
+    const refreshResponse = await app.inject({
+      method: "POST",
+      url: "/api/equipment/durable/items/tunnel-tent-4p-khaki/metadata/refresh",
+    });
+
+    expect(refreshResponse.statusCode).toBe(200);
+    expect(metadataClient.lastItem).toEqual(
+      expect.objectContaining({
+        id: "tunnel-tent-4p-khaki",
+        purchase_link: "https://example.com/product",
+      }),
+    );
+    expect(refreshResponse.json().item).toEqual(
+      expect.objectContaining({
+        id: "tunnel-tent-4p-khaki",
+        metadata: expect.objectContaining({
+          lookup_status: "found",
+          packing: expect.objectContaining({
+            width_cm: 68,
+          }),
+        }),
+      }),
+    );
+
+    const metadataPath = path.join(
+      dataDir,
+      "cache",
+      "equipment-metadata",
+      "durable",
+      "tunnel-tent-4p-khaki.json",
+    );
+
+    expect(
+      JSON.parse(await readFile(metadataPath, "utf8")),
+    ).toEqual(
+      expect.objectContaining({
+        lookup_status: "found",
+        query: expect.stringContaining("터널 텐트"),
+      }),
+    );
+
+    const catalogResponse = await app.inject({
+      method: "GET",
+      url: "/api/equipment",
+    });
+
+    expect(catalogResponse.statusCode).toBe(200);
+    expect(catalogResponse.json().durable.items).toEqual(
+      expect.arrayContaining([
+        expect.objectContaining({
+          id: "tunnel-tent-4p-khaki",
+          purchase_link: "https://example.com/product",
+          metadata: expect.objectContaining({
+            lookup_status: "found",
+          }),
+        }),
+      ]),
+    );
+
+    await app.inject({
+      method: "DELETE",
+      url: "/api/equipment/durable/items/tunnel-tent-4p-khaki",
+    });
+
+    await expect(readFile(metadataPath, "utf8")).rejects.toMatchObject({
+      code: "ENOENT",
+    });
+
+    await app.close();
+  });
+
+  it("stores an explicit not_found metadata state when nothing usable is found", async () => {
+    const dataDir = await createSeededDataDir();
+    const metadataClient = new MockEquipmentMetadataClient({
+      lookup_status: "not_found",
+      searched_at: "2026-03-23T12:00:00.000Z",
+      query: "unknown gear",
+      summary: "검색 결과에서 장비 재원 정보를 확인하지 못함.",
+      sources: [],
+    });
+    const app = await buildServer({
+      dataDir,
+      projectRoot,
+      modelClient: new MockAnalysisClient("# sample"),
+      equipmentMetadataClient: metadataClient,
+    });
+
+    const response = await app.inject({
+      method: "POST",
+      url: "/api/equipment/durable/items/folding-table/metadata/refresh",
+    });
+
+    expect(response.statusCode).toBe(200);
+    expect(response.json().item.metadata).toEqual(
+      expect.objectContaining({
+        lookup_status: "not_found",
+        summary: expect.stringContaining("확인하지 못함"),
+      }),
+    );
+
+    await app.close();
+  });
+
+  it("clears stale durable metadata when the metadata search inputs change", async () => {
+    const dataDir = await createSeededDataDir();
+    const metadataClient = new MockEquipmentMetadataClient();
+    const app = await buildServer({
+      dataDir,
+      projectRoot,
+      modelClient: new MockAnalysisClient("# sample"),
+      equipmentMetadataClient: metadataClient,
+    });
+
+    const refreshResponse = await app.inject({
+      method: "POST",
+      url: "/api/equipment/durable/items/tunnel-tent-4p-khaki/metadata/refresh",
+    });
+
+    expect(refreshResponse.statusCode).toBe(200);
+    expect(refreshResponse.json().item.metadata).toEqual(
+      expect.objectContaining({
+        lookup_status: "found",
+      }),
+    );
+
+    const updateResponse = await app.inject({
+      method: "PUT",
+      url: "/api/equipment/durable/items/tunnel-tent-4p-khaki",
+      payload: {
+        id: "tunnel-tent-4p-khaki",
+        kind: "tunnel-tent-4p",
+        name: "4인용 터널 텐트 샌드",
+        model: "A사 패밀리 터널 4P 샌드",
+        purchase_link: "https://example.com/product-sand",
+        category: "shelter",
+        quantity: 1,
+        capacity: {
+          people: 4,
+        },
+        season_support: {
+          spring: true,
+          summer: true,
+          autumn: true,
+          winter: false,
+        },
+        tags: ["family", "rain_cover"],
+        status: "ok",
+      },
+    });
+
+    expect(updateResponse.statusCode).toBe(200);
+    expect(updateResponse.json().item.metadata).toBeUndefined();
+
+    const catalogResponse = await app.inject({
+      method: "GET",
+      url: "/api/equipment",
+    });
+
+    expect(catalogResponse.statusCode).toBe(200);
+    const updatedItem = catalogResponse
+      .json()
+      .durable.items.find((item: { id: string }) => item.id === "tunnel-tent-4p-khaki");
+    expect(updatedItem?.metadata).toBeUndefined();
 
     await app.close();
   });

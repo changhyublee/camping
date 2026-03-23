@@ -1,0 +1,70 @@
+{
+  "$schema": "https://json-schema.org/draft/2020-12/schema",
+  "title": "CodexEquipmentMetadataOutput",
+  "type": "object",
+  "properties": {
+    "lookup_status": {
+      "type": "string",
+      "enum": ["found", "not_found", "failed"]
+    },
+    "searched_at": {
+      "type": "string"
+    },
+    "query": {
+      "type": "string"
+    },
+    "summary": {
+      "type": "string"
+    },
+    "product": {
+      "type": "object",
+      "properties": {
+        "brand": { "type": "string" },
+        "official_name": { "type": "string" },
+        "model": { "type": "string" }
+      },
+      "additionalProperties": false
+    },
+    "packing": {
+      "type": "object",
+      "properties": {
+        "width_cm": { "type": "number" },
+        "depth_cm": { "type": "number" },
+        "height_cm": { "type": "number" },
+        "weight_kg": { "type": "number" }
+      },
+      "additionalProperties": false
+    },
+    "planning": {
+      "type": "object",
+      "properties": {
+        "setup_time_minutes": { "type": "integer" },
+        "recommended_people": { "type": "integer" },
+        "capacity_people": { "type": "integer" },
+        "season_notes": {
+          "type": "array",
+          "items": { "type": "string" }
+        },
+        "weather_notes": {
+          "type": "array",
+          "items": { "type": "string" }
+        }
+      },
+      "additionalProperties": false
+    },
+    "sources": {
+      "type": "array",
+      "items": {
+        "type": "object",
+        "properties": {
+          "title": { "type": "string" },
+          "url": { "type": "string" }
+        },
+        "required": ["title", "url"],
+        "additionalProperties": false
+      }
+    }
+  },
+  "required": ["lookup_status", "searched_at", "query", "sources"],
+  "additionalProperties": false
+}

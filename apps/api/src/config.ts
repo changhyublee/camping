@@ -9,6 +9,7 @@ export type AppConfig = {
   aiBackend: "codex-cli" | "openai";
   openaiApiKey?: string;
   openaiModel: string;
+  openaiMetadataModel: string;
   codexBin: string;
   codexModel: string;
   codexOutputSchemaPath: string;
@@ -32,6 +33,10 @@ export function resolveConfig(overrides: ConfigOverrides = {}): AppConfig {
       (process.env.AI_BACKEND === "openai" ? "openai" : "codex-cli"),
     openaiApiKey: overrides.openaiApiKey ?? process.env.OPENAI_API_KEY,
     openaiModel: overrides.openaiModel ?? process.env.OPENAI_MODEL ?? "gpt-5.2",
+    openaiMetadataModel:
+      overrides.openaiMetadataModel ??
+      process.env.OPENAI_METADATA_MODEL ??
+      "gpt-5-mini",
     codexBin: overrides.codexBin ?? process.env.CODEX_BIN ?? "codex",
     codexModel: overrides.codexModel ?? process.env.CODEX_MODEL ?? "gpt-5.4",
     codexOutputSchemaPath:

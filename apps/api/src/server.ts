@@ -1,11 +1,18 @@
 import Fastify from "fastify";
 import cors from "@fastify/cors";
+import path from "node:path";
 import type { FastifyInstance } from "fastify";
 import type { TripId } from "@camping/shared";
 import { resolveConfig, type ConfigOverrides } from "./config";
 import { CampingRepository } from "./file-store/camping-repository";
 import { registerApiRoutes } from "./routes/api-routes";
 import { AnalysisService } from "./services/analysis-service";
+import {
+  CodexCliEquipmentMetadataClient,
+  MissingEquipmentMetadataClient,
+  OpenAIEquipmentMetadataClient,
+  type EquipmentMetadataSearchClient,
+} from "./services/equipment-metadata-service";
 import {
   CodexCliClient,
   MissingOpenAIClient,
@@ -17,6 +24,7 @@ import { isAppError, toApiError } from "./services/app-error";
 export type BuildServerOptions = ConfigOverrides & {
   logger?: boolean;
   modelClient?: AnalysisModelClient;
+  equipmentMetadataClient?: EquipmentMetadataSearchClient;
 };
 
 export async function buildServer(
@@ -25,7 +33,13 @@ export async function buildServer(
   const config = resolveConfig(options);
   const repository = new CampingRepository(config);
   const modelClient = options.modelClient ?? createModelClient(config);
-  const analysisService = new AnalysisService(repository, modelClient);
+  const equipmentMetadataClient =
+    options.equipmentMetadataClient ?? createEquipmentMetadataClient(config);
+  const analysisService = new AnalysisService(
+    repository,
+    modelClient,
+    equipmentMetadataClient,
+  );
 
   const app = Fastify({
     logger: options.logger ?? false,
@@ -97,6 +111,32 @@ function createModelClient(
   return config.openaiApiKey
     ? new OpenAIResponsesClient(config.openaiApiKey, config.openaiModel)
     : new MissingOpenAIClient();
+}
+
+function createEquipmentMetadataClient(
+  config: ReturnType<typeof resolveConfig>,
+): EquipmentMetadataSearchClient {
+  if (config.aiBackend === "codex-cli") {
+    return new CodexCliEquipmentMetadataClient({
+      binary: config.codexBin,
+      model: config.codexModel,
+      projectRoot: config.projectRoot,
+      outputSchemaPath: path.join(
+        config.projectRoot,
+        "schemas",
+        "codex-equipment-metadata-output.schema.json",
+      ),
+    });
+  }
+
+  return config.openaiApiKey
+    ? new OpenAIEquipmentMetadataClient(
+        config.openaiApiKey,
+        config.openaiMetadataModel,
+      )
+    : new MissingEquipmentMetadataClient(
+        "OPENAI_API_KEY 가 없어 장비 메타데이터를 수집할 수 없습니다.",
+      );
 }
 
 function requestLogger(app: FastifyInstance, error: unknown) {

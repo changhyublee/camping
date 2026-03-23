@@ -48,7 +48,7 @@
   - companions CRUD
   - trip CRUD + 검증 + 분석 + 결과 저장
   - 저장된 결과 Markdown 조회
-  - equipment CRUD
+  - equipment CRUD + 반복 장비 메타데이터 수집/재수집
   - equipment category CRUD
   - history 조회/수정/삭제 + trip 아카이브
   - links CRUD
@@ -134,5 +134,6 @@ pnpm build
 - 개인 준비물은 사용자가 직접 입력하는 목록이 아니라 분석 결과입니다.
 - 외부 링크는 사용자가 직접 관리하는 링크 데이터입니다.
 - 장비 카테고리는 `equipment/categories.yaml` 에서 관리하며 장비 화면에서는 셀렉트로 선택합니다.
+- 반복 장비는 선택적으로 `purchase_link` 를 저장할 수 있고, 로컬 API의 AI 메타데이터 수집 시 참고 자료로 사용합니다.
 - 브라우저에서 OpenAI API를 직접 호출하지 않습니다.
 - `pnpm seed` 는 기존 `.camping-data/` 를 지우고 `docs/examples/` 기준으로 다시 생성합니다.

@@ -4,6 +4,7 @@ items:
     kind: tunnel-tent-4p
     name: 4인용 터널 텐트 카키
     model: A사 패밀리 터널 4P
+    purchase_link: https://example.com/a-family-tunnel-4p
     category: shelter
     quantity: 1
     capacity:
@@ -21,6 +22,7 @@ items:
     kind: tunnel-tent-4p
     name: 4인용 터널 텐트 샌드
     model: B사 리빙쉘 4P
+    purchase_link: https://example.com/b-livingshell-4p
     category: shelter
     quantity: 1
     capacity:
