@@ -388,6 +388,29 @@ code {
   gap: 10px;
 }
 
+.usage-guide-list {
+  margin-bottom: 18px;
+}
+
+.section-label {
+  margin-top: 4px;
+}
+
+.section-label strong {
+  display: block;
+  font-size: 0.98rem;
+}
+
+.section-label p {
+  margin: 6px 0 12px;
+  color: var(--muted);
+  line-height: 1.5;
+}
+
+.section-label--analysis {
+  margin-top: 18px;
+}
+
 .companion-panel {
   display: grid;
   gap: 14px;

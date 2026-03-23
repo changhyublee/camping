@@ -468,6 +468,18 @@ describe("App", () => {
     await userEvent.click(await screen.findByRole("button", { name: "캠핑 계획" }));
 
     expect(await screen.findByText("4월 가평 가족 캠핑")).toBeInTheDocument();
+    expect(await screen.findByText("AI 보조는 저장 후 질문할 때 사용")).toBeInTheDocument();
+    expect(await screen.findByText("분석 결과는 최종 정리할 때 확인")).toBeInTheDocument();
+    expect(
+      screen.getByPlaceholderText(
+        "예: 빠진 준비물이 있는지 먼저 점검해줘. 비 예보와 아이 동행 기준으로 알려줘",
+      ),
+    ).toBeInTheDocument();
+    expect(
+      screen.getByText(
+        "계획 저장 후 분석 실행을 누르면 추천 장비, 개인 준비물, 출발 전 체크리스트, 식단, 이동/주변 추천 결과가 여기에 표시됩니다.",
+      ),
+    ).toBeInTheDocument();
 
     await userEvent.click(
       await screen.findByRole("button", { name: "분석 실행" }),

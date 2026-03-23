@@ -2653,12 +2653,32 @@ export function App() {
                 <div className="panel__header">
                   <h2>AI 보조와 분석 결과</h2>
                 </div>
+                <div className="stack-list usage-guide-list">
+                  <div className="action-card">
+                    <strong>AI 보조는 저장 후 질문할 때 사용</strong>
+                    <p>
+                      분석 전에 빠진 정보, 장비 보강 포인트, 먼저 수정할 항목을 확인할 때
+                      사용합니다.
+                    </p>
+                  </div>
+                  <div className="action-card">
+                    <strong>분석 결과는 최종 정리할 때 확인</strong>
+                    <p>
+                      계획과 장비 점검이 끝난 뒤 분석을 실행하면 준비물, 체크리스트,
+                      식단, 이동 추천이 Markdown으로 정리됩니다.
+                    </p>
+                  </div>
+                </div>
 
                 {selectedTripId ? (
                   <>
+                    <div className="section-label">
+                      <strong>AI 보조</strong>
+                      <p>저장된 계획을 기준으로 먼저 물어보고, 필요한 제안만 직접 반영합니다.</p>
+                    </div>
                     <div className="assistant-box">
                       <textarea
-                        placeholder="예: 이번에는 비 예보가 있고 바베큐 위주로 준비하고 싶어"
+                        placeholder="예: 빠진 준비물이 있는지 먼저 점검해줘. 비 예보와 아이 동행 기준으로 알려줘"
                         value={assistantInput}
                         onChange={(event) => setAssistantInput(event.target.value)}
                       />
@@ -2701,6 +2721,14 @@ export function App() {
                       </>
                     ) : null}
 
+                    <div className="section-label section-label--analysis">
+                      <strong>분석 결과</strong>
+                      <p>
+                        입력과 점검이 끝났다면 분석 실행을 눌러 이번 캠핑의 최종 정리본을
+                        확인합니다.
+                      </p>
+                    </div>
+
                     {analysisResponse?.error?.code === "OUTPUT_SAVE_FAILED" ? (
                       <StatusBanner
                         tone="warning"
@@ -2715,7 +2743,8 @@ export function App() {
                       </article>
                     ) : (
                       <div className="empty-state">
-                        계획을 저장한 뒤 분석을 실행하면 결과가 여기에 표시됩니다.
+                        계획 저장 후 분석 실행을 누르면 추천 장비, 개인 준비물, 출발 전
+                        체크리스트, 식단, 이동/주변 추천 결과가 여기에 표시됩니다.
                       </div>
                     )}
                   </>
