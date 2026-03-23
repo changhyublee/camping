@@ -164,6 +164,8 @@ export function App() {
     useState<SectionTrackedIds>(createEmptySectionTrackedIds());
   const [expandedEquipmentItems, setExpandedEquipmentItems] =
     useState<SectionTrackedIds>(createEmptySectionTrackedIds());
+  const [collapsedCategoryEditors, setCollapsedCategoryEditors] =
+    useState<SectionTrackedIds>(createEmptySectionTrackedIds());
   const [refreshingDurableMetadataIds, setRefreshingDurableMetadataIds] =
     useState<string[]>([]);
   const [categoryDrafts, setCategoryDrafts] =
@@ -202,6 +204,12 @@ export function App() {
   const historyOutputRequestIdRef = useRef(0);
   const planningOutputRequestIdRef = useRef(0);
   const durableSearchFingerprintRef = useRef<Record<string, string>>({});
+  const previousEquipmentGroupIdsRef =
+    useRef<SectionTrackedIds>(createEmptySectionTrackedIds());
+  const previousCategoryEditorIdsRef =
+    useRef<SectionTrackedIds>(createEmptySectionTrackedIds());
+  const previousEquipmentItemIdsRef =
+    useRef<SectionTrackedIds>(createEmptySectionTrackedIds());
 
   useEffect(() => {
     void loadInitialData();
@@ -408,6 +416,47 @@ export function App() {
       ),
     }));
   }, [equipmentCategories]);
+
+  useEffect(() => {
+    const nextEquipmentGroupIds = buildVisibleEquipmentCategoryIdMap(
+      equipment,
+      equipmentCategories,
+    );
+    const previousEquipmentGroupIds = previousEquipmentGroupIdsRef.current;
+
+    setCollapsedEquipmentCategories((current) =>
+      syncCollapsedSectionTrackedIds(
+        current,
+        nextEquipmentGroupIds,
+        previousEquipmentGroupIds,
+      ),
+    );
+    previousEquipmentGroupIdsRef.current = nextEquipmentGroupIds;
+  }, [equipment, equipmentCategories]);
+
+  useEffect(() => {
+    const nextCategoryEditorIds = buildEquipmentCategoryIdMap(equipmentCategories);
+    const previousCategoryEditorIds = previousCategoryEditorIdsRef.current;
+
+    setCollapsedCategoryEditors((current) =>
+      syncCollapsedSectionTrackedIds(
+        current,
+        nextCategoryEditorIds,
+        previousCategoryEditorIds,
+      ),
+    );
+    previousCategoryEditorIdsRef.current = nextCategoryEditorIds;
+  }, [equipmentCategories]);
+
+  useEffect(() => {
+    const nextItemIds = buildEquipmentItemIdMap(equipment);
+    const previousItemIds = previousEquipmentItemIdsRef.current;
+
+    setExpandedEquipmentItems((current) =>
+      syncExpandedSectionTrackedIds(current, nextItemIds, previousItemIds),
+    );
+    previousEquipmentItemIdsRef.current = nextItemIds;
+  }, [equipment]);
 
   function handleEquipmentTabKeyDown(
     event: ReactKeyboardEvent<HTMLButtonElement>,
@@ -1360,58 +1409,69 @@ export function App() {
     );
   }
 
+  function handleToggleCategoryEditor(
+    section: EquipmentSection,
+    categoryId: string,
+  ) {
+    setCollapsedCategoryEditors((current) =>
+      toggleSectionTrackedId(current, section, categoryId),
+    );
+  }
+
   function handleToggleEquipmentItem(section: EquipmentSection, itemId: string) {
     setExpandedEquipmentItems((current) =>
       toggleSectionTrackedId(current, section, itemId),
     );
   }
 
-  function handleChangeEquipmentItemCategory(
+function handleChangeEquipmentItemCategory(
     section: EquipmentSection,
     itemId: string,
     categoryId: string,
   ) {
-    setEquipment((current) => {
-      if (!current) {
-        return current;
-      }
+    if (!equipment) {
+      return;
+    }
 
-      if (section === "durable") {
-        return {
-          ...current,
-          durable: {
-            ...current.durable,
-            items: current.durable.items.map((item) =>
-              item.id === itemId ? { ...item, category: categoryId } : item,
-            ),
-          },
-        };
-      }
+    const nextEquipment =
+      section === "durable"
+        ? {
+            ...equipment,
+            durable: {
+              ...equipment.durable,
+              items: equipment.durable.items.map((item) =>
+                item.id === itemId ? { ...item, category: categoryId } : item,
+              ),
+            },
+          }
+        : section === "consumables"
+          ? {
+              ...equipment,
+              consumables: {
+                ...equipment.consumables,
+                items: equipment.consumables.items.map((item) =>
+                  item.id === itemId ? { ...item, category: categoryId } : item,
+                ),
+              },
+            }
+          : {
+              ...equipment,
+              precheck: {
+                ...equipment.precheck,
+                items: equipment.precheck.items.map((item) =>
+                  item.id === itemId ? { ...item, category: categoryId } : item,
+                ),
+              },
+            };
 
-      if (section === "consumables") {
-        return {
-          ...current,
-          consumables: {
-            ...current.consumables,
-            items: current.consumables.items.map((item) =>
-              item.id === itemId ? { ...item, category: categoryId } : item,
-            ),
-          },
-        };
-      }
-
-      return {
-        ...current,
-        precheck: {
-          ...current.precheck,
-          items: current.precheck.items.map((item) =>
-            item.id === itemId ? { ...item, category: categoryId } : item,
-          ),
-        },
-      };
-    });
+    setEquipment(nextEquipment);
     setCollapsedEquipmentCategories((current) =>
       removeSectionTrackedId(current, section, categoryId),
+    );
+    previousEquipmentGroupIdsRef.current = ensureSectionIdTracked(
+      buildVisibleEquipmentCategoryIdMap(nextEquipment, equipmentCategories),
+      section,
+      categoryId,
     );
   }
 
@@ -3091,66 +3151,94 @@ export function App() {
                     <div className="empty-state">이 섹션에 등록된 카테고리가 없습니다.</div>
                   ) : (
                     <div className="stack-list">
-                      {currentEquipmentCategories.map((category) => (
-                        <article className="edit-card" key={category.id}>
-                          <div className="panel__header">
-                            <h3>
-                              {categoryLabelDrafts[equipmentSection][category.id] ??
-                                category.label}
-                            </h3>
-                            <code>{category.id}</code>
-                          </div>
-                          <div className="form-grid">
-                            <FormField label="표시 이름">
-                              <input
-                                placeholder="카테고리 표시 이름"
-                                value={
-                                  categoryLabelDrafts[equipmentSection][category.id] ??
-                                  category.label
-                                }
-                                onChange={(event) =>
-                                  setCategoryLabelDrafts((current) => ({
-                                    ...current,
-                                    [equipmentSection]: {
-                                      ...current[equipmentSection],
-                                      [category.id]: event.target.value,
-                                    },
-                                  }))
-                                }
-                              />
-                            </FormField>
-                            <FormField label="카테고리 코드">
-                              <input value={category.id} readOnly />
-                            </FormField>
-                          </div>
-                          <div className="button-row">
+                      {currentEquipmentCategories.map((category) => {
+                        const editorPanelId = `category-editor-panel-${equipmentSection}-${category.id}`;
+                        const isCollapsed =
+                          collapsedCategoryEditors[equipmentSection].includes(category.id);
+                        const draftLabel =
+                          categoryLabelDrafts[equipmentSection][category.id] ?? category.label;
+                        const accessibleLabel = draftLabel.trim() || category.label;
+
+                        return (
+                          <article
+                            className="edit-card category-editor-card"
+                            key={category.id}
+                          >
                             <button
-                              className="button"
+                              aria-controls={editorPanelId}
+                              aria-expanded={!isCollapsed}
+                              aria-label={`${accessibleLabel} 카테고리 설정 ${isCollapsed ? "펼치기" : "접기"}`}
+                              className="category-editor-toggle"
                               onClick={() =>
-                                void handleSaveEquipmentCategory(
-                                  equipmentSection,
-                                  category.id,
-                                )
+                                handleToggleCategoryEditor(equipmentSection, category.id)
                               }
                               type="button"
                             >
-                              저장
+                              <span className="category-editor-toggle__content">
+                                <span className="category-editor-toggle__eyebrow">
+                                  카테고리 설정
+                                </span>
+                                <strong>{draftLabel}</strong>
+                                <code>{category.id}</code>
+                              </span>
+                              <span className="category-editor-toggle__state">
+                                {isCollapsed ? "펼치기" : "접기"}
+                              </span>
                             </button>
-                            <button
-                              className="button"
-                              onClick={() =>
-                                void handleDeleteEquipmentCategory(
-                                  equipmentSection,
-                                  category.id,
-                                )
-                              }
-                              type="button"
-                            >
-                              삭제
-                            </button>
-                          </div>
-                        </article>
-                      ))}
+
+                            {!isCollapsed ? (
+                              <div className="category-editor-body" id={editorPanelId}>
+                                <div className="form-grid">
+                                  <FormField label="표시 이름">
+                                    <input
+                                      placeholder="카테고리 표시 이름"
+                                      value={draftLabel}
+                                      onChange={(event) =>
+                                        setCategoryLabelDrafts((current) => ({
+                                          ...current,
+                                          [equipmentSection]: {
+                                            ...current[equipmentSection],
+                                            [category.id]: event.target.value,
+                                          },
+                                        }))
+                                      }
+                                    />
+                                  </FormField>
+                                  <FormField label="카테고리 코드">
+                                    <input value={category.id} readOnly />
+                                  </FormField>
+                                </div>
+                                <div className="button-row">
+                                  <button
+                                    className="button"
+                                    onClick={() =>
+                                      void handleSaveEquipmentCategory(
+                                        equipmentSection,
+                                        category.id,
+                                      )
+                                    }
+                                    type="button"
+                                  >
+                                    저장
+                                  </button>
+                                  <button
+                                    className="button"
+                                    onClick={() =>
+                                      void handleDeleteEquipmentCategory(
+                                        equipmentSection,
+                                        category.id,
+                                      )
+                                    }
+                                    type="button"
+                                  >
+                                    삭제
+                                  </button>
+                                </div>
+                              </div>
+                            ) : null}
+                          </article>
+                        );
+                      })}
                     </div>
                   )}
                 </section>
@@ -4711,8 +4799,11 @@ function GroupedEquipmentList<T extends { id: string; name: string; category: st
               type="button"
             >
               <span className="equipment-category-toggle__content">
+                <span className="equipment-category-toggle__eyebrow">카테고리</span>
                 <strong>{group.categoryLabel}</strong>
-                <span>{group.items.length}개 항목</span>
+                <span className="equipment-category-toggle__meta">
+                  {group.items.length}개 항목
+                </span>
               </span>
               <span className="equipment-category-toggle__state">
                 {isCollapsed ? "펼치기" : "접기"}
@@ -4720,7 +4811,12 @@ function GroupedEquipmentList<T extends { id: string; name: string; category: st
             </button>
 
             {!isCollapsed ? (
-              <div className="equipment-item-list" id={categoryPanelId}>
+              <div className="equipment-category-body" id={categoryPanelId}>
+                <div className="equipment-category-body__header">
+                  <span>카테고리 안 항목</span>
+                  <strong>{group.items.length}개</strong>
+                </div>
+                <div className="equipment-item-list">
                 {group.items.map((item) => {
                   const summary = props.renderSummaryMeta(item);
                   const itemPanelId = `equipment-item-panel-${props.section}-${item.id}`;
@@ -4736,7 +4832,10 @@ function GroupedEquipmentList<T extends { id: string; name: string; category: st
                         onClick={() => props.onToggleItem(item.id)}
                         type="button"
                       >
-                        <strong>{item.name}</strong>
+                        <span className="equipment-item-summary__content">
+                          <span className="equipment-item-summary__eyebrow">항목</span>
+                          <strong>{item.name}</strong>
+                        </span>
                         <span className="equipment-item-summary__meta">
                           {summary.quantity ? (
                             <span className="equipment-item-summary__badge">
@@ -4757,6 +4856,7 @@ function GroupedEquipmentList<T extends { id: string; name: string; category: st
                     </article>
                   );
                 })}
+                </div>
               </div>
             ) : null}
           </section>
@@ -5312,6 +5412,50 @@ function buildEquipmentCategoryGroups<T extends { category: string }>(
     }));
 }
 
+function buildEquipmentCategoryIdMap(
+  categories: EquipmentCategoriesData,
+): SectionTrackedIds {
+  return {
+    durable: categories.durable.map((item) => item.id),
+    consumables: categories.consumables.map((item) => item.id),
+    precheck: categories.precheck.map((item) => item.id),
+  };
+}
+
+function buildVisibleEquipmentCategoryIdMap(
+  catalog: EquipmentCatalog | null,
+  categories: EquipmentCategoriesData,
+): SectionTrackedIds {
+  if (!catalog) {
+    return createEmptySectionTrackedIds();
+  }
+
+  return {
+    durable: buildEquipmentCategoryGroups(catalog.durable.items, categories.durable).map(
+      (group) => group.categoryId,
+    ),
+    consumables: buildEquipmentCategoryGroups(
+      catalog.consumables.items,
+      categories.consumables,
+    ).map((group) => group.categoryId),
+    precheck: buildEquipmentCategoryGroups(catalog.precheck.items, categories.precheck).map(
+      (group) => group.categoryId,
+    ),
+  };
+}
+
+function buildEquipmentItemIdMap(catalog: EquipmentCatalog | null): SectionTrackedIds {
+  if (!catalog) {
+    return createEmptySectionTrackedIds();
+  }
+
+  return {
+    durable: catalog.durable.items.map((item) => item.id),
+    consumables: catalog.consumables.items.map((item) => item.id),
+    precheck: catalog.precheck.items.map((item) => item.id),
+  };
+}
+
 function mergeEquipmentCategories(
   categories: EquipmentCategory[],
   extraValues: string[] = [],
@@ -5506,6 +5650,60 @@ function toggleSectionTrackedId(
   };
 }
 
+function syncCollapsedSectionTrackedIds(
+  state: SectionTrackedIds,
+  nextIds: SectionTrackedIds,
+  previousIds: SectionTrackedIds,
+) {
+  let hasChanges = false;
+  const nextState = createEmptySectionTrackedIds();
+
+  for (const section of EQUIPMENT_SECTIONS) {
+    const previousIdSet = new Set(previousIds[section]);
+    const collapsedIdSet = new Set(state[section]);
+    const sectionState = nextIds[section].filter(
+      (itemId) => !previousIdSet.has(itemId) || collapsedIdSet.has(itemId),
+    );
+
+    nextState[section] = sectionState;
+    if (
+      sectionState.length !== state[section].length ||
+      sectionState.some((itemId, index) => itemId !== state[section][index])
+    ) {
+      hasChanges = true;
+    }
+  }
+
+  return hasChanges ? nextState : state;
+}
+
+function syncExpandedSectionTrackedIds(
+  state: SectionTrackedIds,
+  nextIds: SectionTrackedIds,
+  previousIds: SectionTrackedIds,
+) {
+  let hasChanges = false;
+  const nextState = createEmptySectionTrackedIds();
+
+  for (const section of EQUIPMENT_SECTIONS) {
+    const previousIdSet = new Set(previousIds[section]);
+    const expandedIdSet = new Set(state[section]);
+    const sectionState = nextIds[section].filter(
+      (itemId) => previousIdSet.has(itemId) && expandedIdSet.has(itemId),
+    );
+
+    nextState[section] = sectionState;
+    if (
+      sectionState.length !== state[section].length ||
+      sectionState.some((itemId, index) => itemId !== state[section][index])
+    ) {
+      hasChanges = true;
+    }
+  }
+
+  return hasChanges ? nextState : state;
+}
+
 function removeSectionTrackedId(
   state: SectionTrackedIds,
   section: EquipmentSection,
@@ -5518,6 +5716,21 @@ function removeSectionTrackedId(
   return {
     ...state,
     [section]: state[section].filter((item) => item !== value),
+  };
+}
+
+function ensureSectionIdTracked(
+  state: SectionTrackedIds,
+  section: EquipmentSection,
+  value: string,
+) {
+  if (state[section].includes(value)) {
+    return state;
+  }
+
+  return {
+    ...state,
+    [section]: [...state[section], value],
   };
 }
 

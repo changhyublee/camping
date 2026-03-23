@@ -1289,6 +1289,7 @@ describe("App", () => {
 
     await userEvent.click(await screen.findByRole("button", { name: "장비 관리" }));
     await userEvent.click(screen.getByRole("tab", { name: "소모품" }));
+    await userEvent.click(screen.getByRole("button", { name: "연료 카테고리 펼치기" }));
     await userEvent.click(
       await screen.findByRole("button", { name: "부탄가스 상세 펼치기" }),
     );
@@ -1370,13 +1371,15 @@ describe("App", () => {
     await userEvent.click(await screen.findByRole("button", { name: "장비 관리" }));
 
     expect(
-      screen.getByRole("button", { name: "침구 카테고리 접기" }),
+      screen.getByRole("button", { name: "침구 카테고리 펼치기" }),
     ).toBeInTheDocument();
     expect(
-      screen.getByRole("button", { name: "쉘터/텐트 카테고리 접기" }),
+      screen.getByRole("button", { name: "쉘터/텐트 카테고리 펼치기" }),
     ).toBeInTheDocument();
+    expect(screen.queryByRole("button", { name: "침낭 상세 펼치기" })).not.toBeInTheDocument();
     expect(screen.queryByDisplayValue("침낭")).not.toBeInTheDocument();
 
+    await userEvent.click(screen.getByRole("button", { name: "침구 카테고리 펼치기" }));
     await userEvent.click(screen.getByRole("button", { name: "침낭 상세 펼치기" }));
     expect(await screen.findByDisplayValue("침낭")).toBeInTheDocument();
 
@@ -1430,7 +1433,7 @@ describe("App", () => {
     render(<App />);
 
     await userEvent.click(await screen.findByRole("button", { name: "장비 관리" }));
-    await userEvent.click(screen.getByRole("button", { name: "쉘터/텐트 카테고리 접기" }));
+    await userEvent.click(screen.getByRole("button", { name: "침구 카테고리 펼치기" }));
     await userEvent.click(screen.getByRole("button", { name: "침낭 상세 펼치기" }));
 
     expect(await screen.findByDisplayValue("침낭")).toBeInTheDocument();
@@ -1452,6 +1455,39 @@ describe("App", () => {
     ).toBeInTheDocument();
   });
 
+  it("keeps an item visible when its category changes into a newly visible category", async () => {
+    state.equipment.durable.items = [
+      {
+        id: "sleeping-bag-3season-adult",
+        name: "침낭",
+        category: "sleeping",
+        quantity: 1,
+        status: "ok",
+      },
+    ];
+
+    render(<App />);
+
+    await userEvent.click(await screen.findByRole("button", { name: "장비 관리" }));
+    await userEvent.click(screen.getByRole("button", { name: "침구 카테고리 펼치기" }));
+    await userEvent.click(screen.getByRole("button", { name: "침낭 상세 펼치기" }));
+
+    const sleepingBagCard = screen
+      .getByRole("button", { name: "침낭 상세 접기" })
+      .closest("article");
+    expect(sleepingBagCard).not.toBeNull();
+
+    await userEvent.selectOptions(
+      within(sleepingBagCard as HTMLElement).getByRole("combobox", { name: "카테고리" }),
+      "shelter",
+    );
+
+    expect(await screen.findByDisplayValue("침낭")).toBeInTheDocument();
+    expect(
+      screen.getByRole("button", { name: "쉘터/텐트 카테고리 접기" }),
+    ).toBeInTheDocument();
+  });
+
   it("shows durable metadata in the detail panel and allows manual recollection", async () => {
     state.equipment.durable.items = [
       {
@@ -1468,6 +1504,7 @@ describe("App", () => {
     render(<App />);
 
     await userEvent.click(await screen.findByRole("button", { name: "장비 관리" }));
+    await userEvent.click(screen.getByRole("button", { name: "쉘터/텐트 카테고리 펼치기" }));
     await userEvent.click(screen.getByRole("button", { name: "패밀리 텐트 상세 펼치기" }));
 
     const modelInput = screen.getByDisplayValue("리빙쉘 4P");
@@ -1547,7 +1584,7 @@ describe("App", () => {
 
     await userEvent.click(await screen.findByRole("button", { name: "장비 관리" }));
     await userEvent.click(screen.getByRole("tab", { name: "소모품" }));
-    await userEvent.click(screen.getByRole("button", { name: "점화 카테고리 접기" }));
+    await userEvent.click(screen.getByRole("button", { name: "연료 카테고리 펼치기" }));
     await userEvent.click(screen.getByRole("button", { name: "부탄가스 상세 펼치기" }));
 
     expect(await screen.findByDisplayValue("부탄가스")).toBeInTheDocument();
@@ -1589,7 +1626,7 @@ describe("App", () => {
 
     await userEvent.click(await screen.findByRole("button", { name: "장비 관리" }));
     await userEvent.click(screen.getByRole("tab", { name: "출발 전 점검" }));
-    await userEvent.click(screen.getByRole("button", { name: "차량 카테고리 접기" }));
+    await userEvent.click(screen.getByRole("button", { name: "배터리 카테고리 펼치기" }));
     await userEvent.click(screen.getByRole("button", { name: "랜턴 배터리 상세 펼치기" }));
 
     expect(await screen.findByDisplayValue("랜턴 배터리")).toBeInTheDocument();
@@ -1621,7 +1658,9 @@ describe("App", () => {
     await userEvent.click(screen.getByRole("button", { name: "카테고리 추가" }));
 
     expect(await screen.findByText("장비 카테고리 추가 완료")).toBeInTheDocument();
-    expect(screen.getAllByDisplayValue("수납").length).toBeGreaterThan(0);
+    expect(
+      screen.getByRole("button", { name: "수납 카테고리 설정 펼치기" }),
+    ).toBeInTheDocument();
   });
 
   it("requires a category code when creating a category", async () => {
@@ -1641,6 +1680,12 @@ describe("App", () => {
     render(<App />);
 
     await userEvent.click(await screen.findByRole("button", { name: "카테고리 설정" }));
+    const initialShelterExpandButton = screen.queryByRole("button", {
+      name: "쉘터/텐트 카테고리 설정 펼치기",
+    });
+    if (initialShelterExpandButton) {
+      await userEvent.click(initialShelterExpandButton);
+    }
 
     const shelterCard = screen.getByText("shelter").closest("article");
     expect(shelterCard).not.toBeNull();
@@ -1657,6 +1702,12 @@ describe("App", () => {
     expect(screen.queryAllByRole("option", { name: "임시 라벨" })).toHaveLength(0);
 
     await userEvent.click(screen.getByRole("button", { name: "카테고리 설정" }));
+    const updatedShelterExpandButton = screen.queryByRole("button", {
+      name: "임시 라벨 카테고리 설정 펼치기",
+    });
+    if (updatedShelterExpandButton) {
+      await userEvent.click(updatedShelterExpandButton);
+    }
 
     const updatedShelterCard = screen.getByText("shelter").closest("article");
     expect(updatedShelterCard).not.toBeNull();
@@ -1690,6 +1741,7 @@ describe("App", () => {
     render(<App />);
 
     await userEvent.click(await screen.findByRole("button", { name: "장비 관리" }));
+    await userEvent.click(screen.getByRole("button", { name: "sleep 카테고리 펼치기" }));
     await userEvent.click(
       await screen.findByRole("button", { name: "침낭 상세 펼치기" }),
     );
@@ -1747,6 +1799,7 @@ describe("App", () => {
     render(<App />);
 
     await userEvent.click(await screen.findByRole("button", { name: "장비 관리" }));
+    await userEvent.click(screen.getByRole("button", { name: "침구 카테고리 펼치기" }));
     await userEvent.click(
       await screen.findByRole("button", { name: "침낭 상세 펼치기" }),
     );
@@ -1779,6 +1832,7 @@ describe("App", () => {
     render(<App />);
 
     await userEvent.click(await screen.findByRole("button", { name: "장비 관리" }));
+    await userEvent.click(screen.getByRole("button", { name: "sleep 카테고리 펼치기" }));
     await userEvent.click(
       await screen.findByRole("button", { name: "침낭 상세 펼치기" }),
     );
