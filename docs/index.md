@@ -10,14 +10,16 @@
 2. [`requirements.md`](requirements.md)
 3. [`menu-structure.md`](menu-structure.md)
 4. [`technical-architecture.md`](technical-architecture.md)
-5. [`local-api-contract.md`](local-api-contract.md)
-6. [`ui-flow.md`](ui-flow.md)
-7. [`data-model.md`](data-model.md)
-8. [`trip-analysis-workflow.md`](trip-analysis-workflow.md)
-9. [`mvp-scope.md`](mvp-scope.md)
-10. [`directory-structure.md`](directory-structure.md)
-11. [`example-files.md`](example-files.md)
-12. [`project-setup-checklist.md`](project-setup-checklist.md)
+5. [`local-ui-transition-plan.md`](local-ui-transition-plan.md)
+6. [`local-api-contract.md`](local-api-contract.md)
+7. [`ui-flow.md`](ui-flow.md)
+8. [`data-model.md`](data-model.md)
+9. [`trip-analysis-workflow.md`](trip-analysis-workflow.md)
+10. [`mvp-scope.md`](mvp-scope.md)
+11. [`directory-structure.md`](directory-structure.md)
+12. [`example-files.md`](example-files.md)
+13. [`project-setup-checklist.md`](project-setup-checklist.md)
+14. [`local-skills.md`](local-skills.md)
 
 ## 문서별 역할
 
@@ -34,6 +36,8 @@
 
 - [`technical-architecture.md`](technical-architecture.md)
   - 로컬 웹 UI, 로컬 API, 로컬 파일 저장 구조
+- [`local-ui-transition-plan.md`](local-ui-transition-plan.md)
+  - 기존 trip 중심 UI에서 현재 메뉴형 UI로 확장한 기준
 - [`local-api-contract.md`](local-api-contract.md)
   - CRUD 및 분석 API 계약
 - [`ui-flow.md`](ui-flow.md)
@@ -53,7 +57,12 @@
 - [`mvp-scope.md`](mvp-scope.md)
   - 현재 구현 범위와 제외 항목
 - [`project-setup-checklist.md`](project-setup-checklist.md)
-  - 세팅 순서와 점검 항목
+  - 현재 저장소 포함 항목과 새 환경 실행 점검 항목
+
+### 로컬 스킬
+
+- [`local-skills.md`](local-skills.md)
+  - 저장소 내부 `skills/` 구조와 사용 규칙
 
 ### 예시
 
@@ -82,3 +91,4 @@
 - `prompts/` 분석 프롬프트
 - `schemas/` Codex CLI 출력 스키마
 - `scripts/seed-local-data.ts` 시드 스크립트
+- `skills/` 저장소 로컬 Codex skill 패키지

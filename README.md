@@ -61,13 +61,19 @@
   - 외부 링크 카테고리 그룹 관리
 - `shared/`
   - 공통 타입
-  - CRUD 요청/응답 스키마
-  - 데이터 모델 스키마
+  - Zod 기반 요청/응답 스키마
+  - 공통 상수와 유틸
 - `prompts/`
   - `system.md`
   - `trip-analysis.md`
+- `schemas/`
+  - `codex-trip-analysis-output.schema.json`
 - `scripts/seed-local-data.ts`
   - `docs/examples/` 를 `.camping-data/` 로 복사
+  - `cache/weather`, `cache/places` 디렉토리 생성
+- `skills/`
+  - 저장소 로컬 Codex skill 패키지
+  - 현재 `repeat-review-fix` 스킬 포함
 
 ## 빠른 시작
 
@@ -86,6 +92,12 @@ codex login
 pnpm seed
 pnpm dev:api
 pnpm dev:web
+```
+
+한 번에 두 앱을 같이 띄우려면 아래 명령도 사용할 수 있습니다.
+
+```bash
+pnpm dev
 ```
 
 기본 주소:
@@ -107,12 +119,14 @@ pnpm build
 - 메뉴 구조: [`docs/menu-structure.md`](docs/menu-structure.md)
 - 요구사항: [`docs/requirements.md`](docs/requirements.md)
 - 기술 아키텍처: [`docs/technical-architecture.md`](docs/technical-architecture.md)
+- 로컬 UI 전환 계획: [`docs/local-ui-transition-plan.md`](docs/local-ui-transition-plan.md)
 - 로컬 API 계약: [`docs/local-api-contract.md`](docs/local-api-contract.md)
 - UI 흐름: [`docs/ui-flow.md`](docs/ui-flow.md)
 - 데이터 모델: [`docs/data-model.md`](docs/data-model.md)
 - 분석 워크플로우: [`docs/trip-analysis-workflow.md`](docs/trip-analysis-workflow.md)
 - 현재 범위: [`docs/mvp-scope.md`](docs/mvp-scope.md)
 - 예시 파일: [`docs/example-files.md`](docs/example-files.md)
+- 로컬 스킬: [`docs/local-skills.md`](docs/local-skills.md)
 
 ## 참고 메모
 
@@ -121,3 +135,4 @@ pnpm build
 - 외부 링크는 사용자가 직접 관리하는 링크 데이터입니다.
 - 장비 카테고리는 `equipment/categories.yaml` 에서 관리하며 장비 화면에서는 셀렉트로 선택합니다.
 - 브라우저에서 OpenAI API를 직접 호출하지 않습니다.
+- `pnpm seed` 는 기존 `.camping-data/` 를 지우고 `docs/examples/` 기준으로 다시 생성합니다.

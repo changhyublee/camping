@@ -27,6 +27,12 @@
   - 메뉴형 로컬 UI
 - `apps/api/`
   - 로컬 API 서버
+- `prompts/`
+  - 분석 실행에 사용하는 프롬프트 파일
+- `schemas/`
+  - Codex CLI 분석 출력 JSON 스키마
+- `scripts/`
+  - 시드와 보조 자동화 스크립트
 - `shared/`
   - 공통 타입과 스키마
 - `skills/`
