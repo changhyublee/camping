@@ -1552,7 +1552,7 @@ function createMockState(): MockState {
         trip_id: "2026-04-18-gapyeong",
         status: "completed",
         warnings: [],
-        markdown: "# 4월 가평 가족 캠핑 캠핑 분석 결과\n\n## 1. 요약\n\n- 테스트 결과",
+        markdown: "# 4월 가평 가족 캠핑 분석 결과\n\n## 1. 요약\n\n- 테스트 결과",
         output_path: ".camping-data/outputs/2026-04-18-gapyeong-plan.md",
       },
     },

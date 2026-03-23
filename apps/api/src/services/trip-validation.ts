@@ -117,7 +117,7 @@ function collectTripWarnings(
     caches.places.length === 0
   ) {
     warnings.push(
-      "이동/주변 추천에 활용할 장소 정보가 적어 일반 제안 위주로 응답할 수 있습니다.",
+      "이동/주변 추천에 활용할 장소 정보가 적어 추정 기반 후보 장소 위주로 응답할 수 있습니다.",
     );
   }
 
