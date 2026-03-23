@@ -78,6 +78,7 @@ type PersistedUiState = {
 
 type CategoryDrafts = Record<EquipmentSection, EquipmentCategoryCreateInput>;
 type CategoryLabelDrafts = Record<EquipmentSection, Record<string, string>>;
+type SectionTrackedIds = Record<EquipmentSection, string[]>;
 
 export function App() {
   const [persistedUiState] = useState(() => readPersistedUiState());
@@ -106,6 +107,10 @@ export function App() {
     useState<EquipmentCategoriesData>(cloneEquipmentCategories());
   const [equipmentSection, setEquipmentSection] =
     useState<EquipmentSection>(persistedUiState?.equipmentSection ?? "durable");
+  const [collapsedEquipmentCategories, setCollapsedEquipmentCategories] =
+    useState<SectionTrackedIds>(createEmptySectionTrackedIds());
+  const [expandedEquipmentItems, setExpandedEquipmentItems] =
+    useState<SectionTrackedIds>(createEmptySectionTrackedIds());
   const [categoryDrafts, setCategoryDrafts] =
     useState<CategoryDrafts>(createEmptyCategoryDrafts());
   const [categoryLabelDrafts, setCategoryLabelDrafts] =
@@ -1033,6 +1038,21 @@ export function App() {
     }
   }
 
+  function handleToggleEquipmentCategory(
+    section: EquipmentSection,
+    categoryId: string,
+  ) {
+    setCollapsedEquipmentCategories((current) =>
+      toggleSectionTrackedId(current, section, categoryId),
+    );
+  }
+
+  function handleToggleEquipmentItem(section: EquipmentSection, itemId: string) {
+    setExpandedEquipmentItems((current) =>
+      toggleSectionTrackedId(current, section, itemId),
+    );
+  }
+
   async function handleCreateEquipmentCategory(section: EquipmentSection) {
     const draft = categoryDrafts[section];
     const label = draft.label.trim();
@@ -1535,10 +1555,19 @@ export function App() {
 
                 {equipmentSection === "durable" ? (
                   <EquipmentList
+                    section="durable"
                     categories={equipmentCategories.durable}
+                    collapsedCategoryIds={collapsedEquipmentCategories.durable}
+                    expandedItemIds={expandedEquipmentItems.durable}
                     items={equipment?.durable.items ?? []}
                     onDelete={(itemId) => handleDeleteEquipmentItem("durable", itemId)}
                     onSave={(itemId) => handleSaveEquipmentItem("durable", itemId)}
+                    onToggleCategory={(categoryId) =>
+                      handleToggleEquipmentCategory("durable", categoryId)
+                    }
+                    onToggleItem={(itemId) =>
+                      handleToggleEquipmentItem("durable", itemId)
+                    }
                     onChange={(itemId, updater) =>
                       setEquipment((current) =>
                         current
@@ -1559,13 +1588,22 @@ export function App() {
 
                 {equipmentSection === "consumables" ? (
                   <ConsumableList
+                    section="consumables"
                     categories={equipmentCategories.consumables}
+                    collapsedCategoryIds={collapsedEquipmentCategories.consumables}
+                    expandedItemIds={expandedEquipmentItems.consumables}
                     items={equipment?.consumables.items ?? []}
                     onDelete={(itemId) =>
                       handleDeleteEquipmentItem("consumables", itemId)
                     }
                     onSave={(itemId) =>
                       handleSaveEquipmentItem("consumables", itemId)
+                    }
+                    onToggleCategory={(categoryId) =>
+                      handleToggleEquipmentCategory("consumables", categoryId)
+                    }
+                    onToggleItem={(itemId) =>
+                      handleToggleEquipmentItem("consumables", itemId)
                     }
                     onChange={(itemId, updater) =>
                       setEquipment((current) =>
@@ -1587,10 +1625,19 @@ export function App() {
 
                 {equipmentSection === "precheck" ? (
                   <PrecheckList
+                    section="precheck"
                     categories={equipmentCategories.precheck}
+                    collapsedCategoryIds={collapsedEquipmentCategories.precheck}
+                    expandedItemIds={expandedEquipmentItems.precheck}
                     items={equipment?.precheck.items ?? []}
                     onDelete={(itemId) => handleDeleteEquipmentItem("precheck", itemId)}
                     onSave={(itemId) => handleSaveEquipmentItem("precheck", itemId)}
+                    onToggleCategory={(categoryId) =>
+                      handleToggleEquipmentCategory("precheck", categoryId)
+                    }
+                    onToggleItem={(itemId) =>
+                      handleToggleEquipmentItem("precheck", itemId)
+                    }
                     onChange={(itemId, updater) =>
                       setEquipment((current) =>
                         current
@@ -3232,6 +3279,14 @@ function createEmptyCategoryLabelDrafts(): CategoryLabelDrafts {
   };
 }
 
+function createEmptySectionTrackedIds(): SectionTrackedIds {
+  return {
+    durable: [],
+    consumables: [],
+    precheck: [],
+  };
+}
+
 function createCommaSeparatedInputs(draft?: TripDraft | null): CommaSeparatedInputs {
   return {
     companionIds: joinCommaList(draft?.party?.companion_ids),
@@ -3280,17 +3335,126 @@ function EquipmentCategorySelect(props: {
   );
 }
 
-function EquipmentList(props: {
+type GroupedEquipmentListProps<T extends { id: string; name: string; category: string }> = {
+  section: EquipmentSection;
   categories: EquipmentCategory[];
+  collapsedCategoryIds: string[];
+  expandedItemIds: string[];
+  items: T[];
+  emptyMessage: string;
+  onToggleCategory: (categoryId: string) => void;
+  onToggleItem: (itemId: string) => void;
+  renderSummaryMeta: (item: T) => {
+    quantity?: string;
+    status: string;
+  };
+  renderEditor: (item: T) => ReactNode;
+};
+
+function GroupedEquipmentList<T extends { id: string; name: string; category: string }>(
+  props: GroupedEquipmentListProps<T>,
+) {
+  const groups = buildEquipmentCategoryGroups(props.items, props.categories);
+
+  if (groups.length === 0) {
+    return <div className="empty-state empty-state--compact">{props.emptyMessage}</div>;
+  }
+
+  return (
+    <div className="equipment-category-list">
+      {groups.map((group) => {
+        const categoryPanelId = `equipment-category-panel-${props.section}-${group.categoryId}`;
+        const isCollapsed = props.collapsedCategoryIds.includes(group.categoryId);
+
+        return (
+          <section className="equipment-category-card" key={group.categoryId}>
+            <button
+              aria-controls={categoryPanelId}
+              aria-expanded={!isCollapsed}
+              aria-label={`${group.categoryLabel} 카테고리 ${isCollapsed ? "펼치기" : "접기"}`}
+              className="equipment-category-toggle"
+              onClick={() => props.onToggleCategory(group.categoryId)}
+              type="button"
+            >
+              <span className="equipment-category-toggle__content">
+                <strong>{group.categoryLabel}</strong>
+                <span>{group.items.length}개 항목</span>
+              </span>
+              <span className="equipment-category-toggle__state">
+                {isCollapsed ? "펼치기" : "접기"}
+              </span>
+            </button>
+
+            {!isCollapsed ? (
+              <div className="equipment-item-list" id={categoryPanelId}>
+                {group.items.map((item) => {
+                  const summary = props.renderSummaryMeta(item);
+                  const itemPanelId = `equipment-item-panel-${props.section}-${item.id}`;
+                  const isExpanded = props.expandedItemIds.includes(item.id);
+
+                  return (
+                    <article className="equipment-item-card" key={item.id}>
+                      <button
+                        aria-controls={itemPanelId}
+                        aria-expanded={isExpanded}
+                        aria-label={`${item.name} 상세 ${isExpanded ? "접기" : "펼치기"}`}
+                        className="equipment-item-summary"
+                        onClick={() => props.onToggleItem(item.id)}
+                        type="button"
+                      >
+                        <strong>{item.name}</strong>
+                        <span className="equipment-item-summary__meta">
+                          {summary.quantity ? (
+                            <span className="equipment-item-summary__badge">
+                              {summary.quantity}
+                            </span>
+                          ) : null}
+                          <span className="equipment-item-summary__badge">
+                            {summary.status}
+                          </span>
+                        </span>
+                      </button>
+
+                      {isExpanded ? (
+                        <div className="equipment-item-detail" id={itemPanelId}>
+                          {props.renderEditor(item)}
+                        </div>
+                      ) : null}
+                    </article>
+                  );
+                })}
+              </div>
+            ) : null}
+          </section>
+        );
+      })}
+    </div>
+  );
+}
+
+function EquipmentList(props: {
+  section: EquipmentSection;
+  categories: EquipmentCategory[];
+  collapsedCategoryIds: string[];
+  expandedItemIds: string[];
   items: DurableEquipmentItem[];
+  onToggleCategory: (categoryId: string) => void;
+  onToggleItem: (itemId: string) => void;
   onChange: (itemId: string, updater: (item: DurableEquipmentItem) => DurableEquipmentItem) => void;
   onSave: (itemId: string) => void;
   onDelete: (itemId: string) => void;
 }) {
   return (
-    <div className="stack-list">
-      {props.items.map((item) => (
-        <div className="edit-card" key={item.id}>
+    <GroupedEquipmentList<DurableEquipmentItem>
+      categories={props.categories}
+      collapsedCategoryIds={props.collapsedCategoryIds}
+      emptyMessage="등록된 반복 장비가 없습니다."
+      expandedItemIds={props.expandedItemIds}
+      items={props.items}
+      onToggleCategory={props.onToggleCategory}
+      onToggleItem={props.onToggleItem}
+      renderEditor={(item) => (
+        <>
           <div className="form-grid">
             <FormField label="장비명">
               <input
@@ -3356,15 +3520,25 @@ function EquipmentList(props: {
               삭제
             </button>
           </div>
-        </div>
-      ))}
-    </div>
+        </>
+      )}
+      renderSummaryMeta={(item: DurableEquipmentItem) => ({
+        quantity: `수량 ${item.quantity}`,
+        status: getStatusLabel(DURABLE_STATUS_LABELS, item.status),
+      })}
+      section={props.section}
+    />
   );
 }
 
 function ConsumableList(props: {
+  section: EquipmentSection;
   categories: EquipmentCategory[];
+  collapsedCategoryIds: string[];
+  expandedItemIds: string[];
   items: ConsumableEquipmentItem[];
+  onToggleCategory: (categoryId: string) => void;
+  onToggleItem: (itemId: string) => void;
   onChange: (
     itemId: string,
     updater: (item: ConsumableEquipmentItem) => ConsumableEquipmentItem,
@@ -3373,9 +3547,16 @@ function ConsumableList(props: {
   onDelete: (itemId: string) => void;
 }) {
   return (
-    <div className="stack-list">
-      {props.items.map((item) => (
-        <div className="edit-card" key={item.id}>
+    <GroupedEquipmentList<ConsumableEquipmentItem>
+      categories={props.categories}
+      collapsedCategoryIds={props.collapsedCategoryIds}
+      emptyMessage="등록된 소모품이 없습니다."
+      expandedItemIds={props.expandedItemIds}
+      items={props.items}
+      onToggleCategory={props.onToggleCategory}
+      onToggleItem={props.onToggleItem}
+      renderEditor={(item) => (
+        <>
           <div className="form-grid">
             <FormField label="소모품명">
               <input
@@ -3467,23 +3648,40 @@ function ConsumableList(props: {
               삭제
             </button>
           </div>
-        </div>
-      ))}
-    </div>
+        </>
+      )}
+      renderSummaryMeta={(item: ConsumableEquipmentItem) => ({
+        quantity: `수량 ${item.quantity_on_hand}${item.unit ? ` ${item.unit}` : ""}`,
+        status: getStatusLabel(CONSUMABLE_STATUS_LABELS, item.status),
+      })}
+      section={props.section}
+    />
   );
 }
 
 function PrecheckList(props: {
+  section: EquipmentSection;
   categories: EquipmentCategory[];
+  collapsedCategoryIds: string[];
+  expandedItemIds: string[];
   items: PrecheckItem[];
+  onToggleCategory: (categoryId: string) => void;
+  onToggleItem: (itemId: string) => void;
   onChange: (itemId: string, updater: (item: PrecheckItem) => PrecheckItem) => void;
   onSave: (itemId: string) => void;
   onDelete: (itemId: string) => void;
 }) {
   return (
-    <div className="stack-list">
-      {props.items.map((item) => (
-        <div className="edit-card" key={item.id}>
+    <GroupedEquipmentList<PrecheckItem>
+      categories={props.categories}
+      collapsedCategoryIds={props.collapsedCategoryIds}
+      emptyMessage="등록된 점검 항목이 없습니다."
+      expandedItemIds={props.expandedItemIds}
+      items={props.items}
+      onToggleCategory={props.onToggleCategory}
+      onToggleItem={props.onToggleItem}
+      renderEditor={(item) => (
+        <>
           <div className="form-grid">
             <FormField label="점검 항목명">
               <input
@@ -3535,9 +3733,13 @@ function PrecheckList(props: {
               삭제
             </button>
           </div>
-        </div>
-      ))}
-    </div>
+        </>
+      )}
+      renderSummaryMeta={(item: PrecheckItem) => ({
+        status: getStatusLabel(PRECHECK_STATUS_LABELS, item.status),
+      })}
+      section={props.section}
+    />
   );
 }
 
@@ -3595,12 +3797,47 @@ function buildEquipmentCategoryOptions(
   categories: EquipmentCategory[],
   currentValue?: string,
 ) {
+  return mergeEquipmentCategories(
+    categories,
+    currentValue ? [currentValue] : [],
+  );
+}
+
+function buildEquipmentCategoryGroups<T extends { category: string }>(
+  items: T[],
+  categories: EquipmentCategory[],
+) {
+  const itemsByCategory = new Map<string, T[]>();
+
+  for (const item of items) {
+    const groupedItems = itemsByCategory.get(item.category) ?? [];
+    groupedItems.push(item);
+    itemsByCategory.set(item.category, groupedItems);
+  }
+
+  return mergeEquipmentCategories(categories, items.map((item) => item.category))
+    .filter((category) => itemsByCategory.has(category.id))
+    .map((category) => ({
+      categoryId: category.id,
+      categoryLabel: category.label,
+      items: itemsByCategory.get(category.id) ?? [],
+    }));
+}
+
+function mergeEquipmentCategories(
+  categories: EquipmentCategory[],
+  extraValues: string[] = [],
+) {
   const merged = [...categories];
 
-  if (currentValue && !merged.some((item) => item.id === currentValue)) {
+  for (const value of extraValues) {
+    if (!value || merged.some((item) => item.id === value)) {
+      continue;
+    }
+
     merged.push({
-      id: currentValue,
-      label: currentValue,
+      id: value,
+      label: value,
       sort_order: Math.max(0, ...merged.map((item) => item.sort_order)) + 1,
     });
   }
@@ -3676,6 +3913,21 @@ function isEquipmentSection(value: string): value is EquipmentSection {
   return value === "durable" || value === "consumables" || value === "precheck";
 }
 
+function toggleSectionTrackedId(
+  state: SectionTrackedIds,
+  section: EquipmentSection,
+  value: string,
+) {
+  const nextValues = state[section].includes(value)
+    ? state[section].filter((item) => item !== value)
+    : [...state[section], value];
+
+  return {
+    ...state,
+    [section]: nextValues,
+  };
+}
+
 function omitDraftLabel(drafts: Record<string, string>, categoryId: string) {
   const nextDrafts = { ...drafts };
   delete nextDrafts[categoryId];
@@ -3724,6 +3976,13 @@ function sortLinks(left: ExternalLink, right: ExternalLink) {
   }
 
   return left.name.localeCompare(right.name, "ko");
+}
+
+function getStatusLabel(
+  labels: Record<string, string>,
+  status: string,
+) {
+  return labels[status] ?? status;
 }
 
 function getErrorMessage(error: unknown): string {
