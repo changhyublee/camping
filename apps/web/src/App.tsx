@@ -1088,6 +1088,55 @@ export function App() {
     );
   }
 
+  function handleChangeEquipmentItemCategory(
+    section: EquipmentSection,
+    itemId: string,
+    categoryId: string,
+  ) {
+    setEquipment((current) => {
+      if (!current) {
+        return current;
+      }
+
+      if (section === "durable") {
+        return {
+          ...current,
+          durable: {
+            ...current.durable,
+            items: current.durable.items.map((item) =>
+              item.id === itemId ? { ...item, category: categoryId } : item,
+            ),
+          },
+        };
+      }
+
+      if (section === "consumables") {
+        return {
+          ...current,
+          consumables: {
+            ...current.consumables,
+            items: current.consumables.items.map((item) =>
+              item.id === itemId ? { ...item, category: categoryId } : item,
+            ),
+          },
+        };
+      }
+
+      return {
+        ...current,
+        precheck: {
+          ...current.precheck,
+          items: current.precheck.items.map((item) =>
+            item.id === itemId ? { ...item, category: categoryId } : item,
+          ),
+        },
+      };
+    });
+    setCollapsedEquipmentCategories((current) =>
+      removeSectionTrackedId(current, section, categoryId),
+    );
+  }
+
   async function handleCreateEquipmentCategory(section: EquipmentSection) {
     const draft = categoryDrafts[section];
     const label = draft.label.trim();
@@ -1617,12 +1666,15 @@ export function App() {
                       onToggleCategory={(categoryId) =>
                         handleToggleEquipmentCategory("durable", categoryId)
                       }
-                      onToggleItem={(itemId) =>
-                        handleToggleEquipmentItem("durable", itemId)
-                      }
-                      onChange={(itemId, updater) =>
-                        setEquipment((current) =>
-                          current
+                    onToggleItem={(itemId) =>
+                      handleToggleEquipmentItem("durable", itemId)
+                    }
+                    onCategoryChange={(itemId, categoryId) =>
+                      handleChangeEquipmentItemCategory("durable", itemId, categoryId)
+                    }
+                    onChange={(itemId, updater) =>
+                      setEquipment((current) =>
+                        current
                             ? {
                                 ...current,
                                 durable: {
@@ -1654,12 +1706,19 @@ export function App() {
                       onToggleCategory={(categoryId) =>
                         handleToggleEquipmentCategory("consumables", categoryId)
                       }
-                      onToggleItem={(itemId) =>
-                        handleToggleEquipmentItem("consumables", itemId)
-                      }
-                      onChange={(itemId, updater) =>
-                        setEquipment((current) =>
-                          current
+                    onToggleItem={(itemId) =>
+                      handleToggleEquipmentItem("consumables", itemId)
+                    }
+                    onCategoryChange={(itemId, categoryId) =>
+                      handleChangeEquipmentItemCategory(
+                        "consumables",
+                        itemId,
+                        categoryId,
+                      )
+                    }
+                    onChange={(itemId, updater) =>
+                      setEquipment((current) =>
+                        current
                             ? {
                                 ...current,
                                 consumables: {
@@ -1689,12 +1748,15 @@ export function App() {
                       onToggleCategory={(categoryId) =>
                         handleToggleEquipmentCategory("precheck", categoryId)
                       }
-                      onToggleItem={(itemId) =>
-                        handleToggleEquipmentItem("precheck", itemId)
-                      }
-                      onChange={(itemId, updater) =>
-                        setEquipment((current) =>
-                          current
+                    onToggleItem={(itemId) =>
+                      handleToggleEquipmentItem("precheck", itemId)
+                    }
+                    onCategoryChange={(itemId, categoryId) =>
+                      handleChangeEquipmentItemCategory("precheck", itemId, categoryId)
+                    }
+                    onChange={(itemId, updater) =>
+                      setEquipment((current) =>
+                        current
                             ? {
                                 ...current,
                                 precheck: {
@@ -3524,6 +3586,7 @@ function EquipmentList(props: {
   onToggleCategory: (categoryId: string) => void;
   onToggleItem: (itemId: string) => void;
   onChange: (itemId: string, updater: (item: DurableEquipmentItem) => DurableEquipmentItem) => void;
+  onCategoryChange: (itemId: string, categoryId: string) => void;
   onSave: (itemId: string) => void;
   onDelete: (itemId: string) => void;
 }) {
@@ -3555,12 +3618,7 @@ function EquipmentList(props: {
               <EquipmentCategorySelect
                 categories={props.categories}
                 value={item.category}
-                onChange={(value) =>
-                  props.onChange(item.id, (current) => ({
-                    ...current,
-                    category: value,
-                  }))
-                }
+                onChange={(value) => props.onCategoryChange(item.id, value)}
               />
             </FormField>
             <FormField label="수량">
@@ -3626,6 +3684,7 @@ function ConsumableList(props: {
     itemId: string,
     updater: (item: ConsumableEquipmentItem) => ConsumableEquipmentItem,
   ) => void;
+  onCategoryChange: (itemId: string, categoryId: string) => void;
   onSave: (itemId: string) => void;
   onDelete: (itemId: string) => void;
 }) {
@@ -3657,12 +3716,7 @@ function ConsumableList(props: {
               <EquipmentCategorySelect
                 categories={props.categories}
                 value={item.category}
-                onChange={(value) =>
-                  props.onChange(item.id, (current) => ({
-                    ...current,
-                    category: value,
-                  }))
-                }
+                onChange={(value) => props.onCategoryChange(item.id, value)}
               />
             </FormField>
             <FormField label="현재 수량">
@@ -3751,6 +3805,7 @@ function PrecheckList(props: {
   onToggleCategory: (categoryId: string) => void;
   onToggleItem: (itemId: string) => void;
   onChange: (itemId: string, updater: (item: PrecheckItem) => PrecheckItem) => void;
+  onCategoryChange: (itemId: string, categoryId: string) => void;
   onSave: (itemId: string) => void;
   onDelete: (itemId: string) => void;
 }) {
@@ -3782,12 +3837,7 @@ function PrecheckList(props: {
               <EquipmentCategorySelect
                 categories={props.categories}
                 value={item.category}
-                onChange={(value) =>
-                  props.onChange(item.id, (current) => ({
-                    ...current,
-                    category: value,
-                  }))
-                }
+                onChange={(value) => props.onCategoryChange(item.id, value)}
               />
             </FormField>
             <FormField label="상태" full>
@@ -4008,6 +4058,21 @@ function toggleSectionTrackedId(
   return {
     ...state,
     [section]: nextValues,
+  };
+}
+
+function removeSectionTrackedId(
+  state: SectionTrackedIds,
+  section: EquipmentSection,
+  value: string,
+) {
+  if (!state[section].includes(value)) {
+    return state;
+  }
+
+  return {
+    ...state,
+    [section]: state[section].filter((item) => item !== value),
   };
 }
 

@@ -1237,6 +1237,135 @@ describe("App", () => {
     ).toBeInTheDocument();
   });
 
+  it("keeps an item visible when its category changes into a collapsed category", async () => {
+    state.equipment.durable.items = [
+      {
+        id: "sleeping-bag-3season-adult",
+        name: "침낭",
+        category: "sleeping",
+        quantity: 1,
+        status: "ok",
+      },
+      {
+        id: "family-tent",
+        name: "패밀리 텐트",
+        category: "shelter",
+        quantity: 1,
+        status: "ok",
+      },
+    ];
+
+    render(<App />);
+
+    await userEvent.click(await screen.findByRole("button", { name: "장비 관리" }));
+    await userEvent.click(screen.getByRole("button", { name: "쉘터/텐트 카테고리 접기" }));
+    await userEvent.click(screen.getByRole("button", { name: "침낭 상세 펼치기" }));
+
+    expect(await screen.findByDisplayValue("침낭")).toBeInTheDocument();
+
+    const sleepingBagCard = screen
+      .getByRole("button", { name: "침낭 상세 접기" })
+      .closest("article");
+    expect(sleepingBagCard).not.toBeNull();
+
+    await userEvent.selectOptions(
+      within(sleepingBagCard as HTMLElement).getByRole("combobox", { name: "카테고리" }),
+      "shelter",
+    );
+
+    expect(await screen.findByDisplayValue("침낭")).toBeInTheDocument();
+    expect(screen.getByRole("button", { name: "저장" })).toBeInTheDocument();
+    expect(
+      screen.getByRole("button", { name: "쉘터/텐트 카테고리 접기" }),
+    ).toBeInTheDocument();
+  });
+
+  it("keeps a consumable visible when its category changes into a collapsed category", async () => {
+    state.equipment.consumables.items = [
+      {
+        id: "butane-gas",
+        name: "부탄가스",
+        category: "fuel",
+        quantity_on_hand: 2,
+        unit: "ea",
+        status: "ok",
+      },
+      {
+        id: "fire-starter",
+        name: "착화제",
+        category: "ignition",
+        quantity_on_hand: 1,
+        unit: "pack",
+        status: "ok",
+      },
+    ];
+
+    render(<App />);
+
+    await userEvent.click(await screen.findByRole("button", { name: "장비 관리" }));
+    await userEvent.click(screen.getByRole("tab", { name: "소모품" }));
+    await userEvent.click(screen.getByRole("button", { name: "점화 카테고리 접기" }));
+    await userEvent.click(screen.getByRole("button", { name: "부탄가스 상세 펼치기" }));
+
+    expect(await screen.findByDisplayValue("부탄가스")).toBeInTheDocument();
+
+    const butaneGasCard = screen
+      .getByRole("button", { name: "부탄가스 상세 접기" })
+      .closest("article");
+    expect(butaneGasCard).not.toBeNull();
+
+    await userEvent.selectOptions(
+      within(butaneGasCard as HTMLElement).getByRole("combobox", { name: "카테고리" }),
+      "ignition",
+    );
+
+    expect(await screen.findByDisplayValue("부탄가스")).toBeInTheDocument();
+    expect(screen.getByRole("button", { name: "저장" })).toBeInTheDocument();
+    expect(
+      screen.getByRole("button", { name: "점화 카테고리 접기" }),
+    ).toBeInTheDocument();
+  });
+
+  it("keeps a precheck item visible when its category changes into a collapsed category", async () => {
+    state.equipment.precheck.items = [
+      {
+        id: "lantern-battery",
+        name: "랜턴 배터리",
+        category: "battery",
+        status: "ok",
+      },
+      {
+        id: "tire-pressure",
+        name: "타이어 공기압",
+        category: "vehicle",
+        status: "ok",
+      },
+    ];
+
+    render(<App />);
+
+    await userEvent.click(await screen.findByRole("button", { name: "장비 관리" }));
+    await userEvent.click(screen.getByRole("tab", { name: "출발 전 점검" }));
+    await userEvent.click(screen.getByRole("button", { name: "차량 카테고리 접기" }));
+    await userEvent.click(screen.getByRole("button", { name: "랜턴 배터리 상세 펼치기" }));
+
+    expect(await screen.findByDisplayValue("랜턴 배터리")).toBeInTheDocument();
+
+    const lanternBatteryCard = screen
+      .getByRole("button", { name: "랜턴 배터리 상세 접기" })
+      .closest("article");
+    expect(lanternBatteryCard).not.toBeNull();
+
+    await userEvent.selectOptions(
+      within(lanternBatteryCard as HTMLElement).getByRole("combobox", { name: "카테고리" }),
+      "vehicle",
+    );
+
+    expect(await screen.findByDisplayValue("랜턴 배터리")).toBeInTheDocument();
+    expect(screen.getByRole("button", { name: "저장" })).toBeInTheDocument();
+    expect(screen.getByRole("button", { name: "차량 카테고리 접기" })).toBeInTheDocument();
+  });
+
   it("renders equipment categories as selects and can add a managed category", async () => {
     render(<App />);
 
