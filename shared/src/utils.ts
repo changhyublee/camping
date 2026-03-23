@@ -62,10 +62,6 @@ export function buildKebabId(
   return base ? `${prefix}-${base}`.replace(/^trip-trip-/, "trip-") : prefix;
 }
 
-export function buildEquipmentCategoryCodeCandidate(label: string): string {
-  return normalizeIdPart(label);
-}
-
 function normalizeIdPart(value: string | undefined | null): string {
   if (!value) {
     return "";

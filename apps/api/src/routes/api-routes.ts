@@ -5,8 +5,9 @@ import {
   companionInputSchema,
   consumableEquipmentItemInputSchema,
   durableEquipmentItemInputSchema,
+  equipmentCategoryCreateInputSchema,
   equipmentCategoryIdSchema,
-  equipmentCategoryInputSchema,
+  equipmentCategoryUpdateInputSchema,
   equipmentSectionSchema,
   externalLinkInputSchema,
   historyRecordSchema,
@@ -421,7 +422,7 @@ export async function registerApiRoutes(
         section,
         parseBodyOrThrow(
           "장비 카테고리 생성 요청",
-          equipmentCategoryInputSchema,
+          equipmentCategoryCreateInputSchema,
           request.body,
         ),
       ),
@@ -442,7 +443,7 @@ export async function registerApiRoutes(
         categoryId,
         parseBodyOrThrow(
           "장비 카테고리 수정 요청",
-          equipmentCategoryInputSchema,
+          equipmentCategoryUpdateInputSchema,
           request.body,
         ),
       ),

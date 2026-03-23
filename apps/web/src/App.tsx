@@ -11,7 +11,7 @@ import type {
   EquipmentCatalog,
   EquipmentCategoriesData,
   EquipmentCategory,
-  EquipmentCategoryInput,
+  EquipmentCategoryCreateInput,
   EquipmentSection,
   ExternalLink,
   ExternalLinkCategory,
@@ -29,15 +29,12 @@ import {
   AGE_GROUP_LABELS,
   CONSUMABLE_STATUS_LABELS,
   DURABLE_STATUS_LABELS,
-  EQUIPMENT_CATEGORY_MANUAL_CODE_REQUIRED_MESSAGE,
+  EQUIPMENT_CATEGORY_CODE_REQUIRED_MESSAGE,
   EQUIPMENT_SECTION_LABELS,
   EXTERNAL_LINK_CATEGORY_LABELS,
   PRECHECK_STATUS_LABELS,
 } from "@camping/shared";
-import {
-  buildEquipmentCategoryCodeCandidate,
-  cloneEquipmentCategories,
-} from "@camping/shared";
+import { cloneEquipmentCategories } from "@camping/shared";
 import { apiClient, ApiClientError } from "./api/client";
 import { StatusBanner } from "./components/StatusBanner";
 
@@ -62,7 +59,7 @@ type CommaSeparatedInputs = {
   requestedStops: string;
 };
 
-type CategoryDrafts = Record<EquipmentSection, EquipmentCategoryInput>;
+type CategoryDrafts = Record<EquipmentSection, EquipmentCategoryCreateInput>;
 type CategoryLabelDrafts = Record<EquipmentSection, Record<string, string>>;
 
 export function App() {
@@ -222,11 +219,6 @@ export function App() {
   const currentEquipmentCategories = useMemo(
     () => equipmentCategories[equipmentSection],
     [equipmentCategories, equipmentSection],
-  );
-
-  const categoryDraftPreviewId = useMemo(
-    () => buildCategoryPreviewId(categoryDrafts[equipmentSection].label),
-    [categoryDrafts, equipmentSection],
   );
 
   const missingCompanionIds = useMemo(
@@ -995,7 +987,6 @@ export function App() {
     const draft = categoryDrafts[section];
     const label = draft.label.trim();
     const manualCode = draft.id?.trim();
-    const previewCode = buildCategoryPreviewId(label);
 
     if (!label) {
       setOperationState({
@@ -1006,11 +997,11 @@ export function App() {
       return;
     }
 
-    if (!manualCode && !previewCode) {
+    if (!manualCode) {
       setOperationState({
         title: "장비 카테고리 추가 실패",
         tone: "error",
-        description: EQUIPMENT_CATEGORY_MANUAL_CODE_REQUIRED_MESSAGE,
+        description: EQUIPMENT_CATEGORY_CODE_REQUIRED_MESSAGE,
       });
       return;
     }
@@ -1018,7 +1009,7 @@ export function App() {
     try {
       const response = await apiClient.createEquipmentCategory(section, {
         ...draft,
-        id: manualCode || undefined,
+        id: manualCode,
         label,
       });
       setEquipmentCategories((current) => ({
@@ -1899,21 +1890,14 @@ export function App() {
                   <h2>새 카테고리 추가</h2>
                 </div>
                 <p className="panel__copy">
-                  표시 이름으로 코드가 만들어지면 자동 생성됩니다. 한글 이름만으로 코드가
-                  만들어지지 않으면 영문 코드를 직접 입력합니다.
+                  카테고리 코드는 자동 생성하지 않습니다. 영문 소문자, 숫자, `-`, `_`
+                  형식으로 직접 입력합니다.
                 </p>
                 <div className="form-grid">
                   <FormField label="적용 섹션">
                     <input value={EQUIPMENT_SECTION_LABELS[equipmentSection]} readOnly />
                   </FormField>
-                  <FormField label="자동 생성 코드">
-                    <input
-                      placeholder="표시 이름을 입력하면 자동 생성"
-                      value={categoryDraftPreviewId}
-                      readOnly
-                    />
-                  </FormField>
-                  <FormField label="직접 입력 코드">
+                  <FormField label="카테고리 코드">
                     <input
                       placeholder="예: tarp"
                       value={categoryDrafts[equipmentSection].id ?? ""}
@@ -3165,7 +3149,7 @@ function createEmptyLink(): ExternalLinkInput {
   };
 }
 
-function createEmptyEquipmentCategoryDraft(): EquipmentCategoryInput {
+function createEmptyEquipmentCategoryDraft(): EquipmentCategoryCreateInput {
   return {
     id: "",
     label: "",
@@ -3570,14 +3554,6 @@ function sortEquipmentCategories(left: EquipmentCategory, right: EquipmentCatego
   }
 
   return left.label.localeCompare(right.label, "ko");
-}
-
-function buildCategoryPreviewId(label: string) {
-  if (!label.trim()) {
-    return "";
-  }
-
-  return buildEquipmentCategoryCodeCandidate(label);
 }
 
 function appendSyncWarnings(base: string, warnings: string[]) {

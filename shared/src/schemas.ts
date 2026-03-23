@@ -44,7 +44,11 @@ export const equipmentCategorySchema = z.object({
   sort_order: z.number().int().nonnegative().default(0),
 });
 
-export const equipmentCategoryInputSchema = equipmentCategorySchema.extend({
+export const equipmentCategoryCreateInputSchema = equipmentCategorySchema.extend({
+  sort_order: z.number().int().nonnegative().optional(),
+});
+
+export const equipmentCategoryUpdateInputSchema = equipmentCategorySchema.extend({
   id: equipmentCategoryIdSchema.optional(),
   sort_order: z.number().int().nonnegative().optional(),
 });

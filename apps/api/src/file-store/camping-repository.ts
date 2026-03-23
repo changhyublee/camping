@@ -8,7 +8,6 @@ import {
 } from "node:fs/promises";
 import path from "node:path";
 import {
-  buildEquipmentCategoryCodeCandidate,
   cloneEquipmentCategories,
   companionSchema,
   companionsSchema,
@@ -21,7 +20,7 @@ import {
   getTripOutputFilename,
   getTripOutputRelativePath,
   humanizeEquipmentCategoryId,
-  EQUIPMENT_CATEGORY_MANUAL_CODE_REQUIRED_MESSAGE,
+  EQUIPMENT_CATEGORY_CODE_REQUIRED_MESSAGE,
   historyRecordSchema,
   isTripId,
   precheckSchema,
@@ -40,9 +39,10 @@ import {
   type DurableEquipmentItemInput,
   type EquipmentCategoriesData,
   type EquipmentCategory,
-  type EquipmentCategoryInput,
+  type EquipmentCategoryCreateInput,
   type EquipmentCatalog,
   type EquipmentSection,
+  type EquipmentCategoryUpdateInput,
   type ExternalLink,
   type ExternalLinkInput,
   type ExternalLinksData,
@@ -481,11 +481,18 @@ export class CampingRepository {
 
   async createEquipmentCategory(
     section: EquipmentSection,
-    input: EquipmentCategoryInput,
+    input: EquipmentCategoryCreateInput,
   ): Promise<EquipmentCategory> {
     const categories = await this.readEquipmentCategories();
-    const categoryId =
-      input.id ?? (await this.createUniqueEquipmentCategoryId(section, input.label));
+    const categoryId = input.id;
+
+    if (!categoryId) {
+      throw new AppError(
+        "TRIP_INVALID",
+        EQUIPMENT_CATEGORY_CODE_REQUIRED_MESSAGE,
+        400,
+      );
+    }
 
     if (categories[section].some((item) => item.id === categoryId)) {
       throw new AppError(
@@ -512,7 +519,7 @@ export class CampingRepository {
   async updateEquipmentCategory(
     section: EquipmentSection,
     categoryId: string,
-    input: EquipmentCategoryInput,
+    input: EquipmentCategoryUpdateInput,
   ): Promise<EquipmentCategory> {
     const categories = await this.readEquipmentCategories();
     const index = categories[section].findIndex((item) => item.id === categoryId);
@@ -1254,29 +1261,6 @@ export class CampingRepository {
     );
   }
 
-  private async createUniqueEquipmentCategoryId(
-    section: EquipmentSection,
-    label: string,
-  ): Promise<string> {
-    const baseId = deriveEquipmentCategoryBaseId(label);
-
-    if (!baseId) {
-      throw new AppError(
-        "TRIP_INVALID",
-        EQUIPMENT_CATEGORY_MANUAL_CODE_REQUIRED_MESSAGE,
-        400,
-      );
-    }
-
-    return this.createUniqueId(
-      baseId,
-      async (candidate) => {
-        const categories = await this.readEquipmentCategories();
-        return !categories[section].some((item) => item.id === candidate);
-      },
-    );
-  }
-
   private async createUniqueId(
     baseId: string,
     isAvailable: (candidate: string) => Promise<boolean>,
@@ -1384,10 +1368,6 @@ function mergeEquipmentCategories(
   }
 
   return sortEquipmentCategories(merged);
-}
-
-function deriveEquipmentCategoryBaseId(label: string) {
-  return buildEquipmentCategoryCodeCandidate(label);
 }
 
 function sortEquipmentCategories(categories: EquipmentCategory[]) {

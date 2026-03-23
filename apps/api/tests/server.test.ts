@@ -672,7 +672,7 @@ describe("API server", () => {
     await app.close();
   });
 
-  it("rejects category creation when the label cannot generate a valid code", async () => {
+  it("rejects category creation when the category code is missing", async () => {
     const dataDir = await createSeededDataDir();
     const app = await buildServer({
       dataDir,
@@ -694,7 +694,7 @@ describe("API server", () => {
         status: "failed",
         error: expect.objectContaining({
           code: "TRIP_INVALID",
-          message: expect.stringContaining("카테고리 코드를 자동 생성할 수 없습니다."),
+          message: expect.stringContaining("id: 값이 필요합니다."),
         }),
       }),
     );

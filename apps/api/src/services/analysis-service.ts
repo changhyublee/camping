@@ -8,8 +8,9 @@ import type {
   EquipmentCatalog,
   EquipmentCategoriesData,
   EquipmentCategory,
-  EquipmentCategoryInput,
+  EquipmentCategoryCreateInput,
   EquipmentSection,
+  EquipmentCategoryUpdateInput,
   ExternalLink,
   ExternalLinkInput,
   GetOutputResponse,
@@ -116,7 +117,7 @@ export class AnalysisService {
 
   async createEquipmentCategory(
     section: EquipmentSection,
-    input: EquipmentCategoryInput,
+    input: EquipmentCategoryCreateInput,
   ): Promise<EquipmentCategory> {
     return this.repository.createEquipmentCategory(section, input);
   }
@@ -124,7 +125,7 @@ export class AnalysisService {
   async updateEquipmentCategory(
     section: EquipmentSection,
     categoryId: string,
-    input: EquipmentCategoryInput,
+    input: EquipmentCategoryUpdateInput,
   ): Promise<EquipmentCategory> {
     return this.repository.updateEquipmentCategory(section, categoryId, input);
   }

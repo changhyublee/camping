@@ -1,10 +1,7 @@
 import { render, screen, waitFor, within } from "@testing-library/react";
 import userEvent from "@testing-library/user-event";
 import { afterEach, beforeEach, describe, expect, it, vi } from "vitest";
-import {
-  buildEquipmentCategoryCodeCandidate,
-  EQUIPMENT_CATEGORY_MANUAL_CODE_REQUIRED_MESSAGE,
-} from "@camping/shared";
+import { EQUIPMENT_CATEGORY_CODE_REQUIRED_MESSAGE } from "@camping/shared";
 import type {
   AnalyzeTripResponse,
   Companion,
@@ -256,16 +253,15 @@ function mockFetch(input: RequestInfo | URL, init?: RequestInit) {
 
   if (equipmentCategoryParams && !equipmentCategoryParams.categoryId && method === "POST") {
     const body = parseBody(init) as { id?: string; label: string };
-    const derivedId = buildEquipmentCategoryCodeCandidate(body.label);
 
-    if (!body.id && !derivedId) {
+    if (!body.id) {
       return jsonResponse(
         {
           status: "failed",
           warnings: [],
           error: {
             code: "TRIP_INVALID",
-            message: EQUIPMENT_CATEGORY_MANUAL_CODE_REQUIRED_MESSAGE,
+            message: EQUIPMENT_CATEGORY_CODE_REQUIRED_MESSAGE,
           },
         },
         400,
@@ -273,7 +269,7 @@ function mockFetch(input: RequestInfo | URL, init?: RequestInit) {
     }
 
     const item = {
-      id: body.id ?? derivedId,
+      id: body.id,
       label: body.label,
       sort_order:
         Math.max(
@@ -896,16 +892,16 @@ describe("App", () => {
     expect(screen.getAllByDisplayValue("수납").length).toBeGreaterThan(0);
   });
 
-  it("requires a manual category code when the label cannot generate one", async () => {
+  it("requires a category code when creating a category", async () => {
     render(<App />);
 
     await userEvent.click(await screen.findByRole("button", { name: "관리 설정" }));
-    await userEvent.type(screen.getByPlaceholderText("예: 수납"), "타프");
+    await userEvent.type(screen.getByPlaceholderText("예: 수납"), "수납");
     await userEvent.click(screen.getByRole("button", { name: "카테고리 추가" }));
 
     expect(await screen.findByText("장비 카테고리 추가 실패")).toBeInTheDocument();
     expect(
-      screen.getByText(EQUIPMENT_CATEGORY_MANUAL_CODE_REQUIRED_MESSAGE),
+      screen.getByText(EQUIPMENT_CATEGORY_CODE_REQUIRED_MESSAGE),
     ).toBeInTheDocument();
   });
 

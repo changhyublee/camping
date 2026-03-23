@@ -8,8 +8,9 @@ import type {
   EquipmentCatalog,
   EquipmentCategoriesData,
   EquipmentCategory,
-  EquipmentCategoryInput,
+  EquipmentCategoryCreateInput,
   EquipmentSection,
+  EquipmentCategoryUpdateInput,
   ExternalLink,
   ExternalLinkInput,
   GetOutputResponse,
@@ -168,7 +169,7 @@ export const apiClient = {
   },
   async createEquipmentCategory(
     section: EquipmentSection,
-    input: EquipmentCategoryInput,
+    input: EquipmentCategoryCreateInput,
   ): Promise<{ item: EquipmentCategory }> {
     return request(`/api/equipment/categories/${section}`, {
       method: "POST",
@@ -178,7 +179,7 @@ export const apiClient = {
   async updateEquipmentCategory(
     section: EquipmentSection,
     categoryId: string,
-    input: EquipmentCategoryInput,
+    input: EquipmentCategoryUpdateInput,
   ): Promise<{ item: EquipmentCategory }> {
     return request(`/api/equipment/categories/${section}/${categoryId}`, {
       method: "PUT",

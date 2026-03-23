@@ -15,8 +15,9 @@ import type {
   consumableEquipmentSchema,
   equipmentCategoriesSchema,
   equipmentCategoryIdSchema,
-  equipmentCategoryInputSchema,
+  equipmentCategoryCreateInputSchema,
   equipmentCategorySchema,
+  equipmentCategoryUpdateInputSchema,
   durableEquipmentItemSchema,
   durableEquipmentItemInputSchema,
   durableEquipmentSchema,
@@ -70,8 +71,11 @@ export type DurableEquipmentItemInput = z.infer<
 export type DurableEquipmentData = z.infer<typeof durableEquipmentSchema>;
 export type EquipmentCategoryId = z.infer<typeof equipmentCategoryIdSchema>;
 export type EquipmentCategory = z.infer<typeof equipmentCategorySchema>;
-export type EquipmentCategoryInput = z.infer<
-  typeof equipmentCategoryInputSchema
+export type EquipmentCategoryCreateInput = z.infer<
+  typeof equipmentCategoryCreateInputSchema
+>;
+export type EquipmentCategoryUpdateInput = z.infer<
+  typeof equipmentCategoryUpdateInputSchema
 >;
 export type EquipmentCategoriesData = z.infer<typeof equipmentCategoriesSchema>;
 export type ConsumableEquipmentItem = z.infer<
