@@ -1,0 +1,4 @@
+interface:
+  display_name: "수정리뷰 반복"
+  short_description: "현재 수정된 코드 리뷰와 수정 적용을 N회 반복"
+  default_prompt: "`$repeat-review-fix` 로 현재 수정된 코드를 리뷰하고 finding 수정까지 기본 2회 반복해줘."
