@@ -553,15 +553,19 @@ export async function registerApiRoutes(
     };
   });
 
-  app.post("/api/equipment/durable/items/:itemId/metadata/refresh", async (request) => {
+  app.get("/api/equipment/durable/metadata-statuses", async () => ({
+    items: await analysisService.listDurableMetadataJobStatuses(),
+  }));
+
+  app.post("/api/equipment/durable/items/:itemId/metadata/refresh", async (request, reply) => {
     const itemId = readIdParam(
       (request.params as { itemId?: unknown }).itemId,
       "item_id",
     );
 
-    return {
-      item: await analysisService.refreshDurableEquipmentMetadata(itemId),
-    };
+    return reply
+      .status(202)
+      .send(await analysisService.refreshDurableEquipmentMetadata(itemId));
   });
 
   app.delete("/api/equipment/:section/items/:itemId", async (request) => {

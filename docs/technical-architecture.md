@@ -13,6 +13,7 @@
 - 동행자, 차량, 장비, 계획, 히스토리, 링크는 YAML로 저장한다
 - 분석 결과는 Markdown으로 저장한다
 - 분석 실행 상태는 `cache/analysis-jobs/*.json` 으로 분리해 저장한다
+- 반복 장비 메타데이터 수집 상태는 `cache/equipment-metadata/jobs/durable/*.json` 으로 분리해 저장한다
 - 기본 분석 백엔드는 로컬 `codex exec` 이다
 - 반복 장비 메타데이터처럼 AI가 수집한 보강 정보는 `cache/` 아래 별도 파일로 저장하고 API에서 병합한다
 
@@ -25,9 +26,12 @@
     -> .camping-backups/ 시점별 백업 생성
     -> docs/, prompts/, schemas/ 참조
     -> analyze-trip 요청은 작업 상태를 queued/running 으로 저장하고 즉시 응답
+    -> durable metadata refresh 요청도 작업 상태를 queued/running 으로 저장하고 즉시 응답
     -> 로컬 codex CLI 또는 fallback AI 백엔드를 백그라운드에서 호출
     -> outputs/*.md 저장
     -> cache/analysis-jobs/*.json 상태 갱신
+    -> cache/equipment-metadata/durable/*.json 저장
+    -> cache/equipment-metadata/jobs/durable/*.json 상태 갱신
 ```
 
 ## 4. 상위 역할 분리
@@ -78,7 +82,9 @@
 └── cache/
     ├── analysis-jobs/
     └── equipment-metadata/
-        └── durable/
+        ├── durable/
+        └── jobs/
+            └── durable/
 
 ./.camping-backups/
 └── <timestamp>/
@@ -109,6 +115,11 @@
 - 반복 장비, 소모품, 점검 항목을 분리한다
 - 카테고리는 자유 입력이 아니라 `equipment/categories.yaml` 기반 셀렉트로 선택한다
 - 기존 장비에만 남아 있는 카테고리 값도 화면에서 깨지지 않도록 병합해 표시한다
+- 반복 장비 메타데이터 수집은 별도 `EquipmentMetadataJobManager` 가 담당한다
+- 서로 다른 durable item 은 최대 3건까지 병렬 수집하고, 같은 `item_id` 는 중복 실행하지 않는다
+- 성공 완료는 메타데이터 결과만 남기고 상태 파일은 삭제해 `idle` 로 복귀한다
+- 실패 또는 중단 상태는 상태 파일에 남겨 두고 UI가 다시 읽어 버튼과 배지를 복원한다
+- 수집 중 검색 입력이 바뀌면 이전 시도 결과는 저장하지 않고 최신 입력 기준으로 다시 수집한다
 
 ### 카테고리 설정
 

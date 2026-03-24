@@ -457,10 +457,6 @@ export const planningAssistantResponseSchema = z.object({
   actions: z.array(planningAssistantActionSchema).default([]),
 });
 
-export const refreshDurableEquipmentMetadataResponseSchema = z.object({
-  item: durableEquipmentItemSchema,
-});
-
 export const dataBackupReasonSchema = z.enum([
   "manual",
   "startup",
@@ -491,6 +487,15 @@ export const apiErrorSchema = z.object({
   message: z.string(),
 });
 
+export const refreshDurableEquipmentMetadataResponseSchema = z.object({
+  item_id: z.string().min(1),
+  status: z.enum(["queued", "running", "failed", "interrupted"]),
+  requested_at: z.string().datetime().nullable().optional(),
+  started_at: z.string().datetime().nullable().optional(),
+  finished_at: z.string().datetime().nullable().optional(),
+  error: apiErrorSchema.optional(),
+});
+
 export const tripAnalysisStatusSchema = z.enum([
   "idle",
   "queued",
@@ -511,6 +516,26 @@ export const analyzeTripResponseSchema = z.object({
 });
 
 export const getTripAnalysisStatusResponseSchema = analyzeTripResponseSchema;
+
+export const durableMetadataJobStatusSchema = z.enum([
+  "queued",
+  "running",
+  "failed",
+  "interrupted",
+]);
+
+export const durableMetadataJobStatusResponseSchema = z.object({
+  item_id: z.string().min(1),
+  status: durableMetadataJobStatusSchema,
+  requested_at: z.string().datetime().nullable().optional(),
+  started_at: z.string().datetime().nullable().optional(),
+  finished_at: z.string().datetime().nullable().optional(),
+  error: apiErrorSchema.optional(),
+});
+
+export const listDurableMetadataJobStatusesResponseSchema = z.object({
+  items: z.array(durableMetadataJobStatusResponseSchema).default([]),
+});
 
 export const validateTripResponseSchema = z.object({
   status: z.enum(["ok", "failed"]),

@@ -70,6 +70,7 @@
 - `DELETE /api/equipment/categories/:section/:categoryId`
 - `POST /api/equipment/:section/items`
 - `PUT /api/equipment/:section/items/:itemId`
+- `GET /api/equipment/durable/metadata-statuses`
 - `POST /api/equipment/durable/items/:itemId/metadata/refresh`
 - `DELETE /api/equipment/:section/items/:itemId`
 
@@ -84,6 +85,19 @@
 - `id` 를 반드시 보내야 한다
 - 카테고리 코드는 영문 소문자, 숫자, `-`, `_` 형식을 사용한다
 - `id` 가 없거나 형식이 맞지 않으면 `TRIP_INVALID` 로 거절한다
+
+반복 장비 메타데이터 수집 규칙:
+
+- `POST /api/equipment/durable/items/:itemId/metadata/refresh` 는 메타데이터 수집 작업을 백그라운드에 등록하고 `202 Accepted` 로 현재 작업 상태를 반환한다
+- `GET /api/equipment/durable/metadata-statuses` 는 현재 durable 메타데이터 작업 상태 목록을 반환한다
+- 상태 값은 `queued`, `running`, `failed`, `interrupted` 를 사용한다
+- 같은 `item_id` 가 이미 `queued` 또는 `running` 이면 새 수집을 만들지 않고 기존 상태를 그대로 반환한다
+- 서로 다른 durable item 은 최대 3건까지 동시에 수집하고 초과 요청은 `queued` 로 대기한다
+- 성공 완료는 별도 `completed` 상태를 저장하지 않고 상태 파일 삭제로 `idle` 로 복귀한다
+- 실패 또는 중단 상태는 상태 파일에 남겨 두고 UI가 다시 읽어 경고와 재시도 상태를 복원한다
+- 수집 중 장비명, 모델명, 구매 링크, 카테고리 같은 검색 입력이 바뀌면 현재 시도 결과는 버리고 최신 입력 기준으로 다시 수집한다
+- durable item 삭제 시 메타데이터 결과 파일과 상태 파일을 함께 정리하고, 이미 실행 중이던 작업 결과도 저장하지 않는다
+- API 서버 재시작 시 남아 있던 `queued` 또는 `running` 상태는 `interrupted` 로 복구한다
 
 ### 캠핑 히스토리
 
@@ -186,6 +200,36 @@
 }
 ```
 
+### `POST /api/equipment/durable/items/:itemId/metadata/refresh`
+
+```json
+{
+  "item_id": "family-tent",
+  "status": "queued",
+  "requested_at": "2026-03-24T10:20:00.000Z",
+  "started_at": null,
+  "finished_at": null,
+  "error": null
+}
+```
+
+### `GET /api/equipment/durable/metadata-statuses`
+
+```json
+{
+  "items": [
+    {
+      "item_id": "family-tent",
+      "status": "running",
+      "requested_at": "2026-03-24T10:20:00.000Z",
+      "started_at": "2026-03-24T10:20:01.000Z",
+      "finished_at": null,
+      "error": null
+    }
+  ]
+}
+```
+
 ### `GET /api/trips/:tripId/analysis-status`
 
 ```json
@@ -225,8 +269,9 @@
 메타데이터 수집 규칙:
 
 - 구매 링크가 있으면 AI 메타데이터 수집 시 참고 자료로 우선 사용한다
-- `POST /api/equipment/durable/items/:itemId/metadata/refresh` 는 반복 장비 1건의 메타데이터를 재수집한다
-- 메타데이터를 찾지 못하면 오류 대신 `metadata.lookup_status: not_found` 로 저장해 반환한다
+- 반복 장비 저장 또는 추가 뒤에는 UI가 필요한 경우 메타데이터 수집 API를 자동 호출할 수 있다
+- `POST /api/equipment/durable/items/:itemId/metadata/refresh` 응답은 메타데이터 본문이 아니라 작업 상태다
+- 메타데이터를 찾지 못하면 오류 대신 `metadata.lookup_status: not_found` 를 메타데이터 캐시에 저장한다
 
 ### `GET /api/equipment/categories`
 

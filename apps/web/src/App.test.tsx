@@ -1,4 +1,4 @@
-import { render, screen, waitFor, within } from "@testing-library/react";
+import { fireEvent, render, screen, waitFor, within } from "@testing-library/react";
 import userEvent from "@testing-library/user-event";
 import { afterEach, beforeEach, describe, expect, it, vi } from "vitest";
 import { EQUIPMENT_CATEGORY_CODE_REQUIRED_MESSAGE } from "@camping/shared";
@@ -7,12 +7,14 @@ import type {
   Companion,
   ConsumableEquipmentItem,
   DataBackupSnapshot,
+  DurableMetadataJobStatusResponse,
   DurableEquipmentItem,
   EquipmentCatalog,
   EquipmentCategoriesData,
   GetOutputResponse,
   HistoryRecord,
   PrecheckItem,
+  RefreshDurableEquipmentMetadataResponse,
   TripDraft,
   TripData,
   TripSummary,
@@ -29,6 +31,10 @@ type ApiResponse<T> = {
   body: T;
   status?: number;
 };
+
+type MetadataStatusSequenceEntry =
+  | ApiResponse<RefreshDurableEquipmentMetadataResponse>
+  | null;
 
 type FailedValidationResponse = {
   status: "failed";
@@ -71,6 +77,10 @@ type MockState = {
     body: TripData;
   }>;
   dataBackups: DataBackupSnapshot[];
+  metadataStatuses: Record<
+    string,
+    MetadataStatusSequenceEntry | MetadataStatusSequenceEntry[]
+  >;
 };
 
 let state: MockState;
@@ -206,6 +216,10 @@ function readDurableEquipmentMetadataRefreshId(pathname: string) {
   return match?.[1] ?? null;
 }
 
+function isDurableMetadataStatusesPath(pathname: string) {
+  return pathname === "/api/equipment/durable/metadata-statuses";
+}
+
 function readEquipmentCategoryParams(pathname: string) {
   const match = pathname.match(/^\/api\/equipment\/categories\/([^/]+)(?:\/([^/]+))?$/u);
 
@@ -238,6 +252,78 @@ function consumeAnalysisStatusResponse(tripId: string) {
 
   if (Array.isArray(response)) {
     return response.length > 1 ? response.shift() ?? idleResponse : response[0] ?? idleResponse;
+  }
+
+  return response;
+}
+
+function consumeMetadataStatusResponse(itemId: string) {
+  const response = state.metadataStatuses[itemId];
+
+  if (!response) {
+    return null;
+  }
+
+  if (Array.isArray(response)) {
+    if (response.length > 1) {
+      const current = response.shift() ?? null;
+
+      if (response.length === 0) {
+        delete state.metadataStatuses[itemId];
+      }
+
+      return current;
+    }
+
+    return response[0] ?? null;
+  }
+
+  return response;
+}
+
+function readMetadataRefreshResponse(itemId: string) {
+  const response = state.metadataStatuses[itemId];
+
+  if (!response) {
+    const queuedResponse: ApiResponse<RefreshDurableEquipmentMetadataResponse> = {
+      status: 202,
+      body: {
+        item_id: itemId,
+        status: "queued",
+        requested_at: "2026-03-24T10:00:00.000Z",
+        started_at: null,
+        finished_at: null,
+      },
+    };
+
+    state.metadataStatuses[itemId] = queuedResponse;
+    return queuedResponse;
+  }
+
+  if (Array.isArray(response)) {
+    const current = response.shift() ?? null;
+
+    if (response.length === 0) {
+      delete state.metadataStatuses[itemId];
+    }
+
+    if (current) {
+      return current;
+    }
+
+    const queuedResponse: ApiResponse<RefreshDurableEquipmentMetadataResponse> = {
+      status: 202,
+      body: {
+        item_id: itemId,
+        status: "queued",
+        requested_at: "2026-03-24T10:00:00.000Z",
+        started_at: null,
+        finished_at: null,
+      },
+    };
+
+    state.metadataStatuses[itemId] = queuedResponse;
+    return queuedResponse;
   }
 
   return response;
@@ -443,6 +529,14 @@ function mockFetch(input: RequestInfo | URL, init?: RequestInit) {
     return emptyResponse();
   }
 
+  if (isDurableMetadataStatusesPath(pathname) && method === "GET") {
+    const items = Object.keys(state.metadataStatuses)
+      .map((itemId) => consumeMetadataStatusResponse(itemId)?.body ?? null)
+      .filter((item): item is DurableMetadataJobStatusResponse => item !== null);
+
+    return jsonResponse({ items });
+  }
+
   if (durableMetadataRefreshId && method === "POST") {
     const index = state.equipment.durable.items.findIndex(
       (item) => item.id === durableMetadataRefreshId,
@@ -461,44 +555,8 @@ function mockFetch(input: RequestInfo | URL, init?: RequestInit) {
       );
     }
 
-    const currentItem = state.equipment.durable.items[index];
-    const nextItem = {
-      ...currentItem,
-      metadata: {
-        lookup_status: "found" as const,
-        searched_at: "2026-03-23T12:00:00.000Z",
-        query: `${currentItem.name} ${currentItem.model ?? ""}`.trim(),
-        summary: "포장 크기와 설치 시간을 확인했습니다.",
-        product: {
-          brand: "테스트 브랜드",
-          official_name: currentItem.name,
-          model: currentItem.model,
-        },
-        packing: {
-          width_cm: 68,
-          depth_cm: 34,
-          height_cm: 30,
-          weight_kg: 14.5,
-        },
-        planning: {
-          setup_time_minutes: 20,
-          recommended_people: 2,
-          capacity_people: 4,
-          season_notes: ["봄, 여름, 가을 중심으로 적합"],
-          weather_notes: ["우천 시 플라이를 먼저 확인"],
-        },
-        sources: [
-          {
-            title: "테스트 상품 페이지",
-            url: currentItem.purchase_link ?? "https://example.com/product",
-            domain: "example.com",
-          },
-        ],
-      },
-    };
-
-    state.equipment.durable.items[index] = nextItem;
-    return jsonResponse({ item: nextItem });
+    const response = readMetadataRefreshResponse(durableMetadataRefreshId);
+    return jsonResponse(response.body, response.status ?? 202);
   }
 
   if (equipmentItemParams?.itemId && method === "PUT") {
@@ -1612,6 +1670,69 @@ describe("App", () => {
         status: "ok",
       },
     ];
+    const queuedStatus: ApiResponse<RefreshDurableEquipmentMetadataResponse> = {
+      status: 202,
+      body: {
+        item_id: "family-tent",
+        status: "queued",
+        requested_at: "2026-03-24T10:00:00.000Z",
+        started_at: null,
+        finished_at: null,
+      },
+    };
+    fetchMock.mockImplementation((input, init) => {
+      const rawUrl = typeof input === "string" ? input : input.toString();
+      const pathname = new URL(rawUrl, "http://localhost").pathname;
+      const method = init?.method?.toUpperCase() ?? "GET";
+      const currentStatus = state.metadataStatuses["family-tent"];
+
+      if (
+        (pathname === "/api/equipment/durable/metadata-statuses" ||
+          pathname === "/api/equipment") &&
+        method === "GET"
+      ) {
+        if (Array.isArray(currentStatus) && currentStatus[0] === null) {
+          state.equipment.durable.items[0] = {
+            ...state.equipment.durable.items[0],
+            metadata: {
+              lookup_status: "found",
+              searched_at: "2026-03-23T12:00:00.000Z",
+              query: `${state.equipment.durable.items[0].name} ${state.equipment.durable.items[0].model ?? ""}`.trim(),
+              summary: "포장 크기와 설치 시간을 확인했습니다.",
+              product: {
+                brand: "테스트 브랜드",
+                official_name: state.equipment.durable.items[0].name,
+                model: state.equipment.durable.items[0].model,
+              },
+              packing: {
+                width_cm: 68,
+                depth_cm: 34,
+                height_cm: 30,
+                weight_kg: 14.5,
+              },
+              planning: {
+                setup_time_minutes: 20,
+                recommended_people: 2,
+                capacity_people: 4,
+                season_notes: ["봄, 여름, 가을 중심으로 적합"],
+                weather_notes: ["우천 시 플라이를 먼저 확인"],
+              },
+              sources: [
+                {
+                  title: "테스트 상품 페이지",
+                  url:
+                    state.equipment.durable.items[0].purchase_link ??
+                    "https://example.com/product",
+                  domain: "example.com",
+                },
+              ],
+            },
+          };
+        }
+      }
+
+      return mockFetch(input, init);
+    });
 
     render(<App />);
 
@@ -1629,10 +1750,11 @@ describe("App", () => {
     await userEvent.clear(modelInput);
     await userEvent.type(modelInput, "리빙쉘 5P");
 
-    await userEvent.click(screen.getByRole("button", { name: "메타데이터 재수집" }));
+    state.metadataStatuses["family-tent"] = [queuedStatus, null];
+    fireEvent.click(screen.getByRole("button", { name: "메타데이터 재수집" }));
 
-    expect(await screen.findByText("장비 메타데이터 재수집 완료")).toBeInTheDocument();
-    expect(screen.getByText("수집 완료")).toBeInTheDocument();
+    expect(await screen.findByText("장비 메타데이터 수집 시작")).toBeInTheDocument();
+    expect(await screen.findByText("수집 완료")).toBeInTheDocument();
     expect(screen.getByText("68 x 34 x 30 cm")).toBeInTheDocument();
     expect(screen.getByText(/검색 질의: 패밀리 텐트 리빙쉘 5P/u)).toBeInTheDocument();
     expect(screen.getByRole("link", { name: "테스트 상품 페이지" })).toHaveAttribute(
@@ -1668,6 +1790,13 @@ describe("App", () => {
           pathname === "/api/equipment/durable/items/family-tent/metadata/refresh" &&
           init?.method === "POST"
         );
+      }),
+    ).toBe(true);
+    expect(
+      fetchMock.mock.calls.some(([input, init]) => {
+        const rawUrl = typeof input === "string" ? input : input.toString();
+        const pathname = new URL(rawUrl, "http://localhost").pathname;
+        return pathname === "/api/equipment/durable/metadata-statuses" && !init?.method;
       }),
     ).toBe(true);
   });
@@ -2390,5 +2519,6 @@ function createMockState(): MockState {
     outputAvailability: {},
     updateTripCalls: [],
     dataBackups: [],
+    metadataStatuses: {},
   };
 }

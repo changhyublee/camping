@@ -13,6 +13,7 @@ import {
   companionSchema,
   companionsSchema,
   consumableEquipmentSchema,
+  durableMetadataJobStatusResponseSchema,
   durableEquipmentMetadataSchema,
   durableEquipmentSchema,
   equipmentCategoriesSchema,
@@ -38,6 +39,7 @@ import {
   type Companion,
   type CompanionInput,
   type CompanionsData,
+  type DurableMetadataJobStatusResponse,
   type DurableEquipmentData,
   type DurableEquipmentItem,
   type DurableEquipmentItemInput,
@@ -1015,6 +1017,90 @@ export class CampingRepository {
     );
   }
 
+  async readDurableMetadataJobStatus(
+    itemId: string,
+  ): Promise<DurableMetadataJobStatusResponse | null> {
+    const statusPath = this.getDurableMetadataJobStatusPath(itemId);
+
+    if (!(await fileExists(statusPath))) {
+      return null;
+    }
+
+    try {
+      const raw = await readFile(statusPath, "utf8");
+      const parsed = durableMetadataJobStatusResponseSchema.safeParse(JSON.parse(raw));
+      return parsed.success ? parsed.data : null;
+    } catch {
+      return null;
+    }
+  }
+
+  async listDurableMetadataJobStatuses(): Promise<DurableMetadataJobStatusResponse[]> {
+    const jobFiles = await this.listJsonFiles(this.getDurableMetadataJobDir());
+    const items = await Promise.all(
+      jobFiles.map(async (fileName) => {
+        const itemId = fileName.replace(/\.json$/u, "");
+        return this.readDurableMetadataJobStatus(itemId);
+      }),
+    );
+
+    return items
+      .filter((item): item is DurableMetadataJobStatusResponse => item !== null)
+      .sort((left, right) => {
+        const leftRequestedAt = left.requested_at ?? "";
+        const rightRequestedAt = right.requested_at ?? "";
+
+        if (leftRequestedAt !== rightRequestedAt) {
+          return rightRequestedAt.localeCompare(leftRequestedAt);
+        }
+
+        return left.item_id.localeCompare(right.item_id, "ko");
+      });
+  }
+
+  async saveDurableMetadataJobStatus(
+    value: DurableMetadataJobStatusResponse,
+  ): Promise<DurableMetadataJobStatusResponse> {
+    await this.writeJsonFile(this.getDurableMetadataJobStatusPath(value.item_id), value);
+    return value;
+  }
+
+  async deleteDurableMetadataJobStatus(itemId: string): Promise<void> {
+    await rm(this.getDurableMetadataJobStatusPath(itemId), { force: true });
+  }
+
+  async markPendingDurableMetadataJobStatusesInterrupted() {
+    const jobFiles = await this.listJsonFiles(this.getDurableMetadataJobDir());
+    const interruptedStatuses = await Promise.all(
+      jobFiles.map(async (fileName) => {
+        const itemId = fileName.replace(/\.json$/u, "");
+        const status = await this.readDurableMetadataJobStatus(itemId);
+
+        if (!status || !isPendingDurableMetadataJobStatus(status.status)) {
+          return null;
+        }
+
+        return this.saveDurableMetadataJobStatus({
+          item_id: itemId,
+          status: "interrupted",
+          requested_at: status.requested_at ?? null,
+          started_at: status.started_at ?? null,
+          finished_at: new Date().toISOString(),
+          error: {
+            code: "INTERNAL_ERROR",
+            message: "API 서버 재시작으로 이전 메타데이터 수집이 중단되었습니다.",
+          },
+        });
+      }),
+    );
+
+    return interruptedStatuses.filter(
+      (
+        item,
+      ): item is DurableMetadataJobStatusResponse => item !== null,
+    );
+  }
+
   private async createDurableItem(
     input: DurableEquipmentItemInput,
   ): Promise<DurableEquipmentItem> {
@@ -1096,6 +1182,7 @@ export class CampingRepository {
       items: nextItems,
     });
     await rm(this.getDurableEquipmentMetadataPath(itemId), { force: true });
+    await rm(this.getDurableMetadataJobStatusPath(itemId), { force: true });
   }
 
   private async createConsumableItem(
@@ -1576,6 +1663,20 @@ export class CampingRepository {
     return path.join(this.getDurableEquipmentMetadataDir(), `${itemId}.json`);
   }
 
+  private getDurableMetadataJobDir() {
+    return path.join(
+      this.config.dataDir,
+      "cache",
+      "equipment-metadata",
+      "jobs",
+      "durable",
+    );
+  }
+
+  private getDurableMetadataJobStatusPath(itemId: string) {
+    return path.join(this.getDurableMetadataJobDir(), `${itemId}.json`);
+  }
+
   private getConsumablesPath() {
     return path.join(this.config.dataDir, "equipment", "consumables.yaml");
   }
@@ -1754,6 +1855,12 @@ function normalizeTripDraft(draft: TripDraft, tripId: string): TripData {
 }
 
 function isPendingTripAnalysisStatus(status: TripAnalysisStatus) {
+  return status === "queued" || status === "running";
+}
+
+function isPendingDurableMetadataJobStatus(
+  status: DurableMetadataJobStatusResponse["status"],
+) {
   return status === "queued" || status === "running";
 }
 

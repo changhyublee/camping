@@ -29,7 +29,13 @@
 - 계획 원본인 `trips/*.yaml` 에 분석 상태를 섞지 않는다
 - 분석 상태는 `cache/analysis-jobs/*.json` 으로 저장한다
 
-### 원칙 5. 운영 데이터 백업은 별도 경로로 분리한다
+### 원칙 5. 반복 장비 메타데이터 상태도 원본 장비 파일과 분리한 JSON 캐시로 둔다
+
+- `equipment/durable.yaml` 에 메타데이터 작업 상태를 섞지 않는다
+- 메타데이터 결과는 `cache/equipment-metadata/durable/*.json` 으로 저장한다
+- 메타데이터 작업 상태는 `cache/equipment-metadata/jobs/durable/*.json` 으로 저장한다
+
+### 원칙 6. 운영 데이터 백업은 별도 경로로 분리한다
 
 - 시점별 백업은 `./.camping-backups/`
 - 운영 데이터와 다른 루트에 둬서 초기화 작업이 백업까지 지우지 않게 한다
@@ -56,7 +62,9 @@
 └── cache/
     ├── analysis-jobs/
     └── equipment-metadata/
-        └── durable/
+        ├── durable/
+        └── jobs/
+            └── durable/
 
 ./.camping-backups/
 └── <timestamp>/
@@ -94,12 +102,14 @@
 ### 4.3 작업 상태 및 캐시 데이터
 
 - 분석 작업 상태
+- 반복 장비 메타데이터 작업 상태
 - 날씨 캐시
 - 장소 캐시
 
 저장 위치:
 
 - `cache/analysis-jobs/*.json`
+- `cache/equipment-metadata/jobs/durable/*.json`
 - `cache/weather/*.json`
 - `cache/places/*.json`
 
@@ -180,6 +190,13 @@
 - 포장 크기, 무게, 설치 시간, 수용 인원, 계절/날씨 메모, 출처, 검색 상태 저장
 - `equipment/durable.yaml` 원본과 분리해 저장하고 API 응답에서 병합
 
+### `cache/equipment-metadata/jobs/durable/*.json`
+
+- 반복 장비별 백그라운드 메타데이터 수집 상태 캐시
+- `status`, `requested_at`, `started_at`, `finished_at`, `error` 저장
+- 성공 완료는 상태 파일 삭제로 처리하고, 파일이 없으면 해당 장비는 `idle` 로 간주한다
+- 같은 `item_id` 중복 수집 방지와 실패/중단 상태 복원의 기준으로 사용한다
+
 ### `cache/analysis-jobs/*.json`
 
 - 계획별 백그라운드 분석 상태 캐시
@@ -207,6 +224,7 @@
 - 히스토리의 사람/차량 스냅샷은 이후 기준 데이터가 바뀌어도 당시 기록으로 유지한다
 - 링크는 외부 API 캐시가 아니라 사용자가 관리하는 북마크 데이터다
 - 반복 장비 메타데이터는 사용자가 직접 입력하는 원본 장비 목록이 아니라 AI가 웹 검색으로 수집한 보강 정보다
+- 반복 장비 메타데이터 작업 상태는 원본 장비 YAML에 저장하지 않고 별도 상태 파일로 분리한다
 - `trip_id` 는 계획, 히스토리, 결과 Markdown 참조를 보호하기 위해 재사용하지 않는다
 - 분석 상태는 계획 원본 YAML에 저장하지 않고 별도 캐시 파일로 분리한다
 - API 서버가 재시작되면 남아 있던 `queued` 또는 `running` 상태는 `interrupted` 로 전환한다

@@ -4,7 +4,11 @@ import path from "node:path";
 import { fileURLToPath } from "node:url";
 import { afterEach, describe, expect, it } from "vitest";
 import { parse, stringify } from "yaml";
-import type { BackendHealth, DurableEquipmentMetadata } from "@camping/shared";
+import type {
+  BackendHealth,
+  DurableEquipmentMetadata,
+  DurableMetadataJobStatusResponse,
+} from "@camping/shared";
 import { buildServer } from "../src/server";
 import type { EquipmentMetadataSearchClient } from "../src/services/equipment-metadata-service";
 import type { AnalysisModelClient } from "../src/services/openai-client";
@@ -140,6 +144,77 @@ class MockEquipmentMetadataClient implements EquipmentMetadataSearchClient {
   }
 }
 
+class DeferredEquipmentMetadataClient implements EquipmentMetadataSearchClient {
+  public calls: string[] = [];
+  public maxConcurrentCalls = 0;
+  private currentConcurrentCalls = 0;
+  private resolvers = new Map<string, Array<(value: DurableEquipmentMetadata) => void>>();
+  private rejectors = new Map<string, Array<(reason?: unknown) => void>>();
+
+  async collectDurableEquipmentMetadata(input: {
+    item: { id: string; name: string; model?: string; purchase_link?: string };
+  }) {
+    this.calls.push(input.item.id);
+    this.currentConcurrentCalls += 1;
+    this.maxConcurrentCalls = Math.max(
+      this.maxConcurrentCalls,
+      this.currentConcurrentCalls,
+    );
+
+    return new Promise<DurableEquipmentMetadata>((resolve, reject) => {
+      const resolvers = this.resolvers.get(input.item.id) ?? [];
+      const rejectors = this.rejectors.get(input.item.id) ?? [];
+
+      resolvers.push((value) => {
+        this.currentConcurrentCalls -= 1;
+        const remainingResolvers = this.resolvers.get(input.item.id) ?? [];
+        remainingResolvers.shift();
+        if (remainingResolvers.length === 0) {
+          this.resolvers.delete(input.item.id);
+        }
+
+        const remainingRejectors = this.rejectors.get(input.item.id) ?? [];
+        remainingRejectors.shift();
+        if (remainingRejectors.length === 0) {
+          this.rejectors.delete(input.item.id);
+        }
+
+        resolve(value);
+      });
+      rejectors.push((reason) => {
+        this.currentConcurrentCalls -= 1;
+        const remainingResolvers = this.resolvers.get(input.item.id) ?? [];
+        remainingResolvers.shift();
+        if (remainingResolvers.length === 0) {
+          this.resolvers.delete(input.item.id);
+        }
+
+        const remainingRejectors = this.rejectors.get(input.item.id) ?? [];
+        remainingRejectors.shift();
+        if (remainingRejectors.length === 0) {
+          this.rejectors.delete(input.item.id);
+        }
+
+        reject(reason);
+      });
+
+      this.resolvers.set(input.item.id, resolvers);
+      this.rejectors.set(input.item.id, rejectors);
+    });
+  }
+
+  complete(
+    itemId: string,
+    metadata: DurableEquipmentMetadata = createDurableMetadataPayload(itemId),
+  ) {
+    this.resolvers.get(itemId)?.[0]?.(metadata);
+  }
+
+  fail(itemId: string, error: unknown) {
+    this.rejectors.get(itemId)?.[0]?.(error);
+  }
+}
+
 async function createSeededDataDir() {
   const tempRoot = await mkdtemp(path.join(os.tmpdir(), "camping-api-test-"));
   tempDirs.push(tempRoot);
@@ -171,6 +246,101 @@ async function waitForTripAnalysisStatus(
   }
 
   throw new Error(`Timed out waiting for analysis status: ${expectedStatus}`);
+}
+
+async function waitForDurableMetadataJobStatus(
+  app: Awaited<ReturnType<typeof buildServer>>,
+  itemId: string,
+  expectedStatus: DurableMetadataJobStatusResponse["status"] | null,
+) {
+  for (let attempt = 0; attempt < 60; attempt += 1) {
+    const response = await app.inject({
+      method: "GET",
+      url: "/api/equipment/durable/metadata-statuses",
+    });
+    const body = response.json();
+    const status = body.items.find(
+      (item: DurableMetadataJobStatusResponse) => item.item_id === itemId,
+    );
+
+    if ((expectedStatus === null && !status) || status?.status === expectedStatus) {
+      return status ?? null;
+    }
+
+    await new Promise((resolve) => setTimeout(resolve, 10));
+  }
+
+  throw new Error(`Timed out waiting for metadata status: ${expectedStatus}`);
+}
+
+async function waitForDurableMetadataJobStatuses(
+  app: Awaited<ReturnType<typeof buildServer>>,
+  predicate: (items: DurableMetadataJobStatusResponse[]) => boolean,
+) {
+  for (let attempt = 0; attempt < 60; attempt += 1) {
+    const response = await app.inject({
+      method: "GET",
+      url: "/api/equipment/durable/metadata-statuses",
+    });
+    const body = response.json() as { items: DurableMetadataJobStatusResponse[] };
+
+    if (predicate(body.items)) {
+      return body.items;
+    }
+
+    await new Promise((resolve) => setTimeout(resolve, 10));
+  }
+
+  throw new Error("Timed out waiting for metadata statuses");
+}
+
+function createDurableMetadataPayload(itemId: string): DurableEquipmentMetadata {
+  return {
+    lookup_status: "found",
+    searched_at: "2026-03-23T12:00:00.000Z",
+    query: `${itemId} metadata query`,
+    summary: `${itemId} 메타데이터를 확인했습니다.`,
+    product: {
+      brand: "A사",
+      official_name: `${itemId} 공식명`,
+      model: `${itemId} 모델`,
+    },
+    packing: {
+      width_cm: 68,
+      depth_cm: 34,
+      height_cm: 30,
+      weight_kg: 14.5,
+    },
+    planning: {
+      setup_time_minutes: 20,
+      recommended_people: 2,
+      capacity_people: 4,
+      season_notes: ["봄, 여름, 가을 중심으로 사용 적합"],
+      weather_notes: ["우천 시 플라이를 먼저 확인"],
+    },
+    sources: [
+      {
+        title: `${itemId} 상품 페이지`,
+        url: "https://example.com/product",
+        domain: "example.com",
+      },
+    ],
+  };
+}
+
+function createDurableEquipmentItemInput(
+  itemId: string,
+  overrides: Record<string, unknown> = {},
+) {
+  return {
+    id: itemId,
+    kind: `${itemId}-kind`,
+    name: `${itemId} 장비`,
+    category: "storage",
+    quantity: 1,
+    status: "ok",
+    ...overrides,
+  };
 }
 
 afterEach(async () => {
@@ -1202,9 +1372,9 @@ describe("API server", () => {
     await app.close();
   });
 
-  it("refreshes durable equipment metadata and merges it into the equipment catalog", async () => {
+  it("refreshes durable equipment metadata in the background and merges it into the equipment catalog", async () => {
     const dataDir = await createSeededDataDir();
-    const metadataClient = new MockEquipmentMetadataClient();
+    const metadataClient = new DeferredEquipmentMetadataClient();
     const app = await buildServer({
       dataDir,
       projectRoot,
@@ -1244,22 +1414,11 @@ describe("API server", () => {
       url: "/api/equipment/durable/items/tunnel-tent-4p-khaki/metadata/refresh",
     });
 
-    expect(refreshResponse.statusCode).toBe(200);
-    expect(metadataClient.lastItem).toEqual(
+    expect(refreshResponse.statusCode).toBe(202);
+    expect(refreshResponse.json()).toEqual(
       expect.objectContaining({
-        id: "tunnel-tent-4p-khaki",
-        purchase_link: "https://example.com/product",
-      }),
-    );
-    expect(refreshResponse.json().item).toEqual(
-      expect.objectContaining({
-        id: "tunnel-tent-4p-khaki",
-        metadata: expect.objectContaining({
-          lookup_status: "found",
-          packing: expect.objectContaining({
-            width_cm: 68,
-          }),
-        }),
+        item_id: "tunnel-tent-4p-khaki",
+        status: "queued",
       }),
     );
 
@@ -1270,6 +1429,40 @@ describe("API server", () => {
       "durable",
       "tunnel-tent-4p-khaki.json",
     );
+    const statusPath = path.join(
+      dataDir,
+      "cache",
+      "equipment-metadata",
+      "jobs",
+      "durable",
+      "tunnel-tent-4p-khaki.json",
+    );
+
+    const runningStatus = await waitForDurableMetadataJobStatus(
+      app,
+      "tunnel-tent-4p-khaki",
+      "running",
+    );
+
+    expect(runningStatus).toEqual(
+      expect.objectContaining({
+        item_id: "tunnel-tent-4p-khaki",
+        status: "running",
+      }),
+    );
+    expect(metadataClient.calls).toEqual(["tunnel-tent-4p-khaki"]);
+    await expect(readFile(metadataPath, "utf8")).rejects.toMatchObject({
+      code: "ENOENT",
+    });
+
+    metadataClient.complete(
+      "tunnel-tent-4p-khaki",
+      {
+        ...createDurableMetadataPayload("tunnel-tent-4p-khaki"),
+        query: "4인용 터널 텐트 카키 A사 패밀리 터널 4P",
+      },
+    );
+    await waitForDurableMetadataJobStatus(app, "tunnel-tent-4p-khaki", null);
 
     expect(
       JSON.parse(await readFile(metadataPath, "utf8")),
@@ -1279,6 +1472,9 @@ describe("API server", () => {
         query: expect.stringContaining("터널 텐트"),
       }),
     );
+    await expect(readFile(statusPath, "utf8")).rejects.toMatchObject({
+      code: "ENOENT",
+    });
 
     const catalogResponse = await app.inject({
       method: "GET",
@@ -1306,6 +1502,9 @@ describe("API server", () => {
     await expect(readFile(metadataPath, "utf8")).rejects.toMatchObject({
       code: "ENOENT",
     });
+    await expect(readFile(statusPath, "utf8")).rejects.toMatchObject({
+      code: "ENOENT",
+    });
 
     await app.close();
   });
@@ -1331,8 +1530,18 @@ describe("API server", () => {
       url: "/api/equipment/durable/items/folding-table/metadata/refresh",
     });
 
-    expect(response.statusCode).toBe(200);
-    expect(response.json().item.metadata).toEqual(
+    expect(response.statusCode).toBe(202);
+    await waitForDurableMetadataJobStatus(app, "folding-table", null);
+
+    const catalogResponse = await app.inject({
+      method: "GET",
+      url: "/api/equipment",
+    });
+    const item = catalogResponse
+      .json()
+      .durable.items.find((candidate: { id: string }) => candidate.id === "folding-table");
+
+    expect(item?.metadata).toEqual(
       expect.objectContaining({
         lookup_status: "not_found",
         summary: expect.stringContaining("확인하지 못함"),
@@ -1344,7 +1553,7 @@ describe("API server", () => {
 
   it("clears stale durable metadata when the metadata search inputs change", async () => {
     const dataDir = await createSeededDataDir();
-    const metadataClient = new MockEquipmentMetadataClient();
+    const metadataClient = new DeferredEquipmentMetadataClient();
     const app = await buildServer({
       dataDir,
       projectRoot,
@@ -1357,12 +1566,8 @@ describe("API server", () => {
       url: "/api/equipment/durable/items/tunnel-tent-4p-khaki/metadata/refresh",
     });
 
-    expect(refreshResponse.statusCode).toBe(200);
-    expect(refreshResponse.json().item.metadata).toEqual(
-      expect.objectContaining({
-        lookup_status: "found",
-      }),
-    );
+    expect(refreshResponse.statusCode).toBe(202);
+    await waitForDurableMetadataJobStatus(app, "tunnel-tent-4p-khaki", "running");
 
     const updateResponse = await app.inject({
       method: "PUT",
@@ -1402,6 +1607,262 @@ describe("API server", () => {
       .json()
       .durable.items.find((item: { id: string }) => item.id === "tunnel-tent-4p-khaki");
     expect(updatedItem?.metadata).toBeUndefined();
+
+    metadataClient.complete(
+      "tunnel-tent-4p-khaki",
+      createDurableMetadataPayload("tunnel-tent-4p-khaki"),
+    );
+
+    await waitForDurableMetadataJobStatuses(app, (items) => {
+      const status = items.find((item) => item.item_id === "tunnel-tent-4p-khaki");
+      return status?.status === "running" && metadataClient.calls.length === 2;
+    });
+
+    metadataClient.complete("tunnel-tent-4p-khaki", {
+      ...createDurableMetadataPayload("tunnel-tent-4p-khaki"),
+      query: "4인용 터널 텐트 샌드 A사 패밀리 터널 4P 샌드",
+      summary: "샌드 색상 기준 메타데이터를 다시 수집했습니다.",
+      product: {
+        brand: "A사",
+        official_name: "A사 패밀리 터널 4P 샌드",
+        model: "패밀리 터널 4P 샌드",
+      },
+    });
+    await waitForDurableMetadataJobStatus(app, "tunnel-tent-4p-khaki", null);
+
+    const refreshedCatalogResponse = await app.inject({
+      method: "GET",
+      url: "/api/equipment",
+    });
+    const refreshedItem = refreshedCatalogResponse
+      .json()
+      .durable.items.find((item: { id: string }) => item.id === "tunnel-tent-4p-khaki");
+
+    expect(metadataClient.calls).toEqual([
+      "tunnel-tent-4p-khaki",
+      "tunnel-tent-4p-khaki",
+    ]);
+    expect(refreshedItem?.metadata).toEqual(
+      expect.objectContaining({
+        query: "4인용 터널 텐트 샌드 A사 패밀리 터널 4P 샌드",
+        summary: "샌드 색상 기준 메타데이터를 다시 수집했습니다.",
+      }),
+    );
+
+    await app.close();
+  });
+
+  it("deduplicates repeated durable metadata refresh requests for the same item", async () => {
+    const dataDir = await createSeededDataDir();
+    const metadataClient = new DeferredEquipmentMetadataClient();
+    const app = await buildServer({
+      dataDir,
+      projectRoot,
+      modelClient: new MockAnalysisClient("# sample"),
+      equipmentMetadataClient: metadataClient,
+    });
+
+    const [firstResponse, secondResponse] = await Promise.all([
+      app.inject({
+        method: "POST",
+        url: "/api/equipment/durable/items/tunnel-tent-4p-khaki/metadata/refresh",
+      }),
+      app.inject({
+        method: "POST",
+        url: "/api/equipment/durable/items/tunnel-tent-4p-khaki/metadata/refresh",
+      }),
+    ]);
+
+    expect(firstResponse.statusCode).toBe(202);
+    expect(secondResponse.statusCode).toBe(202);
+    await waitForDurableMetadataJobStatus(app, "tunnel-tent-4p-khaki", "running");
+    expect(metadataClient.calls).toEqual(["tunnel-tent-4p-khaki"]);
+
+    metadataClient.complete("tunnel-tent-4p-khaki");
+    await waitForDurableMetadataJobStatus(app, "tunnel-tent-4p-khaki", null);
+
+    await app.close();
+  });
+
+  it("runs up to three durable metadata refresh jobs in parallel and queues the rest", async () => {
+    const dataDir = await createSeededDataDir();
+    const metadataClient = new DeferredEquipmentMetadataClient();
+    const app = await buildServer({
+      dataDir,
+      projectRoot,
+      modelClient: new MockAnalysisClient("# sample"),
+      equipmentMetadataClient: metadataClient,
+    });
+
+    const itemIds = [
+      "metadata-slot-1",
+      "metadata-slot-2",
+      "metadata-slot-3",
+      "metadata-slot-4",
+    ];
+
+    for (const itemId of itemIds) {
+      const createResponse = await app.inject({
+        method: "POST",
+        url: "/api/equipment/durable/items",
+        payload: createDurableEquipmentItemInput(itemId),
+      });
+
+      expect(createResponse.statusCode).toBe(200);
+    }
+
+    await Promise.all(
+      itemIds.map((itemId) =>
+        app.inject({
+          method: "POST",
+          url: `/api/equipment/durable/items/${itemId}/metadata/refresh`,
+        }),
+      ),
+    );
+
+    const initialStatuses = await waitForDurableMetadataJobStatuses(app, (items) => {
+      const runningCount = items.filter((item) => item.status === "running").length;
+      const queuedCount = items.filter((item) => item.status === "queued").length;
+
+      return runningCount === 3 && queuedCount === 1;
+    });
+
+    const queuedItemId = initialStatuses.find((item) => item.status === "queued")?.item_id;
+    const runningItemIds = initialStatuses
+      .filter((item) => item.status === "running")
+      .map((item) => item.item_id);
+
+    expect(queuedItemId).toBeDefined();
+    expect(runningItemIds).toHaveLength(3);
+
+    metadataClient.complete(runningItemIds[0]);
+
+    await waitForDurableMetadataJobStatuses(app, (items) => {
+      const queuedItem = items.find((item) => item.item_id === queuedItemId);
+      return queuedItem?.status === "running";
+    });
+
+    for (const itemId of itemIds.filter((itemId) => itemId !== runningItemIds[0])) {
+      metadataClient.complete(itemId);
+    }
+
+    for (const itemId of itemIds) {
+      await waitForDurableMetadataJobStatus(app, itemId, null);
+    }
+
+    expect(metadataClient.maxConcurrentCalls).toBe(3);
+
+    await app.close();
+  });
+
+  it("ignores stale in-flight results when a deleted durable item id is recreated", async () => {
+    const dataDir = await createSeededDataDir();
+    const metadataClient = new DeferredEquipmentMetadataClient();
+    const app = await buildServer({
+      dataDir,
+      projectRoot,
+      modelClient: new MockAnalysisClient("# sample"),
+      equipmentMetadataClient: metadataClient,
+    });
+
+    const itemId = "metadata-reuse";
+    const createResponse = await app.inject({
+      method: "POST",
+      url: "/api/equipment/durable/items",
+      payload: createDurableEquipmentItemInput(itemId, {
+        name: "기존 장비",
+        purchase_link: "https://example.com/old",
+      }),
+    });
+
+    expect(createResponse.statusCode).toBe(200);
+
+    const firstRefreshResponse = await app.inject({
+      method: "POST",
+      url: `/api/equipment/durable/items/${itemId}/metadata/refresh`,
+    });
+
+    expect(firstRefreshResponse.statusCode).toBe(202);
+    await waitForDurableMetadataJobStatus(app, itemId, "running");
+
+    const deleteResponse = await app.inject({
+      method: "DELETE",
+      url: `/api/equipment/durable/items/${itemId}`,
+    });
+
+    expect(deleteResponse.statusCode).toBe(200);
+
+    const recreateResponse = await app.inject({
+      method: "POST",
+      url: "/api/equipment/durable/items",
+      payload: createDurableEquipmentItemInput(itemId, {
+        name: "새 장비",
+        model: "신형 모델",
+        purchase_link: "https://example.com/new",
+      }),
+    });
+
+    expect(recreateResponse.statusCode).toBe(200);
+
+    const secondRefreshResponse = await app.inject({
+      method: "POST",
+      url: `/api/equipment/durable/items/${itemId}/metadata/refresh`,
+    });
+
+    expect(secondRefreshResponse.statusCode).toBe(202);
+    await waitForDurableMetadataJobStatus(app, itemId, "running");
+
+    metadataClient.complete(itemId, {
+      ...createDurableMetadataPayload(itemId),
+      query: "기존 장비 old metadata",
+      summary: "삭제된 장비에서 수집한 오래된 결과입니다.",
+    });
+
+    const runningAfterOldCompletion = await waitForDurableMetadataJobStatus(
+      app,
+      itemId,
+      "running",
+    );
+
+    expect(runningAfterOldCompletion).toEqual(
+      expect.objectContaining({
+        item_id: itemId,
+        status: "running",
+      }),
+    );
+
+    metadataClient.complete(itemId, {
+      ...createDurableMetadataPayload(itemId),
+      query: "새 장비 new metadata",
+      summary: "재생성된 장비 기준 최신 메타데이터입니다.",
+      product: {
+        brand: "B사",
+        official_name: "새 장비 공식명",
+        model: "신형 모델",
+      },
+    });
+
+    await waitForDurableMetadataJobStatus(app, itemId, null);
+
+    const catalogResponse = await app.inject({
+      method: "GET",
+      url: "/api/equipment",
+    });
+    const reusedItem = catalogResponse
+      .json()
+      .durable.items.find((item: { id: string }) => item.id === itemId);
+
+    expect(metadataClient.calls).toEqual([itemId, itemId]);
+    expect(reusedItem).toEqual(
+      expect.objectContaining({
+        id: itemId,
+        name: "새 장비",
+        metadata: expect.objectContaining({
+          query: "새 장비 new metadata",
+          summary: "재생성된 장비 기준 최신 메타데이터입니다.",
+        }),
+      }),
+    );
 
     await app.close();
   });

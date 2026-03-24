@@ -10,6 +10,8 @@ import type {
   Companion,
   ConsumableEquipmentItem,
   ConsumableEquipmentItemInput,
+  DurableMetadataJobStatus,
+  DurableMetadataJobStatusResponse,
   DurableEquipmentMetadata,
   DurableEquipmentItem,
   DurableEquipmentItemInput,
@@ -130,6 +132,7 @@ type PersistedUiState = {
 type CategoryDrafts = Record<EquipmentSection, EquipmentCategoryCreateInput>;
 type CategoryLabelDrafts = Record<EquipmentSection, Record<string, string>>;
 type SectionTrackedIds = Record<EquipmentSection, string[]>;
+type DurableMetadataJobStatusMap = Record<string, DurableMetadataJobStatusResponse>;
 
 export function App() {
   const [persistedUiState] = useState(() => readPersistedUiState());
@@ -172,8 +175,8 @@ export function App() {
   const [expandedCategorySections, setExpandedCategorySections] = useState<
     EquipmentSection[]
   >([]);
-  const [refreshingDurableMetadataIds, setRefreshingDurableMetadataIds] =
-    useState<string[]>([]);
+  const [durableMetadataJobStatuses, setDurableMetadataJobStatuses] =
+    useState<DurableMetadataJobStatusMap>({});
   const [categoryDrafts, setCategoryDrafts] =
     useState<CategoryDrafts>(createEmptyCategoryDrafts());
   const [categoryLabelDrafts, setCategoryLabelDrafts] =
@@ -209,6 +212,7 @@ export function App() {
   const historyOutputRequestIdRef = useRef(0);
   const planningLoadRequestIdRef = useRef(0);
   const durableSearchFingerprintRef = useRef<Record<string, string>>({});
+  const durableMetadataJobStatusesRef = useRef<DurableMetadataJobStatusMap>({});
   const analysisStatusRef = useRef<AnalyzeTripResponse | null>(null);
   const previousEquipmentGroupIdsRef =
     useRef<SectionTrackedIds>(createEmptySectionTrackedIds());
@@ -371,6 +375,14 @@ export function App() {
   );
   const currentEquipmentSectionLabel = EQUIPMENT_SECTION_LABELS[equipmentSection];
   const expandedCategorySectionCount = expandedCategorySections.length;
+  const refreshingDurableMetadataIds = useMemo(
+    () =>
+      Object.values(durableMetadataJobStatuses)
+        .filter((status) => isPendingDurableMetadataJobStatus(status.status))
+        .map((status) => status.item_id),
+    [durableMetadataJobStatuses],
+  );
+  const hasPendingDurableMetadataJobs = refreshingDurableMetadataIds.length > 0;
   const activeEquipmentTabId = getEquipmentSectionTabId(equipmentSection);
   const activeEquipmentPanelId = getEquipmentSectionPanelId(equipmentSection);
   const selectedTripCompanions = useMemo(
@@ -437,6 +449,29 @@ export function App() {
       window.clearTimeout(timeoutId);
     };
   }, [isAnalysisPending, isCreatingTrip, selectedTripId]);
+
+  useEffect(() => {
+    if (activePage !== "equipment" || !hasPendingDurableMetadataJobs) {
+      return;
+    }
+
+    const timeoutId = window.setTimeout(() => {
+      void syncDurableMetadataJobStatuses({
+        notifyTransitions: true,
+        refreshEquipmentOnCompletion: true,
+      }).catch((error) => {
+        setOperationState({
+          title: "메타데이터 상태 확인 실패",
+          tone: "warning",
+          description: getErrorMessage(error),
+        });
+      });
+    }, 2000);
+
+    return () => {
+      window.clearTimeout(timeoutId);
+    };
+  }, [activePage, hasPendingDurableMetadataJobs]);
 
   useEffect(() => {
     setDurableDraft((current) => ({
@@ -596,6 +631,7 @@ export function App() {
         tripResponse,
         equipmentResponse,
         equipmentCategoryResponse,
+        metadataStatusResponse,
         historyResponse,
         linkResponse,
       ] = await Promise.allSettled([
@@ -604,6 +640,7 @@ export function App() {
         apiClient.getTrips(),
         apiClient.getEquipment(),
         apiClient.getEquipmentCategories(),
+        apiClient.getDurableMetadataJobStatuses(),
         apiClient.getHistory(),
         apiClient.getLinks(),
       ]);
@@ -629,6 +666,11 @@ export function App() {
       setEquipment(equipmentResponse.value);
       durableSearchFingerprintRef.current = buildDurableFingerprintMap(
         equipmentResponse.value,
+      );
+      applyDurableMetadataJobStatuses(
+        metadataStatusResponse.status === "fulfilled"
+          ? metadataStatusResponse.value.items
+          : [],
       );
       setEquipmentCategories(
         equipmentCategoryResponse.status === "fulfilled"
@@ -680,6 +722,14 @@ export function App() {
         );
       }
 
+      if (metadataStatusResponse.status === "rejected") {
+        startupWarnings.push(
+          `메타데이터 수집 상태를 불러오지 못했습니다. ${getErrorMessage(
+            metadataStatusResponse.reason,
+          )}`,
+        );
+      }
+
       if (startupWarnings.length > 0) {
         setBannerState({
           title: "초기 로딩 경고",
@@ -700,6 +750,14 @@ export function App() {
   function applyAnalysisStatus(status: AnalyzeTripResponse | null) {
     analysisStatusRef.current = status;
     setAnalysisStatus(status);
+  }
+
+  function applyDurableMetadataJobStatuses(
+    statuses: DurableMetadataJobStatusResponse[],
+  ) {
+    const nextStatuses = createDurableMetadataJobStatusMap(statuses);
+    durableMetadataJobStatusesRef.current = nextStatuses;
+    setDurableMetadataJobStatuses(nextStatuses);
   }
 
   async function loadPlanningOutput(
@@ -788,10 +846,15 @@ export function App() {
     return response;
   }
 
-  async function refreshEquipmentState() {
-    const [catalogResponse, categoriesResponse] = await Promise.allSettled([
+  async function refreshEquipmentState(
+    options: { syncMetadataStatuses?: boolean } = {},
+  ) {
+    const [catalogResponse, categoriesResponse, metadataStatusesResponse] = await Promise.allSettled([
       apiClient.getEquipment(),
       apiClient.getEquipmentCategories(),
+      options.syncMetadataStatuses === false
+        ? Promise.resolve({ items: Object.values(durableMetadataJobStatusesRef.current) })
+        : apiClient.getDurableMetadataJobStatuses(),
     ]);
     const warnings: string[] = [];
 
@@ -812,44 +875,29 @@ export function App() {
       );
     }
 
-    return warnings;
-  }
+    if (metadataStatusesResponse.status === "fulfilled") {
+      applyDurableMetadataJobStatuses(metadataStatusesResponse.value.items);
+    } else {
+      warnings.push(
+        `메타데이터 상태 동기화 실패: ${getErrorMessage(metadataStatusesResponse.reason)}`,
+      );
+    }
 
-  function setDurableMetadataRefreshing(itemId: string, refreshing: boolean) {
-    setRefreshingDurableMetadataIds((current) =>
-      refreshing
-        ? current.includes(itemId)
-          ? current
-          : [...current, itemId]
-        : current.filter((candidate) => candidate !== itemId),
-    );
+    return warnings;
   }
 
   async function refreshDurableMetadata(
     itemId: string,
     options: { manual: boolean },
   ) {
-    setDurableMetadataRefreshing(itemId, true);
-
     try {
       const response = await apiClient.refreshDurableEquipmentMetadata(itemId);
-      durableSearchFingerprintRef.current = {
-        ...durableSearchFingerprintRef.current,
-        [itemId]: buildDurableMetadataFingerprint(response.item),
-      };
-      setEquipment((current) =>
-        current
-          ? {
-              ...current,
-              durable: {
-                ...current.durable,
-                items: current.durable.items.map((item) =>
-                  item.id === itemId ? response.item : item,
-                ),
-              },
-            }
-          : current,
-      );
+      applyDurableMetadataJobStatuses([
+        ...Object.values(durableMetadataJobStatusesRef.current).filter(
+          (status) => status.item_id !== itemId,
+        ),
+        response,
+      ]);
 
       return { warning: null as string | null };
     } catch (error) {
@@ -860,8 +908,6 @@ export function App() {
       }
 
       return { warning };
-    } finally {
-      setDurableMetadataRefreshing(itemId, false);
     }
   }
 
@@ -872,11 +918,80 @@ export function App() {
       savedFingerprint === buildDurableMetadataFingerprint(item) &&
       item.metadata
     ) {
-      return null;
+      return {
+        warning: null as string | null,
+        started: false,
+      };
     }
 
     const result = await refreshDurableMetadata(item.id, { manual: false });
-    return result.warning;
+    return {
+      warning: result.warning,
+      started: result.warning === null,
+    };
+  }
+
+  async function syncDurableMetadataJobStatuses(
+    options: {
+      notifyTransitions?: boolean;
+      refreshEquipmentOnCompletion?: boolean;
+    } = {},
+  ) {
+    const previousStatuses = durableMetadataJobStatusesRef.current;
+    const response = await apiClient.getDurableMetadataJobStatuses();
+
+    applyDurableMetadataJobStatuses(response.items);
+
+    const completedIds = Object.values(previousStatuses)
+      .filter(
+        (status) =>
+          isPendingDurableMetadataJobStatus(status.status) &&
+          !response.items.some((item) => item.item_id === status.item_id),
+      )
+      .map((status) => status.item_id);
+    const transitionedWarnings = response.items.filter((status) => {
+      const previousStatus = previousStatuses[status.item_id];
+
+      return (
+        !!previousStatus &&
+        isPendingDurableMetadataJobStatus(previousStatus.status) &&
+        (status.status === "failed" || status.status === "interrupted")
+      );
+    });
+
+    if (completedIds.length > 0 && options.refreshEquipmentOnCompletion) {
+      const syncWarnings = await refreshEquipmentState({ syncMetadataStatuses: false });
+
+      if (syncWarnings.length > 0) {
+        setOperationState({
+          title: "장비 동기화 경고",
+          tone: "warning",
+          description: "메타데이터 수집은 완료됐지만 일부 상태를 다시 불러오지 못했습니다.",
+          items: syncWarnings,
+        });
+      }
+    }
+
+    if (options.notifyTransitions && transitionedWarnings.length > 0) {
+      setOperationState({
+        title: "메타데이터 수집 경고",
+        tone: "warning",
+        description:
+          transitionedWarnings.length === 1
+            ? transitionedWarnings[0].error?.message ??
+              `${transitionedWarnings[0].item_id} 메타데이터 수집이 중단되었거나 실패했습니다.`
+            : "일부 장비 메타데이터 수집이 중단되었거나 실패했습니다.",
+        items:
+          transitionedWarnings.length > 1
+            ? transitionedWarnings.map(
+                (status) =>
+                  `${status.item_id}: ${status.error?.message ?? getDurableMetadataStatusLabel(status.status)}`,
+              )
+            : undefined,
+      });
+    }
+
+    return response.items;
   }
 
   function beginCreateTrip() {
@@ -1315,6 +1430,9 @@ export function App() {
 
   async function handleApplyAssistantAction(action: PlanningAssistantAction) {
     try {
+      const additionalWarnings: string[] = [];
+      let metadataCollectionStarted = false;
+
       if (action.action === "increase_quantity" && action.item_id) {
         const currentItem = findEquipmentItem(equipment, action.section, action.item_id);
 
@@ -1355,7 +1473,14 @@ export function App() {
       if (action.action === "add_item") {
         if (action.section === "durable" && action.durable_item) {
           const { id: _ignored, ...payload } = action.durable_item;
-          await apiClient.createEquipmentItem("durable", payload);
+          const response = await apiClient.createEquipmentItem("durable", payload);
+          const metadataRefreshResult = await maybeAutoRefreshDurableMetadata(
+            response.item as DurableEquipmentItem,
+          );
+          metadataCollectionStarted = metadataRefreshResult.started;
+          if (metadataRefreshResult.warning) {
+            additionalWarnings.push(metadataRefreshResult.warning);
+          }
         }
 
         if (action.section === "consumables" && action.consumable_item) {
@@ -1369,11 +1494,17 @@ export function App() {
         }
       }
 
-      const syncWarnings = await refreshEquipmentState();
+      const syncWarnings = [
+        ...(await refreshEquipmentState()),
+        ...additionalWarnings,
+      ];
       setOperationState({
         title: "AI 제안 반영 완료",
         tone: syncWarnings.length > 0 ? "warning" : "success",
-        description: appendSyncWarnings(action.title, syncWarnings),
+        description: appendSyncWarnings(
+          `${action.title}${metadataCollectionStarted ? " 메타데이터 수집은 백그라운드에서 계속됩니다." : ""}`,
+          syncWarnings,
+        ),
       });
     } catch (error) {
       setOperationState({
@@ -1387,14 +1518,16 @@ export function App() {
   async function handleCreateEquipmentItem(section: EquipmentSection) {
     try {
       const additionalWarnings: string[] = [];
+      let metadataCollectionStarted = false;
 
       if (section === "durable") {
         const response = await apiClient.createEquipmentItem(section, durableDraft);
-        const metadataWarning = await maybeAutoRefreshDurableMetadata(
+        const metadataRefreshResult = await maybeAutoRefreshDurableMetadata(
           response.item as DurableEquipmentItem,
         );
-        if (metadataWarning) {
-          additionalWarnings.push(metadataWarning);
+        metadataCollectionStarted = metadataRefreshResult.started;
+        if (metadataRefreshResult.warning) {
+          additionalWarnings.push(metadataRefreshResult.warning);
         }
         setDurableDraft((current) => ({
           ...createEmptyDurableItem(),
@@ -1435,7 +1568,7 @@ export function App() {
         title: "장비 항목 추가 완료",
         tone: syncWarnings.length > 0 ? "warning" : "success",
         description: appendSyncWarnings(
-          `${section} 섹션에 새 항목을 추가했습니다.`,
+          `${section} 섹션에 새 항목을 추가했습니다.${metadataCollectionStarted ? " 메타데이터 수집은 백그라운드에서 계속됩니다." : ""}`,
           syncWarnings,
         ),
       });
@@ -1456,14 +1589,16 @@ export function App() {
 
     try {
       const additionalWarnings: string[] = [];
+      let metadataCollectionStarted = false;
 
       if (section === "durable") {
         const item = equipment.durable.items.find((candidate) => candidate.id === itemId);
         if (item) {
           await apiClient.updateEquipmentItem(section, itemId, toDurableEquipmentInput(item));
-          const metadataWarning = await maybeAutoRefreshDurableMetadata(item);
-          if (metadataWarning) {
-            additionalWarnings.push(metadataWarning);
+          const metadataRefreshResult = await maybeAutoRefreshDurableMetadata(item);
+          metadataCollectionStarted = metadataRefreshResult.started;
+          if (metadataRefreshResult.warning) {
+            additionalWarnings.push(metadataRefreshResult.warning);
           }
         }
       }
@@ -1493,7 +1628,10 @@ export function App() {
       setOperationState({
         title: "장비 저장 완료",
         tone: syncWarnings.length > 0 ? "warning" : "success",
-        description: appendSyncWarnings(itemId, syncWarnings),
+        description: appendSyncWarnings(
+          `${itemId}${metadataCollectionStarted ? " 메타데이터 수집은 백그라운드에서 계속됩니다." : ""}`,
+          syncWarnings,
+        ),
       });
     } catch (error) {
       setOperationState({
@@ -1542,9 +1680,12 @@ export function App() {
       await refreshDurableMetadata(itemId, { manual: true });
       const syncWarnings = await refreshEquipmentState();
       setOperationState({
-        title: "장비 메타데이터 재수집 완료",
+        title: "장비 메타데이터 수집 시작",
         tone: syncWarnings.length > 0 ? "warning" : "success",
-        description: appendSyncWarnings(itemId, syncWarnings),
+        description: appendSyncWarnings(
+          `${itemId} 메타데이터를 백그라운드에서 다시 수집합니다.`,
+          syncWarnings,
+        ),
       });
     } catch (error) {
       setOperationState({
@@ -2837,6 +2978,7 @@ function handleChangeEquipmentItemCategory(
                       collapsedCategoryIds={collapsedEquipmentCategories.durable}
                       expandedItemIds={expandedEquipmentItems.durable}
                       items={equipment?.durable.items ?? []}
+                      metadataJobStatuses={durableMetadataJobStatuses}
                       refreshingMetadataIds={refreshingDurableMetadataIds}
                       onDelete={(itemId) => handleDeleteEquipmentItem("durable", itemId)}
                       onRefreshMetadata={(itemId) => handleRefreshDurableMetadata(itemId)}
@@ -4984,6 +5126,7 @@ type GroupedEquipmentListProps<T extends { id: string; name: string; category: s
   onToggleCategory: (categoryId: string) => void;
   onToggleItem: (itemId: string) => void;
   renderSummaryMeta: (item: T) => {
+    metadata?: string;
     quantity?: string;
     status: string;
   };
@@ -5059,6 +5202,11 @@ function GroupedEquipmentList<T extends { id: string; name: string; category: st
                               {summary.quantity}
                             </span>
                           ) : null}
+                          {summary.metadata ? (
+                            <span className="equipment-item-summary__badge">
+                              {summary.metadata}
+                            </span>
+                          ) : null}
                           <span className="equipment-item-summary__badge">
                             {summary.status}
                           </span>
@@ -5089,6 +5237,7 @@ function EquipmentList(props: {
   collapsedCategoryIds: string[];
   expandedItemIds: string[];
   items: DurableEquipmentItem[];
+  metadataJobStatuses: DurableMetadataJobStatusMap;
   refreshingMetadataIds: string[];
   onToggleCategory: (categoryId: string) => void;
   onToggleItem: (itemId: string) => void;
@@ -5188,7 +5337,10 @@ function EquipmentList(props: {
           <p className="equipment-helper-copy">
             장비명, 모델명, 구매 링크는 AI 메타데이터 검색의 기준으로 사용됩니다.
           </p>
-          <DurableMetadataSection metadata={item.metadata} />
+          <DurableMetadataSection
+            metadata={item.metadata}
+            jobStatus={props.metadataJobStatuses[item.id]}
+          />
           <div className="button-row">
             <button className="button" onClick={() => props.onSave(item.id)} type="button">
               저장
@@ -5210,6 +5362,9 @@ function EquipmentList(props: {
         </>
       )}
       renderSummaryMeta={(item: DurableEquipmentItem) => ({
+        metadata: getDurableMetadataSummaryStatusLabel(
+          props.metadataJobStatuses[item.id]?.status,
+        ),
         quantity: `수량 ${item.quantity}`,
         status: getStatusLabel(DURABLE_STATUS_LABELS, item.status),
       })}
@@ -5220,18 +5375,29 @@ function EquipmentList(props: {
 
 function DurableMetadataSection(props: {
   metadata?: DurableEquipmentMetadata;
+  jobStatus?: DurableMetadataJobStatusResponse;
 }) {
   const metadata = props.metadata;
+  const jobStatus = props.jobStatus;
+  const jobBadgeLabel = getDurableMetadataCardBadgeLabel(jobStatus?.status, metadata);
 
   if (!metadata) {
     return (
       <section className="metadata-card">
         <div className="metadata-card__header">
           <strong>장비 메타데이터</strong>
-          <span className="equipment-item-summary__badge">미수집</span>
+          <span className="equipment-item-summary__badge">{jobBadgeLabel}</span>
         </div>
         <p className="metadata-card__copy">
-          아직 수집된 메타데이터가 없습니다. 저장 후 자동 수집되거나 수동으로 재수집할 수 있습니다.
+          {isPendingDurableMetadataJobStatus(jobStatus?.status)
+            ? "백그라운드에서 메타데이터를 수집 중입니다. 완료되면 이 카드가 자동으로 갱신됩니다."
+            : jobStatus?.status === "failed"
+              ? jobStatus.error?.message ??
+                "메타데이터 수집이 실패했습니다. 장비 정보를 확인한 뒤 다시 실행해 주세요."
+              : jobStatus?.status === "interrupted"
+                ? jobStatus.error?.message ??
+                  "이전 메타데이터 수집이 중단되었습니다. 다시 실행해 주세요."
+                : "아직 수집된 메타데이터가 없습니다. 저장 후 자동 수집되거나 수동으로 재수집할 수 있습니다."}
         </p>
       </section>
     );
@@ -5244,13 +5410,22 @@ function DurableMetadataSection(props: {
     <section className="metadata-card">
       <div className="metadata-card__header">
         <strong>장비 메타데이터</strong>
-        <span className="equipment-item-summary__badge">
-          {DURABLE_METADATA_STATUS_LABELS[metadata.lookup_status]}
-        </span>
+        <span className="equipment-item-summary__badge">{jobBadgeLabel}</span>
       </div>
       <p className="metadata-card__copy">
         마지막 수집: {formatRelativeDate(metadata.searched_at)} / 검색 질의: {metadata.query}
       </p>
+      {jobStatus?.status === "failed" || jobStatus?.status === "interrupted" ? (
+        <p className="metadata-card__copy">
+          {jobStatus.error?.message ??
+            `${getDurableMetadataStatusLabel(jobStatus.status)} 상태입니다. 다시 수집해 주세요.`}
+        </p>
+      ) : null}
+      {isPendingDurableMetadataJobStatus(jobStatus?.status) ? (
+        <p className="metadata-card__copy">
+          현재 저장된 메타데이터를 유지한 채 백그라운드에서 최신 정보로 갱신 중입니다.
+        </p>
+      ) : null}
       {metadata.summary ? <p className="metadata-card__copy">{metadata.summary}</p> : null}
       <div className="metadata-grid">
         <div className="metadata-grid__item">
@@ -5723,6 +5898,66 @@ function buildDurableFingerprintMap(catalog: EquipmentCatalog) {
   return Object.fromEntries(
     catalog.durable.items.map((item) => [item.id, buildDurableMetadataFingerprint(item)]),
   );
+}
+
+function createDurableMetadataJobStatusMap(
+  items: DurableMetadataJobStatusResponse[],
+): DurableMetadataJobStatusMap {
+  return Object.fromEntries(items.map((item) => [item.item_id, item]));
+}
+
+function isPendingDurableMetadataJobStatus(status?: DurableMetadataJobStatus) {
+  return status === "queued" || status === "running";
+}
+
+function getDurableMetadataStatusLabel(status?: DurableMetadataJobStatus) {
+  switch (status) {
+    case "queued":
+      return "대기 중";
+    case "running":
+      return "수집 중";
+    case "failed":
+      return "수집 실패";
+    case "interrupted":
+      return "수집 중단";
+    default:
+      return "미수집";
+  }
+}
+
+function getDurableMetadataSummaryStatusLabel(status?: DurableMetadataJobStatus) {
+  switch (status) {
+    case "queued":
+    case "running":
+      return "메타 수집 중";
+    case "failed":
+      return "메타 실패";
+    case "interrupted":
+      return "메타 중단";
+    default:
+      return undefined;
+  }
+}
+
+function getDurableMetadataCardBadgeLabel(
+  status: DurableMetadataJobStatus | undefined,
+  metadata?: DurableEquipmentMetadata,
+) {
+  if (status === "queued" || status === "running") {
+    return "백그라운드 수집 중";
+  }
+
+  if (status === "failed") {
+    return "재수집 실패";
+  }
+
+  if (status === "interrupted") {
+    return "재수집 중단";
+  }
+
+  return metadata
+    ? DURABLE_METADATA_STATUS_LABELS[metadata.lookup_status]
+    : "미수집";
 }
 
 function buildDashboardAlerts(catalog: EquipmentCatalog | null) {

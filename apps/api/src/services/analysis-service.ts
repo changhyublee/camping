@@ -7,6 +7,7 @@ import type {
   ConsumableEquipmentItemInput,
   DataBackupSnapshot,
   DurableEquipmentItemInput,
+  DurableMetadataJobStatusResponse,
   EquipmentCatalog,
   EquipmentCategoriesData,
   EquipmentCategory,
@@ -31,6 +32,7 @@ import type { CampingRepository } from "../file-store/camping-repository";
 import type { DataBackupReason } from "../file-store/local-data-backup";
 import { AppError } from "./app-error";
 import { AnalysisJobManager } from "./analysis-job-manager";
+import { EquipmentMetadataJobManager } from "./equipment-metadata-job-manager";
 import type { EquipmentMetadataSearchClient } from "./equipment-metadata-service";
 import type { AnalysisModelClient } from "./openai-client";
 import { runPlanningAssistant } from "./planning-assistant";
@@ -44,6 +46,7 @@ type EquipmentItemInput =
 
 export class AnalysisService {
   private readonly analysisJobManager: AnalysisJobManager;
+  private readonly metadataJobManager: EquipmentMetadataJobManager;
 
   constructor(
     private readonly repository: CampingRepository,
@@ -54,10 +57,16 @@ export class AnalysisService {
       repository,
       async (input) => this.executeTripAnalysis(input),
     );
+    this.metadataJobManager = new EquipmentMetadataJobManager(
+      repository,
+      equipmentMetadataClient,
+      3,
+    );
   }
 
   async initialize() {
     await this.analysisJobManager.recoverInterruptedJobs();
+    await this.metadataJobManager.recoverInterruptedJobs();
   }
 
   async listTrips() {
@@ -209,20 +218,20 @@ export class AnalysisService {
   }
 
   async deleteEquipmentItem(section: EquipmentSection, itemId: string) {
+    if (section === "durable") {
+      await this.metadataJobManager.cancelDurableMetadataRefresh(itemId);
+    }
+
     await this.repository.deleteEquipmentItem(section, itemId);
     return { status: "deleted" as const };
   }
 
   async refreshDurableEquipmentMetadata(itemId: string) {
-    const item = await this.repository.readDurableItem(itemId);
-    const categoryLabel = await this.repository.readDurableCategoryLabel(item.category);
-    const metadata = await this.equipmentMetadataClient.collectDurableEquipmentMetadata({
-      item,
-      categoryLabel,
-    });
+    return this.metadataJobManager.enqueueDurableMetadataRefresh(itemId);
+  }
 
-    await this.repository.saveDurableEquipmentMetadata(itemId, metadata);
-    return this.repository.readEnrichedDurableItem(itemId);
+  async listDurableMetadataJobStatuses(): Promise<DurableMetadataJobStatusResponse[]> {
+    return this.metadataJobManager.listDurableMetadataJobStatuses();
   }
 
   async listLinks() {

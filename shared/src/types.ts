@@ -13,6 +13,8 @@ import type {
   createDataBackupResponseSchema,
   dataBackupReasonSchema,
   dataBackupSnapshotSchema,
+  durableMetadataJobStatusResponseSchema,
+  durableMetadataJobStatusSchema,
   durableEquipmentMetadataSchema,
   durableEquipmentMetadataSourceSchema,
   consumableEquipmentItemSchema,
@@ -38,6 +40,7 @@ import type {
   getTripAnalysisStatusResponseSchema,
   historyRecordSchema,
   listDataBackupsResponseSchema,
+  listDurableMetadataJobStatusesResponseSchema,
   planningAssistantActionSchema,
   planningAssistantRequestSchema,
   planningAssistantResponseSchema,
@@ -153,6 +156,15 @@ export type ListDataBackupsResponse = z.infer<typeof listDataBackupsResponseSche
 export type CreateDataBackupResponse = z.infer<typeof createDataBackupResponseSchema>;
 export type RefreshDurableEquipmentMetadataResponse = z.infer<
   typeof refreshDurableEquipmentMetadataResponseSchema
+>;
+export type DurableMetadataJobStatus = z.infer<
+  typeof durableMetadataJobStatusSchema
+>;
+export type DurableMetadataJobStatusResponse = z.infer<
+  typeof durableMetadataJobStatusResponseSchema
+>;
+export type ListDurableMetadataJobStatusesResponse = z.infer<
+  typeof listDurableMetadataJobStatusesResponseSchema
 >;
 export type ApiError = z.infer<typeof apiErrorSchema>;
 export type AnalysisBackend = z.infer<typeof analysisBackendSchema>;

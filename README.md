@@ -23,7 +23,7 @@
 - `준비 데이터`
   - `사람 관리`: 캠핑 인원 프로필, 건강 특이사항, 복용약, 민감도 관리
   - `차량 관리`: 자주 쓰는 차량, 탑승 인원, 적재량, 메모 관리
-  - `장비 관리`: 반복 장비, 소모품, 출발 전 점검 항목 CRUD, 장비 섹션별 카테고리 셀렉트 기반 관리
+  - `장비 관리`: 반복 장비, 소모품, 출발 전 점검 항목 CRUD, 장비 섹션별 카테고리 셀렉트 기반 관리, 반복 장비 메타데이터 백그라운드 수집 상태 표시
   - `외부 링크`: 날씨, 장소, 맛집, 장보기 등 참고 링크 CRUD, 카테고리별 그룹 목록
 - `관리 설정`
   - `카테고리 설정`: 장비 섹션별 카테고리 추가/수정/삭제, 표시 이름 관리, 수동 백업 실행
@@ -39,7 +39,7 @@
   - vehicles CRUD
   - trip CRUD + 검증 + 백그라운드 분석 + 분석 상태 조회 + 결과 저장
   - 저장된 결과 Markdown 조회
-  - equipment CRUD + 반복 장비 메타데이터 수집/재수집
+  - equipment CRUD + 반복 장비 메타데이터 백그라운드 수집/재수집 + 상태 조회
   - equipment category CRUD
   - history 조회/수정/삭제 + trip 아카이브 + 동행자/차량 스냅샷 저장
   - links CRUD
@@ -157,6 +157,8 @@ pnpm build
 - 외부 링크는 사용자가 직접 관리하는 링크 데이터입니다.
 - 장비 카테고리는 `equipment/categories.yaml` 에서 관리하며 장비 화면에서는 셀렉트로 선택합니다.
 - 반복 장비는 선택적으로 `purchase_link` 를 저장할 수 있고, 로컬 API의 AI 메타데이터 수집 시 참고 자료로 사용합니다.
+- 반복 장비 메타데이터 상태는 `.camping-data/cache/equipment-metadata/jobs/durable/*.json` 에 저장하고, 실제 수집 결과는 `.camping-data/cache/equipment-metadata/durable/*.json` 에 저장합니다.
+- 반복 장비 메타데이터 수집은 같은 장비 중복 실행을 막고 최대 3건까지 병렬로 실행합니다.
 - 브라우저에서 OpenAI API를 직접 호출하지 않습니다.
 - `pnpm seed` 는 새 환경 초기화용 명령이며, 기존 데이터가 있으면 중단됩니다.
 - `pnpm seed -- --replace` 는 기존 `.camping-data/` 를 `.camping-backups/<timestamp>/` 에 백업한 뒤 `docs/examples/` 기준으로 다시 생성합니다.

@@ -18,6 +18,7 @@ import type {
   GetOutputResponse,
   GetTripAnalysisStatusResponse,
   HistoryRecord,
+  ListDurableMetadataJobStatusesResponse,
   PlanningAssistantResponse,
   PrecheckItemInput,
   RefreshDurableEquipmentMetadataResponse,
@@ -258,6 +259,9 @@ export const apiClient = {
     return request(`/api/equipment/durable/items/${itemId}/metadata/refresh`, {
       method: "POST",
     });
+  },
+  async getDurableMetadataJobStatuses(): Promise<ListDurableMetadataJobStatusesResponse> {
+    return request("/api/equipment/durable/metadata-statuses");
   },
   async deleteEquipmentItem(
     section: EquipmentSection,
