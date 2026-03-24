@@ -1275,10 +1275,11 @@ describe("App", () => {
     await userEvent.click(screen.getByRole("checkbox", { name: /^본인/u }));
     await userEvent.click(screen.getByRole("checkbox", { name: /^첫째/u }));
 
-    expect(screen.getByText("2명 선택")).toBeInTheDocument();
     expect(
       screen.queryByText("동행자를 선택하면 요약 정보가 여기 표시됩니다."),
     ).toBeNull();
+    expect(screen.getByText("self")).toBeInTheDocument();
+    expect(screen.getByText("child-1")).toBeInTheDocument();
     await userEvent.click(screen.getByRole("button", { name: "계획 저장" }));
 
     await waitFor(() => {

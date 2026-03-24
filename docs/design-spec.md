@@ -136,7 +136,7 @@
 
 | 역할 | 폰트 | 규칙 |
 | --- | --- | --- |
-| hero 제목, 페이지 제목, panel 제목 | `"Iowan Old Style", "Palatino Linotype", "Book Antiqua", Georgia, serif` | 브랜드 인상과 도메인 톤 유지 |
+| 페이지 인트로 제목, 페이지 제목, panel 제목 | `"Iowan Old Style", "Palatino Linotype", "Book Antiqua", Georgia, serif` | 브랜드 인상과 도메인 톤 유지 |
 | 본문, 설명, 버튼, 라벨 | `"Pretendard", "Noto Sans KR", "Apple SD Gothic Neo", "Malgun Gothic", "Segoe UI", sans-serif` | 한국어 UI 가독성 우선 |
 | 코드, 파일 경로, 수치 ID | `"SFMono-Regular", "JetBrains Mono", "Cascadia Code", "Fira Code", monospace` | 좁은 폭, 숫자 비교, 결과 Markdown 내부에 사용 |
 
@@ -144,7 +144,7 @@
 
 - body 기본은 `16px` 미만으로 내리지 않는다.
 - 작은 메타와 eyebrow는 `12px`~`13px` 범위를 허용하지만, 버튼/폼 라벨은 `15px` 안팎을 기본값으로 둔다.
-- panel title은 `1.3rem` 이상, 페이지 제목은 `2rem` 이상, 글로벌 제목은 `2.2rem` 이상을 유지한다.
+- panel title은 `1.3rem` 이상, 페이지 제목은 `2rem` 이상을 유지한다.
 - 줄간은 본문 `1.6` 안팎, 설명문 `1.6~1.7` 범위를 유지한다.
 - 긴 본문은 가능한 한 `60ch` 안팎의 읽기 폭 안에서 마무리한다.
 
@@ -164,8 +164,8 @@
 | 일반 카드 간격 | `18px` |
 | 내부 그룹 간격 | `10px`~`12px` |
 | panel padding | `24px` |
-| hero padding | `24px`~`26px` |
-| hero radius | `28px` |
+| page intro padding | `24px`~`26px` |
+| page intro radius | `28px` |
 | panel radius | `26px` |
 | 일반 카드 radius | `22px` |
 | 버튼/탭 radius | `20px` 또는 `999px` |
@@ -209,7 +209,7 @@
 
 - 전체 앱은 `min(1420px, calc(100vw - 32px))` 폭을 기본으로 한다.
 - 상단 여백은 `24px`, 하단 여백은 `40px` 를 유지한다.
-- 첫 인상은 항상 `compact global header + sidebar + content` 조합을 따른다.
+- 첫 인상은 항상 `sidebar + content` 조합 위에 현재 페이지 인트로가 읽히는 구조를 따른다.
 
 ## 5.2 공통 배치
 
@@ -223,7 +223,7 @@
 ### 태블릿 이하
 
 - `1240px` 이하에서는 sidebar와 주요 page grid를 1열로 접는다.
-- `860px` 이하에서는 global header와 page intro도 1열로 접고 panel padding을 줄인다.
+- `860px` 이하에서는 page intro와 주요 그리드를 1열로 접고 panel padding을 줄인다.
 - `720px` 이하에서는 fixed toast와 metadata grid를 단일 컬럼으로 단순화한다.
 
 ## 5.3 워크벤치 규칙
@@ -242,12 +242,12 @@
 
 ## 6. 컴포넌트 스펙
 
-## 6.1 Hero
+## 6.1 Page Intro
 
-- 페이지 시작점은 반드시 `현재 위치`, `핵심 문장`, `보조 설명`, `현재 상태 요약` 을 포함한다.
-- hero 오른쪽 메타 카드에는 시스템 상태, 현재 선택 항목, 현재 계획 기준처럼 `문맥 복원` 에 필요한 정보만 둔다.
-- 파일 경로와 생성 규칙처럼 설명성 성격이 강한 정보는 기본 hero에 두지 않고 `보조 설명` 화면으로 분리한다.
-- hero는 마케팅 배너처럼 화려하면 안 되고 운영형 도구의 시작 카드처럼 보여야 한다.
+- 각 페이지의 시작점은 `현재 위치`, `핵심 문장`, `보조 설명`, `현재 상태 요약` 을 포함하는 page intro 카드로 구성한다.
+- 페이지 인트로 오른쪽 메타 카드에는 현재 선택 항목, 경고 수, 링크 그룹 수처럼 `문맥 복원` 에 필요한 정보만 둔다.
+- 파일 경로와 생성 규칙처럼 설명성 성격이 강한 정보는 page intro에 두지 않고 `보조 설명` 화면으로 분리한다.
+- page intro는 마케팅 배너처럼 화려하면 안 되고 운영형 도구의 시작 카드처럼 보여야 한다.
 
 ## 6.2 Panel
 
@@ -320,7 +320,7 @@
 
 ## 7.1 대시보드
 
-- `hero`
+- `page intro`
 - `운영 지표 2x2 metric grid`
 - `예정 계획`, `최근 히스토리` 2열 카드
 - `점검 경고`, `빠른 이동`, `외부 링크 요약` 보조 카드

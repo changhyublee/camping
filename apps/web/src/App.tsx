@@ -580,17 +580,6 @@ export function App() {
     selectedHistory?.title ??
     formatCompactTripId(selectedHistoryId) ??
     "없음";
-  const activePageLead = {
-    dashboard: "예정 계획과 점검 경고를 먼저 훑고 다음 작업으로 바로 이동하는 운영 허브입니다.",
-    planning: "trip 원본 입력, AI 보조, 최종 분석 결과를 단계별로 다루는 핵심 작업 화면입니다.",
-    history: "완료된 계획과 저장된 결과 Markdown을 다시 열어보는 기록 보관 화면입니다.",
-    companions: "캠핑 인원 프로필을 미리 정리하고 계획 화면에서는 선택만 하도록 분리한 화면입니다.",
-    vehicles: "차량 정보를 미리 관리해 캠핑 계획에서는 차량 선택과 요약 확인만 하도록 정리한 화면입니다.",
-    equipment: "보유 장비, 소모품, 출발 전 점검을 읽기 쉬운 목록으로 정리하는 화면입니다.",
-    links: "날씨, 장소, 맛집 같은 참고 링크를 카테고리별로 정리하는 화면입니다.",
-    categories: "장비 카테고리 기준을 정리하고 운영용 백업을 실행하는 화면입니다.",
-    help: "주 작업 파일과 생성 결과처럼 운영 중 참고할 보조 설명만 따로 모아 둔 화면입니다.",
-  } satisfies Record<PageKey, string>;
 
   async function loadInitialData() {
     setAppLoading(true);
@@ -1975,34 +1964,6 @@ function handleChangeEquipmentItemCategory(
 
   return (
     <div className="app-shell">
-      <header className="hero hero--global">
-        <div className="hero__copy">
-          <div className="hero__eyebrow">Camp Console</div>
-          <h1>캠핑 운영 콘솔</h1>
-          <p>{activePageLead[activePage]}</p>
-          <div className="hero__tags" aria-label="현재 앱 요약">
-            <span className="hero-tag">현재 메뉴 {PAGE_LABELS[activePage]}</span>
-            <span className="hero-tag">선택 계획 {currentTripLabel}</span>
-            <span className="hero-tag">예정 {dashboardMetrics.trips}건</span>
-            <span className="hero-tag">경고 {dashboardMetrics.alerts}건</span>
-          </div>
-        </div>
-        <div className="hero__meta-grid">
-          <article className="hero__meta">
-            <div className="hero__meta-label">현재 초점</div>
-            <strong>{PAGE_LABELS[activePage]}</strong>
-            <span>계획 {currentTripLabel}</span>
-            <span>히스토리 {currentHistoryLabel}</span>
-          </article>
-          <article className="hero__meta">
-            <div className="hero__meta-label">현재 계획 기준</div>
-            <strong>{selectedTripCompanions.length}명 선택</strong>
-            <span>차량 {selectedTripVehicle?.name ?? "미선택"}</span>
-            <span>검증 경고 {validationWarnings.length}건</span>
-          </article>
-        </div>
-      </header>
-
       {loadError ? (
         <StatusBanner tone="error" title="초기 로딩 실패" description={loadError} />
       ) : null}
