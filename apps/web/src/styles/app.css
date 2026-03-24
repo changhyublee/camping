@@ -879,6 +879,44 @@ code {
   overflow: hidden;
 }
 
+.category-settings-section {
+  gap: 0;
+}
+
+.category-settings-section__toggle {
+  gap: 16px;
+}
+
+.category-settings-section__meta {
+  display: grid;
+  justify-items: end;
+  gap: 8px;
+}
+
+.category-settings-section__meta .pill {
+  min-height: 28px;
+  padding: 4px 10px;
+  background: rgba(255, 255, 255, 0.76);
+}
+
+.category-settings-section__body {
+  display: grid;
+  gap: 12px;
+  margin: 0 18px 18px 24px;
+  padding: 14px 0 0 18px;
+  border-top: 1px solid rgba(47, 98, 83, 0.12);
+  border-left: 2px solid rgba(47, 98, 83, 0.16);
+}
+
+.category-settings-section__body .empty-state {
+  margin: 0;
+}
+
+.category-settings-section__body .category-editor-card {
+  border-color: rgba(47, 98, 83, 0.14);
+  background: linear-gradient(180deg, rgba(251, 249, 245, 0.9), rgba(244, 240, 234, 0.8));
+}
+
 .category-editor-toggle {
   display: flex;
   width: 100%;
@@ -1445,6 +1483,11 @@ textarea.form-grid__full {
   }
 
   .equipment-item-summary__meta {
+    width: 100%;
+    justify-items: start;
+  }
+
+  .category-settings-section__meta {
     width: 100%;
     justify-items: start;
   }

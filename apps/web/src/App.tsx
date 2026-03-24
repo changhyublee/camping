@@ -169,6 +169,9 @@ export function App() {
     useState<SectionTrackedIds>(createEmptySectionTrackedIds());
   const [collapsedCategoryEditors, setCollapsedCategoryEditors] =
     useState<SectionTrackedIds>(createEmptySectionTrackedIds());
+  const [expandedCategorySections, setExpandedCategorySections] = useState<
+    EquipmentSection[]
+  >([]);
   const [refreshingDurableMetadataIds, setRefreshingDurableMetadataIds] =
     useState<string[]>([]);
   const [categoryDrafts, setCategoryDrafts] =
@@ -367,6 +370,7 @@ export function App() {
     [equipmentCategories, equipmentSection],
   );
   const currentEquipmentSectionLabel = EQUIPMENT_SECTION_LABELS[equipmentSection];
+  const expandedCategorySectionCount = expandedCategorySections.length;
   const activeEquipmentTabId = getEquipmentSectionTabId(equipmentSection);
   const activeEquipmentPanelId = getEquipmentSectionPanelId(equipmentSection);
   const selectedTripCompanions = useMemo(
@@ -1569,6 +1573,13 @@ export function App() {
     );
   }
 
+  function handleToggleCategorySection(section: EquipmentSection) {
+    setEquipmentSection(section);
+    setExpandedCategorySections((current) =>
+      toggleExpandedEquipmentSections(current, section),
+    );
+  }
+
   function handleToggleEquipmentItem(section: EquipmentSection, itemId: string) {
     setExpandedEquipmentItems((current) =>
       toggleSectionTrackedId(current, section, itemId),
@@ -1655,6 +1666,12 @@ function handleChangeEquipmentItemCategory(
         id: manualCode,
         label,
       });
+      setEquipmentSection(section);
+      setExpandedCategorySections((current) =>
+        current.includes(section)
+          ? current
+          : toggleExpandedEquipmentSections(current, section),
+      );
       setEquipmentCategories((current) => ({
         ...current,
         [section]: [...current[section], response.item].sort(sortEquipmentCategories),
@@ -3207,12 +3224,16 @@ function handleChangeEquipmentItemCategory(
                 </div>
                 <div className="page-intro__meta">
                   <div className="meta-chip">
-                    <span>현재 섹션</span>
+                    <span>입력 대상 섹션</span>
                     <strong>{currentEquipmentSectionLabel}</strong>
                   </div>
                   <div className="meta-chip">
-                    <span>카테고리 수</span>
-                    <strong>{currentEquipmentCategories.length}개</strong>
+                    <span>열린 섹션</span>
+                    <strong>
+                      {expandedCategorySectionCount === 0
+                        ? "없음"
+                        : `${expandedCategorySectionCount}개`}
+                    </strong>
                   </div>
                   <div className="meta-chip">
                     <span>총 카테고리 수</span>
@@ -3230,129 +3251,165 @@ function handleChangeEquipmentItemCategory(
                   <div className="panel__eyebrow">카테고리</div>
                   <div className="panel__header">
                     <h2>장비 카테고리 관리</h2>
-                    <span className="pill">{currentEquipmentCategories.length}개</span>
+                    <span className="pill">{equipmentMetrics.categories}개</span>
                   </div>
                   <p className="panel__copy">
-                    장비 화면에서는 여기서 정한 카테고리만 선택합니다. 카테고리 코드는 내부
-                    식별값으로 유지하고, 표시 이름만 사용자 문맥에 맞게 조정합니다.
+                    장비 화면에서는 여기서 정한 카테고리만 선택합니다. 섹션 메뉴를 눌러
+                    목록을 펼치고 닫을 수 있으며, 카테고리 코드는 내부 식별값으로
+                    유지합니다.
                   </p>
-                  <div className="segmented-row">
-                    <button
-                      className={segmentClass(equipmentSection === "durable")}
-                      onClick={() => setEquipmentSection("durable")}
-                      type="button"
-                    >
-                      반복 장비
-                    </button>
-                    <button
-                      className={segmentClass(equipmentSection === "consumables")}
-                      onClick={() => setEquipmentSection("consumables")}
-                      type="button"
-                    >
-                      소모품
-                    </button>
-                    <button
-                      className={segmentClass(equipmentSection === "precheck")}
-                      onClick={() => setEquipmentSection("precheck")}
-                      type="button"
-                    >
-                      출발 전 점검
-                    </button>
-                  </div>
-                  {currentEquipmentCategories.length === 0 ? (
-                    <div className="empty-state">이 섹션에 등록된 카테고리가 없습니다.</div>
-                  ) : (
-                    <div className="stack-list">
-                      {currentEquipmentCategories.map((category) => {
-                        const editorPanelId = `category-editor-panel-${equipmentSection}-${category.id}`;
-                        const isCollapsed =
-                          collapsedCategoryEditors[equipmentSection].includes(category.id);
-                        const draftLabel =
-                          categoryLabelDrafts[equipmentSection][category.id] ?? category.label;
-                        const accessibleLabel = draftLabel.trim() || category.label;
+                  <div className="stack-list">
+                    {EQUIPMENT_SECTIONS.map((section) => {
+                      const sectionCategories = equipmentCategories[section];
+                      const sectionLabel = EQUIPMENT_SECTION_LABELS[section];
+                      const isExpanded = expandedCategorySections.includes(section);
+                      const sectionPanelId = `category-section-panel-${section}`;
 
-                        return (
-                          <article
-                            className="edit-card category-editor-card"
-                            key={category.id}
+                      return (
+                        <article
+                          className="equipment-category-card category-settings-section"
+                          key={section}
+                        >
+                          <button
+                            aria-controls={sectionPanelId}
+                            aria-expanded={isExpanded}
+                            aria-label={`${sectionLabel} 섹션 ${isExpanded ? "접기" : "펼치기"}`}
+                            className="equipment-category-toggle category-settings-section__toggle"
+                            onClick={() => handleToggleCategorySection(section)}
+                            type="button"
                           >
-                            <button
-                              aria-controls={editorPanelId}
-                              aria-expanded={!isCollapsed}
-                              aria-label={`${accessibleLabel} 카테고리 설정 ${isCollapsed ? "펼치기" : "접기"}`}
-                              className="category-editor-toggle"
-                              onClick={() =>
-                                handleToggleCategoryEditor(equipmentSection, category.id)
-                              }
-                              type="button"
-                            >
-                              <span className="category-editor-toggle__content">
-                                <span className="category-editor-toggle__eyebrow">
-                                  카테고리 설정
-                                </span>
-                                <strong>{draftLabel}</strong>
-                                <code>{category.id}</code>
+                            <span className="equipment-category-toggle__content">
+                              <span className="equipment-category-toggle__eyebrow">
+                                카테고리 섹션
                               </span>
-                              <span className="category-editor-toggle__state">
-                                {isCollapsed ? "펼치기" : "접기"}
+                              <strong>{sectionLabel}</strong>
+                              <span>
+                                {sectionCategories.length === 0
+                                  ? "등록된 카테고리 없음"
+                                  : `${sectionCategories.length}개 카테고리`}
                               </span>
-                            </button>
+                            </span>
+                            <span className="category-settings-section__meta">
+                              {equipmentSection === section ? (
+                                <span className="pill">입력 대상</span>
+                              ) : null}
+                              <span className="equipment-category-toggle__state">
+                                {isExpanded ? "접기" : "펼치기"}
+                              </span>
+                            </span>
+                          </button>
 
-                            {!isCollapsed ? (
-                              <div className="category-editor-body" id={editorPanelId}>
-                                <div className="form-grid">
-                                  <FormField label="표시 이름">
-                                    <input
-                                      placeholder="카테고리 표시 이름"
-                                      value={draftLabel}
-                                      onChange={(event) =>
-                                        setCategoryLabelDrafts((current) => ({
-                                          ...current,
-                                          [equipmentSection]: {
-                                            ...current[equipmentSection],
-                                            [category.id]: event.target.value,
-                                          },
-                                        }))
-                                      }
-                                    />
-                                  </FormField>
-                                  <FormField label="카테고리 코드">
-                                    <input value={category.id} readOnly />
-                                  </FormField>
+                          {isExpanded ? (
+                            <div
+                              className="category-settings-section__body"
+                              id={sectionPanelId}
+                            >
+                              {sectionCategories.length === 0 ? (
+                                <div className="empty-state">
+                                  이 섹션에 등록된 카테고리가 없습니다.
                                 </div>
-                                <div className="button-row">
-                                  <button
-                                    className="button"
-                                    onClick={() =>
-                                      void handleSaveEquipmentCategory(
-                                        equipmentSection,
-                                        category.id,
-                                      )
-                                    }
-                                    type="button"
-                                  >
-                                    저장
-                                  </button>
-                                  <button
-                                    className="button"
-                                    onClick={() =>
-                                      void handleDeleteEquipmentCategory(
-                                        equipmentSection,
-                                        category.id,
-                                      )
-                                    }
-                                    type="button"
-                                  >
-                                    삭제
-                                  </button>
+                              ) : (
+                                <div className="stack-list">
+                                  {sectionCategories.map((category) => {
+                                    const editorPanelId =
+                                      `category-editor-panel-${section}-${category.id}`;
+                                    const isCollapsed =
+                                      collapsedCategoryEditors[section].includes(category.id);
+                                    const draftLabel =
+                                      categoryLabelDrafts[section][category.id] ?? category.label;
+                                    const accessibleLabel = draftLabel.trim() || category.label;
+
+                                    return (
+                                      <article
+                                        className="edit-card category-editor-card"
+                                        key={category.id}
+                                      >
+                                        <button
+                                          aria-controls={editorPanelId}
+                                          aria-expanded={!isCollapsed}
+                                          aria-label={`${accessibleLabel} 카테고리 설정 ${isCollapsed ? "펼치기" : "접기"}`}
+                                          className="category-editor-toggle"
+                                          onClick={() =>
+                                            handleToggleCategoryEditor(section, category.id)
+                                          }
+                                          type="button"
+                                        >
+                                          <span className="category-editor-toggle__content">
+                                            <span className="category-editor-toggle__eyebrow">
+                                              카테고리 설정
+                                            </span>
+                                            <strong>{draftLabel}</strong>
+                                            <code>{category.id}</code>
+                                          </span>
+                                          <span className="category-editor-toggle__state">
+                                            {isCollapsed ? "펼치기" : "접기"}
+                                          </span>
+                                        </button>
+
+                                        {!isCollapsed ? (
+                                          <div
+                                            className="category-editor-body"
+                                            id={editorPanelId}
+                                          >
+                                            <div className="form-grid">
+                                              <FormField label="표시 이름">
+                                                <input
+                                                  placeholder="카테고리 표시 이름"
+                                                  value={draftLabel}
+                                                  onChange={(event) =>
+                                                    setCategoryLabelDrafts((current) => ({
+                                                      ...current,
+                                                      [section]: {
+                                                        ...current[section],
+                                                        [category.id]: event.target.value,
+                                                      },
+                                                    }))
+                                                  }
+                                                />
+                                              </FormField>
+                                              <FormField label="카테고리 코드">
+                                                <input value={category.id} readOnly />
+                                              </FormField>
+                                            </div>
+                                            <div className="button-row">
+                                              <button
+                                                className="button"
+                                                onClick={() =>
+                                                  void handleSaveEquipmentCategory(
+                                                    section,
+                                                    category.id,
+                                                  )
+                                                }
+                                                type="button"
+                                              >
+                                                저장
+                                              </button>
+                                              <button
+                                                className="button"
+                                                onClick={() =>
+                                                  void handleDeleteEquipmentCategory(
+                                                    section,
+                                                    category.id,
+                                                  )
+                                                }
+                                                type="button"
+                                              >
+                                                삭제
+                                              </button>
+                                            </div>
+                                          </div>
+                                        ) : null}
+                                      </article>
+                                    );
+                                  })}
                                 </div>
-                              </div>
-                            ) : null}
-                          </article>
-                        );
-                      })}
-                    </div>
-                  )}
+                              )}
+                            </div>
+                          ) : null}
+                        </article>
+                      );
+                    })}
+                  </div>
                 </section>
 
                 <div className="panel-stack categories-side-stack">
@@ -4696,10 +4753,6 @@ function navButtonClass(active: boolean) {
   return `nav-button${active ? " nav-button--active" : ""}`;
 }
 
-function segmentClass(active: boolean) {
-  return `segment-button${active ? " segment-button--active" : ""}`;
-}
-
 function equipmentTabClass(active: boolean) {
   return `equipment-tab${active ? " equipment-tab--active" : ""}`;
 }
@@ -4726,6 +4779,17 @@ function getAdjacentEquipmentSection(
     (currentIndex + offset + EQUIPMENT_SECTIONS.length) % EQUIPMENT_SECTIONS.length;
 
   return EQUIPMENT_SECTIONS[nextIndex];
+}
+
+function toggleExpandedEquipmentSections(
+  sections: EquipmentSection[],
+  nextSection: EquipmentSection,
+) {
+  const nextSections = sections.includes(nextSection)
+    ? sections.filter((section) => section !== nextSection)
+    : [...sections, nextSection];
+
+  return EQUIPMENT_SECTIONS.filter((section) => nextSections.includes(section));
 }
 
 function createEmptyTripDraft(): TripDraft {

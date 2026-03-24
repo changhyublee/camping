@@ -1773,6 +1773,32 @@ describe("App", () => {
     ).toBeInTheDocument();
   });
 
+  it("toggles category sections open and closed from the category management menu", async () => {
+    render(<App />);
+
+    await userEvent.click(await screen.findByRole("button", { name: "카테고리 설정" }));
+
+    expect(
+      screen.queryByRole("button", { name: "쉘터/텐트 카테고리 설정 펼치기" }),
+    ).toBeNull();
+
+    await userEvent.click(
+      screen.getByRole("button", { name: "반복 장비 섹션 펼치기" }),
+    );
+
+    expect(
+      screen.getByRole("button", { name: "쉘터/텐트 카테고리 설정 펼치기" }),
+    ).toBeInTheDocument();
+
+    await userEvent.click(
+      screen.getByRole("button", { name: "반복 장비 섹션 접기" }),
+    );
+
+    expect(
+      screen.queryByRole("button", { name: "쉘터/텐트 카테고리 설정 펼치기" }),
+    ).toBeNull();
+  });
+
   it("requires a category code when creating a category", async () => {
     render(<App />);
 
@@ -1790,12 +1816,12 @@ describe("App", () => {
     render(<App />);
 
     await userEvent.click(await screen.findByRole("button", { name: "카테고리 설정" }));
-    const initialShelterExpandButton = screen.queryByRole("button", {
-      name: "쉘터/텐트 카테고리 설정 펼치기",
-    });
-    if (initialShelterExpandButton) {
-      await userEvent.click(initialShelterExpandButton);
-    }
+    await userEvent.click(
+      screen.getByRole("button", { name: "반복 장비 섹션 펼치기" }),
+    );
+    await userEvent.click(
+      screen.getByRole("button", { name: "쉘터/텐트 카테고리 설정 펼치기" }),
+    );
 
     const shelterCard = screen.getByText("shelter").closest("article");
     expect(shelterCard).not.toBeNull();
@@ -1812,6 +1838,12 @@ describe("App", () => {
     expect(screen.queryAllByRole("option", { name: "임시 라벨" })).toHaveLength(0);
 
     await userEvent.click(screen.getByRole("button", { name: "카테고리 설정" }));
+    const durableSectionExpandButton = screen.queryByRole("button", {
+      name: "반복 장비 섹션 펼치기",
+    });
+    if (durableSectionExpandButton) {
+      await userEvent.click(durableSectionExpandButton);
+    }
     const updatedShelterExpandButton = screen.queryByRole("button", {
       name: "임시 라벨 카테고리 설정 펼치기",
     });
