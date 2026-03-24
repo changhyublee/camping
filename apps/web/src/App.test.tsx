@@ -1582,7 +1582,7 @@ describe("App", () => {
     ).toBeInTheDocument();
   });
 
-  it("keeps an item visible when its category changes into a collapsed category", async () => {
+  it("moves an item into the new category only after saving when the target category is collapsed", async () => {
     state.equipment.durable.items = [
       {
         id: "sleeping-bag-3season-adult",
@@ -1618,14 +1618,39 @@ describe("App", () => {
       "shelter",
     );
 
+    expect(
+      within(sleepingBagCard as HTMLElement).getByRole("combobox", { name: "카테고리" }),
+    ).toHaveValue("shelter");
     expect(await screen.findByDisplayValue("침낭")).toBeInTheDocument();
-    expect(screen.getByRole("button", { name: "저장" })).toBeInTheDocument();
+    expect(
+      screen.getByRole("button", { name: "쉘터/텐트 카테고리 펼치기" }),
+    ).toBeInTheDocument();
+
+    await userEvent.click(screen.getByRole("button", { name: "저장" }));
+
+    expect(await screen.findByText("장비 저장 완료")).toBeInTheDocument();
+    expect(
+      fetchMock.mock.calls.some(([input, init]) => {
+        const rawUrl = typeof input === "string" ? input : input.toString();
+        const pathname = new URL(rawUrl, "http://localhost").pathname;
+        const body =
+          typeof init?.body === "string"
+            ? (JSON.parse(init.body) as { category?: string })
+            : null;
+        return (
+          pathname === "/api/equipment/durable/items/sleeping-bag-3season-adult" &&
+          init?.method === "PUT" &&
+          body?.category === "shelter"
+        );
+      }),
+    ).toBe(true);
+    expect(await screen.findByDisplayValue("침낭")).toBeInTheDocument();
     expect(
       screen.getByRole("button", { name: "쉘터/텐트 카테고리 접기" }),
     ).toBeInTheDocument();
   });
 
-  it("keeps an item visible when its category changes into a newly visible category", async () => {
+  it("creates the target category group only after saving when the category changes", async () => {
     state.equipment.durable.items = [
       {
         id: "sleeping-bag-3season-adult",
@@ -1652,6 +1677,17 @@ describe("App", () => {
       "shelter",
     );
 
+    expect(
+      within(sleepingBagCard as HTMLElement).getByRole("combobox", { name: "카테고리" }),
+    ).toHaveValue("shelter");
+    expect(await screen.findByDisplayValue("침낭")).toBeInTheDocument();
+    expect(
+      screen.queryByRole("button", { name: "쉘터/텐트 카테고리 펼치기" }),
+    ).not.toBeInTheDocument();
+
+    await userEvent.click(screen.getByRole("button", { name: "저장" }));
+
+    expect(await screen.findByText("장비 저장 완료")).toBeInTheDocument();
     expect(await screen.findByDisplayValue("침낭")).toBeInTheDocument();
     expect(
       screen.getByRole("button", { name: "쉘터/텐트 카테고리 접기" }),
@@ -1739,6 +1775,10 @@ describe("App", () => {
     await userEvent.click(await screen.findByRole("button", { name: "장비 관리" }));
     await userEvent.click(screen.getByRole("button", { name: "쉘터/텐트 카테고리 펼치기" }));
     await userEvent.click(screen.getByRole("button", { name: "패밀리 텐트 상세 펼치기" }));
+    const familyTentCard = screen
+      .getByRole("button", { name: "패밀리 텐트 상세 접기" })
+      .closest("article");
+    expect(familyTentCard).not.toBeNull();
 
     const modelInput = screen.getByDisplayValue("리빙쉘 4P");
 
@@ -1749,6 +1789,10 @@ describe("App", () => {
 
     await userEvent.clear(modelInput);
     await userEvent.type(modelInput, "리빙쉘 5P");
+    await userEvent.selectOptions(
+      within(familyTentCard as HTMLElement).getByRole("combobox", { name: "카테고리" }),
+      "sleeping",
+    );
 
     state.metadataStatuses["family-tent"] = [queuedStatus, null];
     fireEvent.click(screen.getByRole("button", { name: "메타데이터 재수집" }));
@@ -1783,6 +1827,9 @@ describe("App", () => {
       parseBody(fetchMock.mock.calls[updateCallIndex]?.[1])?.model,
     ).toBe("리빙쉘 5P");
     expect(
+      parseBody(fetchMock.mock.calls[updateCallIndex]?.[1])?.category,
+    ).toBe("sleeping");
+    expect(
       fetchMock.mock.calls.some(([input, init]) => {
         const rawUrl = typeof input === "string" ? input : input.toString();
         const pathname = new URL(rawUrl, "http://localhost").pathname;
@@ -1801,7 +1848,7 @@ describe("App", () => {
     ).toBe(true);
   });
 
-  it("keeps a consumable visible when its category changes into a collapsed category", async () => {
+  it("moves a consumable into the new category only after saving", async () => {
     state.equipment.consumables.items = [
       {
         id: "butane-gas",
@@ -1838,14 +1885,24 @@ describe("App", () => {
       "ignition",
     );
 
+    expect(
+      within(butaneGasCard as HTMLElement).getByRole("combobox", { name: "카테고리" }),
+    ).toHaveValue("ignition");
     expect(await screen.findByDisplayValue("부탄가스")).toBeInTheDocument();
-    expect(screen.getByRole("button", { name: "저장" })).toBeInTheDocument();
+    expect(
+      screen.getByRole("button", { name: "점화 카테고리 펼치기" }),
+    ).toBeInTheDocument();
+
+    await userEvent.click(screen.getByRole("button", { name: "저장" }));
+
+    expect(await screen.findByText("장비 저장 완료")).toBeInTheDocument();
+    expect(await screen.findByDisplayValue("부탄가스")).toBeInTheDocument();
     expect(
       screen.getByRole("button", { name: "점화 카테고리 접기" }),
     ).toBeInTheDocument();
   });
 
-  it("keeps a precheck item visible when its category changes into a collapsed category", async () => {
+  it("moves a precheck item into the new category only after saving", async () => {
     state.equipment.precheck.items = [
       {
         id: "lantern-battery",
@@ -1880,8 +1937,16 @@ describe("App", () => {
       "vehicle",
     );
 
+    expect(
+      within(lanternBatteryCard as HTMLElement).getByRole("combobox", { name: "카테고리" }),
+    ).toHaveValue("vehicle");
     expect(await screen.findByDisplayValue("랜턴 배터리")).toBeInTheDocument();
-    expect(screen.getByRole("button", { name: "저장" })).toBeInTheDocument();
+    expect(screen.getByRole("button", { name: "차량 카테고리 펼치기" })).toBeInTheDocument();
+
+    await userEvent.click(screen.getByRole("button", { name: "저장" }));
+
+    expect(await screen.findByText("장비 저장 완료")).toBeInTheDocument();
+    expect(await screen.findByDisplayValue("랜턴 배터리")).toBeInTheDocument();
     expect(screen.getByRole("button", { name: "차량 카테고리 접기" })).toBeInTheDocument();
   });
 

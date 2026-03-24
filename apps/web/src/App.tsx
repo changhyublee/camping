@@ -131,6 +131,10 @@ type PersistedUiState = {
 
 type CategoryDrafts = Record<EquipmentSection, EquipmentCategoryCreateInput>;
 type CategoryLabelDrafts = Record<EquipmentSection, Record<string, string>>;
+type EquipmentCategorySelectionDrafts = Record<
+  EquipmentSection,
+  Record<string, string>
+>;
 type SectionTrackedIds = Record<EquipmentSection, string[]>;
 type DurableMetadataJobStatusMap = Record<string, DurableMetadataJobStatusResponse>;
 
@@ -181,6 +185,10 @@ export function App() {
     useState<CategoryDrafts>(createEmptyCategoryDrafts());
   const [categoryLabelDrafts, setCategoryLabelDrafts] =
     useState<CategoryLabelDrafts>(createEmptyCategoryLabelDrafts());
+  const [equipmentCategorySelectionDrafts, setEquipmentCategorySelectionDrafts] =
+    useState<EquipmentCategorySelectionDrafts>(
+      createEmptyEquipmentCategorySelectionDrafts(),
+    );
   const [history, setHistory] = useState<HistoryRecord[]>([]);
   const [selectedHistoryId, setSelectedHistoryId] = useState<string | null>(
     persistedUiState?.selectedHistoryId ?? null,
@@ -1590,12 +1598,22 @@ export function App() {
     try {
       const additionalWarnings: string[] = [];
       let metadataCollectionStarted = false;
+      const pendingCategoryId =
+        equipmentCategorySelectionDrafts[section][itemId] ?? null;
 
       if (section === "durable") {
         const item = equipment.durable.items.find((candidate) => candidate.id === itemId);
         if (item) {
-          await apiClient.updateEquipmentItem(section, itemId, toDurableEquipmentInput(item));
-          const metadataRefreshResult = await maybeAutoRefreshDurableMetadata(item);
+          const itemToSave =
+            pendingCategoryId && pendingCategoryId !== item.category
+              ? { ...item, category: pendingCategoryId }
+              : item;
+          await apiClient.updateEquipmentItem(
+            section,
+            itemId,
+            toDurableEquipmentInput(itemToSave),
+          );
+          const metadataRefreshResult = await maybeAutoRefreshDurableMetadata(itemToSave);
           metadataCollectionStarted = metadataRefreshResult.started;
           if (metadataRefreshResult.warning) {
             additionalWarnings.push(metadataRefreshResult.warning);
@@ -1608,7 +1626,11 @@ export function App() {
           (candidate) => candidate.id === itemId,
         );
         if (item) {
-          await apiClient.updateEquipmentItem(section, itemId, item);
+          const itemToSave =
+            pendingCategoryId && pendingCategoryId !== item.category
+              ? { ...item, category: pendingCategoryId }
+              : item;
+          await apiClient.updateEquipmentItem(section, itemId, itemToSave);
         }
       }
 
@@ -1617,8 +1639,26 @@ export function App() {
           (candidate) => candidate.id === itemId,
         );
         if (item) {
-          await apiClient.updateEquipmentItem(section, itemId, item);
+          const itemToSave =
+            pendingCategoryId && pendingCategoryId !== item.category
+              ? { ...item, category: pendingCategoryId }
+              : item;
+          await apiClient.updateEquipmentItem(section, itemId, itemToSave);
         }
+      }
+
+      if (pendingCategoryId) {
+        setEquipmentCategorySelectionDrafts((current) =>
+          setEquipmentCategorySelectionDraft(current, section, itemId, null),
+        );
+        setCollapsedEquipmentCategories((current) =>
+          removeSectionTrackedId(current, section, pendingCategoryId),
+        );
+        previousEquipmentGroupIdsRef.current = ensureSectionIdTracked(
+          buildVisibleEquipmentCategoryIdMap(equipment, equipmentCategories),
+          section,
+          pendingCategoryId,
+        );
       }
 
       const syncWarnings = [
@@ -1650,6 +1690,9 @@ export function App() {
 
     try {
       await apiClient.deleteEquipmentItem(section, itemId);
+      setEquipmentCategorySelectionDrafts((current) =>
+        setEquipmentCategorySelectionDraft(current, section, itemId, null),
+      );
       const syncWarnings = await refreshEquipmentState();
       setOperationState({
         title: "장비 삭제 완료",
@@ -1667,14 +1710,34 @@ export function App() {
 
   async function handleRefreshDurableMetadata(itemId: string) {
     const currentItem = equipment?.durable.items.find((item) => item.id === itemId);
+    const pendingCategoryId =
+      equipmentCategorySelectionDrafts.durable[itemId] ?? null;
 
     try {
       if (currentItem) {
+        const itemToSave =
+          pendingCategoryId && pendingCategoryId !== currentItem.category
+            ? { ...currentItem, category: pendingCategoryId }
+            : currentItem;
         await apiClient.updateEquipmentItem(
           "durable",
           itemId,
-          toDurableEquipmentInput(currentItem),
+          toDurableEquipmentInput(itemToSave),
         );
+
+        if (pendingCategoryId) {
+          setEquipmentCategorySelectionDrafts((current) =>
+            setEquipmentCategorySelectionDraft(current, "durable", itemId, null),
+          );
+          setCollapsedEquipmentCategories((current) =>
+            removeSectionTrackedId(current, "durable", pendingCategoryId),
+          );
+          previousEquipmentGroupIdsRef.current = ensureSectionIdTracked(
+            buildVisibleEquipmentCategoryIdMap(equipment, equipmentCategories),
+            "durable",
+            pendingCategoryId,
+          );
+        }
       }
 
       await refreshDurableMetadata(itemId, { manual: true });
@@ -1727,54 +1790,24 @@ export function App() {
     );
   }
 
-function handleChangeEquipmentItemCategory(
+  function handleChangeEquipmentItemCategory(
     section: EquipmentSection,
     itemId: string,
     categoryId: string,
   ) {
-    if (!equipment) {
+    const item = findEquipmentItem(equipment, section, itemId);
+
+    if (!item) {
       return;
     }
 
-    const nextEquipment =
-      section === "durable"
-        ? {
-            ...equipment,
-            durable: {
-              ...equipment.durable,
-              items: equipment.durable.items.map((item) =>
-                item.id === itemId ? { ...item, category: categoryId } : item,
-              ),
-            },
-          }
-        : section === "consumables"
-          ? {
-              ...equipment,
-              consumables: {
-                ...equipment.consumables,
-                items: equipment.consumables.items.map((item) =>
-                  item.id === itemId ? { ...item, category: categoryId } : item,
-                ),
-              },
-            }
-          : {
-              ...equipment,
-              precheck: {
-                ...equipment.precheck,
-                items: equipment.precheck.items.map((item) =>
-                  item.id === itemId ? { ...item, category: categoryId } : item,
-                ),
-              },
-            };
-
-    setEquipment(nextEquipment);
-    setCollapsedEquipmentCategories((current) =>
-      removeSectionTrackedId(current, section, categoryId),
-    );
-    previousEquipmentGroupIdsRef.current = ensureSectionIdTracked(
-      buildVisibleEquipmentCategoryIdMap(nextEquipment, equipmentCategories),
-      section,
-      categoryId,
+    setEquipmentCategorySelectionDrafts((current) =>
+      setEquipmentCategorySelectionDraft(
+        current,
+        section,
+        itemId,
+        categoryId === item.category ? null : categoryId,
+      ),
     );
   }
 
@@ -2974,6 +3007,7 @@ function handleChangeEquipmentItemCategory(
                   {equipmentSection === "durable" ? (
                     <EquipmentList
                       section="durable"
+                      categoryDrafts={equipmentCategorySelectionDrafts.durable}
                       categories={equipmentCategories.durable}
                       collapsedCategoryIds={collapsedEquipmentCategories.durable}
                       expandedItemIds={expandedEquipmentItems.durable}
@@ -3013,6 +3047,7 @@ function handleChangeEquipmentItemCategory(
                   {equipmentSection === "consumables" ? (
                     <ConsumableList
                       section="consumables"
+                      categoryDrafts={equipmentCategorySelectionDrafts.consumables}
                       categories={equipmentCategories.consumables}
                       collapsedCategoryIds={collapsedEquipmentCategories.consumables}
                       expandedItemIds={expandedEquipmentItems.consumables}
@@ -3057,6 +3092,7 @@ function handleChangeEquipmentItemCategory(
                   {equipmentSection === "precheck" ? (
                     <PrecheckList
                       section="precheck"
+                      categoryDrafts={equipmentCategorySelectionDrafts.precheck}
                       categories={equipmentCategories.precheck}
                       collapsedCategoryIds={collapsedEquipmentCategories.precheck}
                       expandedItemIds={expandedEquipmentItems.precheck}
@@ -5048,6 +5084,14 @@ function createEmptyCategoryLabelDrafts(): CategoryLabelDrafts {
   };
 }
 
+function createEmptyEquipmentCategorySelectionDrafts(): EquipmentCategorySelectionDrafts {
+  return {
+    durable: {},
+    consumables: {},
+    precheck: {},
+  };
+}
+
 function createEmptySectionTrackedIds(): SectionTrackedIds {
   return {
     durable: [],
@@ -5233,6 +5277,7 @@ function GroupedEquipmentList<T extends { id: string; name: string; category: st
 
 function EquipmentList(props: {
   section: EquipmentSection;
+  categoryDrafts: Record<string, string>;
   categories: EquipmentCategory[];
   collapsedCategoryIds: string[];
   expandedItemIds: string[];
@@ -5286,7 +5331,7 @@ function EquipmentList(props: {
             <FormField label="카테고리">
               <EquipmentCategorySelect
                 categories={props.categories}
-                value={item.category}
+                value={props.categoryDrafts[item.id] ?? item.category}
                 onChange={(value) => props.onCategoryChange(item.id, value)}
               />
             </FormField>
@@ -5521,6 +5566,7 @@ function DurableMetadataSection(props: {
 
 function ConsumableList(props: {
   section: EquipmentSection;
+  categoryDrafts: Record<string, string>;
   categories: EquipmentCategory[];
   collapsedCategoryIds: string[];
   expandedItemIds: string[];
@@ -5562,7 +5608,7 @@ function ConsumableList(props: {
             <FormField label="카테고리">
               <EquipmentCategorySelect
                 categories={props.categories}
-                value={item.category}
+                value={props.categoryDrafts[item.id] ?? item.category}
                 onChange={(value) => props.onCategoryChange(item.id, value)}
               />
             </FormField>
@@ -5631,6 +5677,7 @@ function ConsumableList(props: {
 
 function PrecheckList(props: {
   section: EquipmentSection;
+  categoryDrafts: Record<string, string>;
   categories: EquipmentCategory[];
   collapsedCategoryIds: string[];
   expandedItemIds: string[];
@@ -5669,7 +5716,7 @@ function PrecheckList(props: {
             <FormField label="카테고리">
               <EquipmentCategorySelect
                 categories={props.categories}
-                value={item.category}
+                value={props.categoryDrafts[item.id] ?? item.category}
                 onChange={(value) => props.onCategoryChange(item.id, value)}
               />
             </FormField>
@@ -6164,6 +6211,39 @@ function ensureSectionIdTracked(
   return {
     ...state,
     [section]: [...state[section], value],
+  };
+}
+
+function setEquipmentCategorySelectionDraft(
+  drafts: EquipmentCategorySelectionDrafts,
+  section: EquipmentSection,
+  itemId: string,
+  categoryId: string | null,
+) {
+  if (!categoryId) {
+    if (!(itemId in drafts[section])) {
+      return drafts;
+    }
+
+    const nextSectionDrafts = { ...drafts[section] };
+    delete nextSectionDrafts[itemId];
+
+    return {
+      ...drafts,
+      [section]: nextSectionDrafts,
+    };
+  }
+
+  if (drafts[section][itemId] === categoryId) {
+    return drafts;
+  }
+
+  return {
+    ...drafts,
+    [section]: {
+      ...drafts[section],
+      [itemId]: categoryId,
+    },
   };
 }
 
