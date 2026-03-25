@@ -23,6 +23,7 @@
 ```text
 브라우저 UI
   -> 로컬 API
+    -> SSE 이벤트 채널로 분석/메타데이터 상태 push
     -> .camping-data/ YAML 읽기/쓰기
     -> .camping-backups/ 시점별 백업 생성
     -> docs/, prompts/, schemas/ 참조
@@ -124,7 +125,7 @@
 - 반복 장비 메타데이터 수집은 별도 `EquipmentMetadataJobManager` 가 담당한다
 - 서로 다른 durable item 은 최대 3건까지 병렬 수집하고, 같은 `item_id` 는 중복 실행하지 않는다
 - 성공 완료는 메타데이터 결과만 남기고 상태 파일은 삭제해 `idle` 로 복귀한다
-- 실패 또는 중단 상태는 상태 파일에 남겨 두고 UI가 다시 읽어 버튼과 배지를 복원한다
+- 실패 또는 중단 상태는 상태 파일에 남겨 두고 UI가 SSE와 상태 조회 API로 버튼과 배지를 복원한다
 - 수집 중 검색 입력이 바뀌면 이전 시도 결과는 저장하지 않고 최신 입력 기준으로 다시 수집한다
 
 ### 카테고리 설정
@@ -148,6 +149,7 @@
 - 분석 결과 저장은 `outputs/*.md` 로 분리한다
 - 분석 상태는 `cache/analysis-jobs/<trip-id>.json` 에 저장한다
 - 섹션별 결과는 `cache/analysis-results/<trip-id>.json` 에 누적 저장한다
+- UI는 `GET /api/ai-jobs/events` SSE를 기본 실시간 채널로 사용하고, 재진입/재연결 시 상태 조회 API로 다시 맞춘다
 - 같은 `trip_id` 안에서는 섹션 job 을 순차 실행하고, 이미 `queued` 또는 `running` 인 섹션은 중복 실행하지 않는다
 - 분석 중에는 계획 삭제와 히스토리 아카이브를 막는다
 - API 서버가 재시작되면 남아 있던 `queued` 또는 `running` 상태는 `interrupted` 로 전환한다

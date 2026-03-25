@@ -37,9 +37,9 @@
   - `GET /api/health`
   - companions CRUD
   - vehicles CRUD
-  - trip CRUD + 검증 + 백그라운드 분석 + 분석 상태 조회 + 결과 저장
+  - trip CRUD + 검증 + 백그라운드 분석 + SSE 실시간 상태 반영 + 결과 저장
   - 저장된 결과 Markdown 조회
-  - equipment CRUD + 반복 장비 메타데이터 백그라운드 수집/재수집 + 상태 조회
+  - equipment CRUD + 반복 장비 메타데이터 백그라운드 수집/재수집 + SSE 실시간 상태 반영
   - equipment category CRUD
   - history 조회/수정/삭제 + trip 아카이브 + 동행자/차량 스냅샷 저장
   - links CRUD

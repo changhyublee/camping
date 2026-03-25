@@ -211,7 +211,7 @@
 - 계획별 백그라운드 분석 상태 캐시
 - trip-level `status`, `requested_at`, `started_at`, `finished_at`, `output_path`, `error` 저장
 - 섹션별 `status`, `has_result`, `collected_at` 도 함께 저장
-- `trips/*.yaml` 원본과 분리해 저장하고 UI는 상태 조회 API로 읽는다
+- `trips/*.yaml` 원본과 분리해 저장하고 UI는 SSE 이벤트로 즉시 반영하며 재진입/재연결 시 상태 조회 API로 복구한다
 - 같은 `trip_id` 가 `queued` 또는 `running` 이면 중복 분석 시작을 막는 기준으로 사용한다
 
 ### `cache/analysis-results/*.json`

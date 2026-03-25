@@ -42,7 +42,7 @@
 - [`design-spec.md`](design-spec.md)
   - 최신 트렌드를 반영한 화면 디자인 기준과 에이전트 구현 규칙
 - [`local-api-contract.md`](local-api-contract.md)
-  - CRUD, 백그라운드 분석, 상태 조회 API 계약
+  - CRUD, 백그라운드 분석, SSE 실시간 이벤트, fallback 상태 조회 API 계약
 - [`ui-flow.md`](ui-flow.md)
   - 화면 흐름과 분석 상태 기반 사용자 액션
 - [`data-model.md`](data-model.md)
