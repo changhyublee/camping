@@ -10,6 +10,7 @@ import type {
   campsiteTipItemSchema,
   campsiteTipSourceSchema,
   campsiteTipsResearchSchema,
+  cancelAllAiJobsResponseSchema,
   companionIdSchema,
   companionSchema,
   companionInputSchema,
@@ -181,6 +182,7 @@ export type CreateDataBackupResponse = z.infer<typeof createDataBackupResponseSc
 export type RefreshDurableEquipmentMetadataResponse = z.infer<
   typeof refreshDurableEquipmentMetadataResponseSchema
 >;
+export type CancelAllAiJobsResponse = z.infer<typeof cancelAllAiJobsResponseSchema>;
 export type DurableMetadataJobStatus = z.infer<
   typeof durableMetadataJobStatusSchema
 >;

@@ -9,10 +9,17 @@ import {
   type TripBundle,
 } from "@camping/shared";
 import { AppError } from "./app-error";
-import { runCommand, type CommandRunner } from "./openai-client";
+import {
+  isAbortError,
+  runCommand,
+  type CommandRunner,
+} from "./openai-client";
 
 export type CampsiteTipSearchClient = {
-  collectCampsiteTips(input: { bundle: TripBundle }): Promise<CampsiteTipsResearch>;
+  collectCampsiteTips(input: {
+    bundle: TripBundle;
+    signal?: AbortSignal;
+  }): Promise<CampsiteTipsResearch>;
 };
 
 export class MissingCampsiteTipClient implements CampsiteTipSearchClient {
@@ -35,6 +42,7 @@ export class OpenAICampsiteTipClient implements CampsiteTipSearchClient {
 
   async collectCampsiteTips(input: {
     bundle: TripBundle;
+    signal?: AbortSignal;
   }): Promise<CampsiteTipsResearch> {
     const response = await this.requestResearch(input);
     const rawText = extractResponseText(response);
@@ -50,35 +58,42 @@ export class OpenAICampsiteTipClient implements CampsiteTipSearchClient {
     return normalizeResearchPayload(rawText, parseResponseSources(response));
   }
 
-  private async requestResearch(input: { bundle: TripBundle }) {
+  private async requestResearch(input: { bundle: TripBundle; signal?: AbortSignal }) {
     try {
-      return await this.client.responses.create({
-        model: this.model,
-        reasoning: { effort: "low" },
-        tools: [{ type: "web_search_preview" }],
-        tool_choice: "auto",
-        input: [
-          {
-            role: "system",
-            content: [
-              {
-                type: "input_text",
-                text: buildSystemPrompt({ runtime: "openai" }),
-              },
-            ],
-          },
-          {
-            role: "user",
-            content: [
-              {
-                type: "input_text",
-                text: buildUserPrompt(input.bundle),
-              },
-            ],
-          },
-        ],
-      });
+      return await this.client.responses.create(
+        {
+          model: this.model,
+          reasoning: { effort: "low" },
+          tools: [{ type: "web_search_preview" }],
+          tool_choice: "auto",
+          input: [
+            {
+              role: "system",
+              content: [
+                {
+                  type: "input_text",
+                  text: buildSystemPrompt({ runtime: "openai" }),
+                },
+              ],
+            },
+            {
+              role: "user",
+              content: [
+                {
+                  type: "input_text",
+                  text: buildUserPrompt(input.bundle),
+                },
+              ],
+            },
+          ],
+        },
+        input.signal ? { signal: input.signal } : undefined,
+      );
     } catch (error) {
+      if (isAbortError(error)) {
+        throw error;
+      }
+
       throw new AppError(
         "OPENAI_REQUEST_FAILED",
         error instanceof Error
@@ -104,6 +119,7 @@ export class CodexCliCampsiteTipClient implements CampsiteTipSearchClient {
 
   async collectCampsiteTips(input: {
     bundle: TripBundle;
+    signal?: AbortSignal;
   }): Promise<CampsiteTipsResearch> {
     const tempDir = await mkdtemp(path.join(os.tmpdir(), "camping-codex-campsite-"));
     const outputFile = path.join(tempDir, "campsite-tip.json");
@@ -136,6 +152,7 @@ export class CodexCliCampsiteTipClient implements CampsiteTipSearchClient {
           "-",
         ],
         stdin: buildCodexPrompt(input.bundle),
+        signal: input.signal,
       });
 
       if (result.exitCode !== 0) {
@@ -150,6 +167,10 @@ export class CodexCliCampsiteTipClient implements CampsiteTipSearchClient {
       const rawText = await readFile(outputFile, "utf8");
       return normalizeResearchPayload(rawText, []);
     } catch (error) {
+      if (isAbortError(error)) {
+        throw error;
+      }
+
       if (error instanceof AppError) {
         throw error;
       }
@@ -171,6 +192,7 @@ export class CodexCliCampsiteTipClient implements CampsiteTipSearchClient {
     args: string[];
     cwd: string;
     stdin?: string;
+    signal?: AbortSignal;
   }) {
     return (this.options.runner ?? runCommand)(input);
   }

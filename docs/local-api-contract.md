@@ -19,6 +19,7 @@
 - `GET /api/health`
 - `GET /api/data-backups`
 - `POST /api/data-backups`
+- `POST /api/ai-jobs/cancel-all`
 
 ### 동행자
 
@@ -64,6 +65,8 @@
 - 같은 `trip_id` 와 같은 섹션이 이미 `queued` 또는 `running` 상태면 새 job 을 만들지 않고 기존 상태를 그대로 반환한다
 - 분석이 진행 중이면 `DELETE /api/trips/:tripId` 와 `POST /api/trips/:tripId/archive` 는 `CONFLICT` 로 거절한다
 - API 서버 재시작 시 남아 있던 `queued` 또는 `running` 상태는 `interrupted` 로 복구된다
+- `POST /api/ai-jobs/cancel-all` 는 실행 중인 분석 요청을 중단하고 남아 있던 섹션 queue 를 비운다
+- 전역 중단 응답은 `cancelled_analysis_trip_count`, `cancelled_analysis_category_count`, `cancelled_metadata_item_count` 를 함께 반환한다
 
 ### 장비 관리
 
@@ -102,6 +105,7 @@
 - 수집 중 장비명, 모델명, 구매 링크, 카테고리 같은 검색 입력이 바뀌면 현재 시도 결과는 버리고 최신 입력 기준으로 다시 수집한다
 - durable item 삭제 시 메타데이터 결과 파일과 상태 파일을 함께 정리하고, 이미 실행 중이던 작업 결과도 저장하지 않는다
 - API 서버 재시작 시 남아 있던 `queued` 또는 `running` 상태는 `interrupted` 로 복구한다
+- `POST /api/ai-jobs/cancel-all` 는 실행 중인 durable 메타데이터 수집도 함께 중단하고 대기 queue 를 비운다
 
 ### 캠핑 히스토리
 

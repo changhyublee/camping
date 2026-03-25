@@ -539,6 +539,13 @@ export const refreshDurableEquipmentMetadataResponseSchema = z.object({
   error: apiErrorSchema.optional(),
 });
 
+export const cancelAllAiJobsResponseSchema = z.object({
+  status: z.literal("cancelled"),
+  cancelled_analysis_trip_count: z.number().int().nonnegative(),
+  cancelled_analysis_category_count: z.number().int().nonnegative(),
+  cancelled_metadata_item_count: z.number().int().nonnegative(),
+});
+
 export const tripAnalysisStatusSchema = z.enum([
   "idle",
   "queued",

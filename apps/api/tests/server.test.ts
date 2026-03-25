@@ -9,6 +9,7 @@ import type {
   DurableMetadataJobStatusResponse,
   CampsiteTipsResearch,
   DurableEquipmentMetadata,
+  TripBundle,
 } from "@camping/shared";
 import { buildServer } from "../src/server";
 import type { CampsiteTipSearchClient } from "../src/services/campsite-tip-service";
@@ -23,7 +24,11 @@ const tempDirs: string[] = [];
 class MockAnalysisClient implements AnalysisModelClient {
   constructor(private readonly markdown: string) {}
 
-  async generateMarkdown() {
+  async generateMarkdown(_input: {
+    systemPrompt: string;
+    userPrompt: string;
+    signal?: AbortSignal;
+  }) {
     return this.markdown;
   }
 
@@ -49,7 +54,11 @@ class CapturingAnalysisClient implements AnalysisModelClient {
 
   constructor(private readonly markdown: string) {}
 
-  async generateMarkdown(input: { systemPrompt: string; userPrompt: string }) {
+  async generateMarkdown(input: {
+    systemPrompt: string;
+    userPrompt: string;
+    signal?: AbortSignal;
+  }) {
     this.lastInput = input;
     return this.markdown;
   }
@@ -68,18 +77,59 @@ class CapturingAnalysisClient implements AnalysisModelClient {
 
 class DeferredAnalysisClient implements AnalysisModelClient {
   public calls = 0;
-  private resolveMarkdown: ((value: string) => void) | null = null;
-  private readonly markdownPromise = new Promise<string>((resolve) => {
-    this.resolveMarkdown = resolve;
-  });
+  public aborts = 0;
+  private resolvers: Array<(value: string) => void> = [];
+  private rejectors: Array<(reason?: unknown) => void> = [];
+  private resolvedMarkdown: string | null = null;
 
-  async generateMarkdown() {
+  async generateMarkdown(input: {
+    systemPrompt: string;
+    userPrompt: string;
+    signal?: AbortSignal;
+  }) {
     this.calls += 1;
-    return this.markdownPromise;
+
+    if (this.resolvedMarkdown !== null) {
+      return this.resolvedMarkdown;
+    }
+
+    if (input.signal?.aborted) {
+      this.aborts += 1;
+      return Promise.reject(createAbortError());
+    }
+
+    return new Promise<string>((resolve, reject) => {
+      this.resolvers.push(resolve);
+      this.rejectors.push(reject);
+
+      input.signal?.addEventListener(
+        "abort",
+        () => {
+          this.aborts += 1;
+          const nextResolve = this.resolvers.shift();
+          const nextReject = this.rejectors.shift();
+
+          if (nextResolve || nextReject) {
+            nextReject?.(createAbortError());
+          } else {
+            reject(createAbortError());
+          }
+        },
+        { once: true },
+      );
+    });
   }
 
   complete(markdown: string) {
-    this.resolveMarkdown?.(markdown);
+    this.resolvedMarkdown = markdown;
+    const resolvers = [...this.resolvers];
+
+    this.resolvers = [];
+    this.rejectors = [];
+
+    for (const resolve of resolvers) {
+      resolve(markdown);
+    }
   }
 
   async getHealthStatus(): Promise<BackendHealth> {
@@ -140,6 +190,7 @@ class MockEquipmentMetadataClient implements EquipmentMetadataSearchClient {
 
   async collectDurableEquipmentMetadata(input: {
     item: { id: string; name: string; model?: string; purchase_link?: string };
+    signal?: AbortSignal;
   }) {
     this.lastItem = input.item;
     return this.metadata;
@@ -148,13 +199,16 @@ class MockEquipmentMetadataClient implements EquipmentMetadataSearchClient {
 
 class DeferredEquipmentMetadataClient implements EquipmentMetadataSearchClient {
   public calls: string[] = [];
+  public aborts: string[] = [];
   public maxConcurrentCalls = 0;
   private currentConcurrentCalls = 0;
   private resolvers = new Map<string, Array<(value: DurableEquipmentMetadata) => void>>();
   private rejectors = new Map<string, Array<(reason?: unknown) => void>>();
+  private ignoredCompletions = new Map<string, number>();
 
   async collectDurableEquipmentMetadata(input: {
     item: { id: string; name: string; model?: string; purchase_link?: string };
+    signal?: AbortSignal;
   }) {
     this.calls.push(input.item.id);
     this.currentConcurrentCalls += 1;
@@ -202,6 +256,19 @@ class DeferredEquipmentMetadataClient implements EquipmentMetadataSearchClient {
 
       this.resolvers.set(input.item.id, resolvers);
       this.rejectors.set(input.item.id, rejectors);
+
+      input.signal?.addEventListener(
+        "abort",
+        () => {
+          this.aborts.push(input.item.id);
+          this.ignoredCompletions.set(
+            input.item.id,
+            (this.ignoredCompletions.get(input.item.id) ?? 0) + 1,
+          );
+          rejectors[0]?.(createAbortError());
+        },
+        { once: true },
+      );
     });
   }
 
@@ -209,6 +276,18 @@ class DeferredEquipmentMetadataClient implements EquipmentMetadataSearchClient {
     itemId: string,
     metadata: DurableEquipmentMetadata = createDurableMetadataPayload(itemId),
   ) {
+    const ignoredCount = this.ignoredCompletions.get(itemId) ?? 0;
+
+    if (ignoredCount > 0) {
+      if (ignoredCount === 1) {
+        this.ignoredCompletions.delete(itemId);
+      } else {
+        this.ignoredCompletions.set(itemId, ignoredCount - 1);
+      }
+
+      return;
+    }
+
     this.resolvers.get(itemId)?.[0]?.(metadata);
   }
 
@@ -258,10 +337,16 @@ class MockCampsiteTipClient implements CampsiteTipSearchClient {
     },
   ) {}
 
-  async collectCampsiteTips() {
+  async collectCampsiteTips(_input: { bundle: TripBundle; signal?: AbortSignal }) {
     this.calls += 1;
     return this.research;
   }
+}
+
+function createAbortError() {
+  const error = new Error("사용자 요청으로 AI 작업이 중단되었습니다.");
+  error.name = "AbortError";
+  return error;
 }
 
 async function createSeededDataDir() {
@@ -1122,6 +1207,142 @@ describe("API server", () => {
     modelClient.complete("## 2. 추천 장비\n\n- 중복 방지 테스트");
     await waitForTripAnalysisStatus(app, "2026-04-18-gapyeong", "completed");
     expect(modelClient.calls).toBe(1);
+
+    await app.close();
+  });
+
+  it("cancels all running AI jobs and clears queued analysis sections", async () => {
+    const dataDir = await createSeededDataDir();
+    const modelClient = new DeferredAnalysisClient();
+    const metadataClient = new DeferredEquipmentMetadataClient();
+    const app = await buildServer({
+      dataDir,
+      projectRoot,
+      modelClient,
+      equipmentMetadataClient: metadataClient,
+      campsiteTipClient: new MockCampsiteTipClient(),
+    });
+
+    const createResponse = await app.inject({
+      method: "POST",
+      url: "/api/equipment/durable/items",
+      payload: createDurableEquipmentItemInput("cancel-all-metadata"),
+    });
+
+    expect(createResponse.statusCode).toBe(200);
+
+    const analysisResponse = await app.inject({
+      method: "POST",
+      url: "/api/analyze-trip",
+      payload: {
+        trip_id: "2026-04-18-gapyeong",
+        categories: ["summary", "equipment"],
+      },
+    });
+    const metadataResponse = await app.inject({
+      method: "POST",
+      url: "/api/equipment/durable/items/cancel-all-metadata/metadata/refresh",
+    });
+
+    expect(analysisResponse.statusCode).toBe(202);
+    expect(metadataResponse.statusCode).toBe(202);
+    await waitForTripAnalysisStatus(app, "2026-04-18-gapyeong", "running");
+    await waitForDurableMetadataJobStatus(app, "cancel-all-metadata", "running");
+
+    const cancelResponse = await app.inject({
+      method: "POST",
+      url: "/api/ai-jobs/cancel-all",
+    });
+
+    expect(cancelResponse.statusCode).toBe(200);
+    expect(cancelResponse.json()).toEqual({
+      status: "cancelled",
+      cancelled_analysis_trip_count: 1,
+      cancelled_analysis_category_count: 2,
+      cancelled_metadata_item_count: 1,
+    });
+
+    const cancelledStatus = await waitForTripAnalysisStatus(
+      app,
+      "2026-04-18-gapyeong",
+      "interrupted",
+    );
+    expect(cancelledStatus.categories).toEqual(
+      expect.arrayContaining([
+        expect.objectContaining({
+          category: "summary",
+          status: "interrupted",
+        }),
+        expect.objectContaining({
+          category: "equipment",
+          status: "interrupted",
+        }),
+      ]),
+    );
+
+    const metadataStatus = await waitForDurableMetadataJobStatus(
+      app,
+      "cancel-all-metadata",
+      "interrupted",
+    );
+    expect(metadataStatus).toEqual(
+      expect.objectContaining({
+        item_id: "cancel-all-metadata",
+        status: "interrupted",
+      }),
+    );
+    expect(modelClient.aborts).toBe(1);
+    expect(metadataClient.aborts).toEqual(["cancel-all-metadata"]);
+    expect(modelClient.calls).toBe(1);
+
+    await app.close();
+  });
+
+  it("starts a new analysis queue immediately after cancelling the previous one", async () => {
+    const dataDir = await createSeededDataDir();
+    const modelClient = new DeferredAnalysisClient();
+    const app = await buildServer({
+      dataDir,
+      projectRoot,
+      modelClient,
+      campsiteTipClient: new MockCampsiteTipClient(),
+    });
+
+    const firstResponse = await app.inject({
+      method: "POST",
+      url: "/api/analyze-trip",
+      payload: {
+        trip_id: "2026-04-18-gapyeong",
+        categories: ["summary"],
+      },
+    });
+
+    expect(firstResponse.statusCode).toBe(202);
+    await waitForTripAnalysisStatus(app, "2026-04-18-gapyeong", "running");
+
+    const cancelResponse = await app.inject({
+      method: "POST",
+      url: "/api/ai-jobs/cancel-all",
+    });
+
+    expect(cancelResponse.statusCode).toBe(200);
+
+    const secondResponse = await app.inject({
+      method: "POST",
+      url: "/api/analyze-trip",
+      payload: {
+        trip_id: "2026-04-18-gapyeong",
+        categories: ["equipment"],
+      },
+    });
+
+    expect(secondResponse.statusCode).toBe(202);
+    expect(["queued", "running"]).toContain(secondResponse.json().status);
+
+    modelClient.complete("## 2. 추천 장비\n\n- 재시작 후 분석");
+    await waitForTripAnalysisStatus(app, "2026-04-18-gapyeong", "completed");
+    expect(modelClient.calls).toBe(2);
+    expect(modelClient.aborts).toBe(1);
 
     await app.close();
   });

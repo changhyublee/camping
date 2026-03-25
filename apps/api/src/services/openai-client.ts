@@ -10,6 +10,7 @@ export type AnalysisModelClient = {
   generateMarkdown(input: {
     systemPrompt: string;
     userPrompt: string;
+    signal?: AbortSignal;
   }): Promise<string>;
   getHealthStatus(): Promise<BackendHealth>;
 };
@@ -47,21 +48,25 @@ export class OpenAIResponsesClient implements AnalysisModelClient {
   async generateMarkdown(input: {
     systemPrompt: string;
     userPrompt: string;
+    signal?: AbortSignal;
   }): Promise<string> {
     try {
-      const response = await this.client.responses.create({
-        model: this.model,
-        input: [
-          {
-            role: "system",
-            content: [{ type: "input_text", text: input.systemPrompt }],
-          },
-          {
-            role: "user",
-            content: [{ type: "input_text", text: input.userPrompt }],
-          },
-        ],
-      });
+      const response = await this.client.responses.create(
+        {
+          model: this.model,
+          input: [
+            {
+              role: "system",
+              content: [{ type: "input_text", text: input.systemPrompt }],
+            },
+            {
+              role: "user",
+              content: [{ type: "input_text", text: input.userPrompt }],
+            },
+          ],
+        },
+        input.signal ? { signal: input.signal } : undefined,
+      );
 
       const text = extractOutputText(response);
 
@@ -75,6 +80,10 @@ export class OpenAIResponsesClient implements AnalysisModelClient {
 
       return text.trim();
     } catch (error) {
+      if (isAbortError(error)) {
+        throw error;
+      }
+
       if (error instanceof AppError) {
         throw error;
       }
@@ -110,6 +119,7 @@ export type CommandRunner = (input: {
   args: string[];
   cwd: string;
   stdin?: string;
+  signal?: AbortSignal;
 }) => Promise<CommandRunnerResult>;
 
 export class CodexCliClient implements AnalysisModelClient {
@@ -126,6 +136,7 @@ export class CodexCliClient implements AnalysisModelClient {
   async generateMarkdown(input: {
     systemPrompt: string;
     userPrompt: string;
+    signal?: AbortSignal;
   }): Promise<string> {
     const health = await this.getHealthStatus();
 
@@ -163,6 +174,7 @@ export class CodexCliClient implements AnalysisModelClient {
           "-",
         ],
         stdin: buildCodexExecPrompt(input),
+        signal: input.signal,
       });
 
       if (result.exitCode !== 0) {
@@ -188,6 +200,10 @@ export class CodexCliClient implements AnalysisModelClient {
 
       return output.markdown.trim();
     } catch (error) {
+      if (isAbortError(error)) {
+        throw error;
+      }
+
       if (error instanceof AppError) {
         throw error;
       }
@@ -249,6 +265,7 @@ export class CodexCliClient implements AnalysisModelClient {
     args: string[];
     cwd: string;
     stdin?: string;
+    signal?: AbortSignal;
   }) {
     return (this.options.runner ?? runCommand)(input);
   }
@@ -385,11 +402,22 @@ function getCommandErrorMessage(error: unknown) {
   return "Codex CLI 상태를 확인하지 못했습니다.";
 }
 
+export function createAbortError(message: string) {
+  const error = new Error(message);
+  error.name = "AbortError";
+  return error;
+}
+
+export function isAbortError(error: unknown) {
+  return error instanceof Error && error.name === "AbortError";
+}
+
 export async function runCommand(input: {
   command: string;
   args: string[];
   cwd: string;
   stdin?: string;
+  signal?: AbortSignal;
 }): Promise<CommandRunnerResult> {
   return new Promise((resolve, reject) => {
     const child = spawn(input.command, input.args, {
@@ -400,6 +428,29 @@ export async function runCommand(input: {
 
     let stdout = "";
     let stderr = "";
+    let settled = false;
+
+    const finalize = (callback: () => void) => {
+      if (settled) {
+        return;
+      }
+
+      settled = true;
+      input.signal?.removeEventListener("abort", handleAbort);
+      callback();
+    };
+
+    const handleAbort = () => {
+      child.kill("SIGTERM");
+      finalize(() => {
+        reject(createAbortError("사용자 요청으로 AI 작업이 중단되었습니다."));
+      });
+    };
+
+    if (input.signal?.aborted) {
+      handleAbort();
+      return;
+    }
 
     child.stdout.on("data", (chunk) => {
       stdout += chunk.toString();
@@ -409,12 +460,20 @@ export async function runCommand(input: {
       stderr += chunk.toString();
     });
 
-    child.on("error", reject);
+    input.signal?.addEventListener("abort", handleAbort, { once: true });
+
+    child.on("error", (error) => {
+      finalize(() => {
+        reject(error);
+      });
+    });
     child.on("close", (code) => {
-      resolve({
-        exitCode: code ?? 1,
-        stdout,
-        stderr,
+      finalize(() => {
+        resolve({
+          exitCode: code ?? 1,
+          stdout,
+          stderr,
+        });
       });
     });
 

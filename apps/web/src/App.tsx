@@ -223,6 +223,7 @@ export function App() {
     useState<PrecheckItemInput>(createEmptyPrecheckItem());
   const [appLoading, setAppLoading] = useState(true);
   const [creatingDataBackup, setCreatingDataBackup] = useState(false);
+  const [stoppingAllAiJobs, setStoppingAllAiJobs] = useState(false);
   const [detailLoading, setDetailLoading] = useState(false);
   const [savingTrip, setSavingTrip] = useState(false);
   const [bannerState, setBannerState] = useState<OperationState | null>(null);
@@ -2254,6 +2255,49 @@ export function App() {
     }
   }
 
+  async function handleCancelAllAiJobs() {
+    if (
+      !confirmDeletion(
+        "현재 실행 중인 AI 분석과 장비 메타데이터 수집을 모두 중단하고 대기 큐를 비울까요?",
+      )
+    ) {
+      return;
+    }
+
+    setStoppingAllAiJobs(true);
+
+    try {
+      const response = await apiClient.cancelAllAiJobs();
+
+      if (selectedTripId && !isCreatingTrip) {
+        await syncTripAnalysisStatus(selectedTripId, planningLoadRequestIdRef.current, {
+          syncOutputOnComplete: false,
+        });
+      }
+
+      const metadataStatuses = await apiClient.getDurableMetadataJobStatuses();
+      applyDurableMetadataJobStatuses(metadataStatuses.items);
+
+      setOperationState({
+        title: "모든 AI 요청 중단 완료",
+        tone: "success",
+        description:
+          response.cancelled_analysis_category_count > 0 ||
+          response.cancelled_metadata_item_count > 0
+            ? `분석 섹션 ${response.cancelled_analysis_category_count}개, 메타데이터 ${response.cancelled_metadata_item_count}건을 중단하고 queue를 비웠습니다.`
+            : "중단할 AI 수집 작업이 없어 queue만 다시 정리했습니다.",
+      });
+    } catch (error) {
+      setOperationState({
+        title: "모든 AI 요청 중단 실패",
+        tone: "error",
+        description: getErrorMessage(error),
+      });
+    } finally {
+      setStoppingAllAiJobs(false);
+    }
+  }
+
   function renderNavButton(
     page: PageKey,
     description: string,
@@ -2419,6 +2463,21 @@ export function App() {
             <button className="button button--primary" onClick={beginCreateTrip} type="button">
               새 캠핑 계획
             </button>
+            <button
+              className="button button--danger"
+              disabled={stoppingAllAiJobs}
+              onClick={handleCancelAllAiJobs}
+              type="button"
+            >
+              {stoppingAllAiJobs ? "중단 처리 중..." : "모든 AI 요청 중단"}
+            </button>
+            <div className="nav-note nav-note--danger">
+              <strong>AI 수집 초기화</strong>
+              <span>
+                실행 중인 분석과 장비 메타데이터 수집을 모두 멈추고 남아 있는
+                대기 queue를 정리합니다.
+              </span>
+            </div>
           </div>
         </aside>
 

@@ -1,6 +1,7 @@
 import type {
   AnalyzeTripRequest,
   AnalyzeTripResponse,
+  CancelAllAiJobsResponse,
   Companion,
   CompanionInput,
   ConsumableEquipmentItemInput,
@@ -185,6 +186,11 @@ export const apiClient = {
     return request("/api/analyze-trip", {
       method: "POST",
       body: JSON.stringify(input),
+    });
+  },
+  async cancelAllAiJobs(): Promise<CancelAllAiJobsResponse> {
+    return request("/api/ai-jobs/cancel-all", {
+      method: "POST",
     });
   },
   async getTripAnalysisStatus(

@@ -2,6 +2,7 @@ import type {
   AnalyzeTripRequest,
   AnalyzeTripResponse,
   CampsiteTipsResearch,
+  CancelAllAiJobsResponse,
   CreateDataBackupResponse,
   Companion,
   CompanionInput,
@@ -66,7 +67,7 @@ export class AnalysisService {
   ) {
     this.analysisJobManager = new AnalysisJobManager(
       repository,
-      async (input) => this.executeTripAnalysis(input),
+      async (input, signal) => this.executeTripAnalysis(input, signal),
     );
     this.metadataJobManager = new EquipmentMetadataJobManager(
       repository,
@@ -304,6 +305,20 @@ export class AnalysisService {
     return this.analysisJobManager.enqueueTripAnalysis(input);
   }
 
+  async cancelAllAiJobs(): Promise<CancelAllAiJobsResponse> {
+    const [analysisSummary, metadataSummary] = await Promise.all([
+      this.analysisJobManager.cancelAllTripAnalyses(),
+      this.metadataJobManager.cancelAllDurableMetadataRefreshes(),
+    ]);
+
+    return {
+      status: "cancelled",
+      cancelled_analysis_trip_count: analysisSummary.cancelledTripCount,
+      cancelled_analysis_category_count: analysisSummary.cancelledCategoryCount,
+      cancelled_metadata_item_count: metadataSummary.cancelledItemCount,
+    };
+  }
+
   async saveOutput(input: SaveOutputRequest): Promise<SaveOutputResponse> {
     await this.repository.readTrip(input.trip_id);
     const outputPath = await this.repository.saveOutput(
@@ -326,7 +341,10 @@ export class AnalysisService {
     return this.analysisJobManager.getTripAnalysisStatus(tripId);
   }
 
-  private async executeTripAnalysis(input: AnalyzeTripRequest): Promise<string> {
+  private async executeTripAnalysis(
+    input: AnalyzeTripRequest,
+    signal?: AbortSignal,
+  ): Promise<string> {
     const categories = resolveTripAnalysisCategories(input.categories);
 
     if (categories.length !== 1) {
@@ -338,10 +356,13 @@ export class AnalysisService {
     }
 
     const [category] = categories;
+    throwIfAborted(signal);
     const bundle = await this.repository.loadTripBundle(input.trip_id);
     const { warnings } = validateTripBundle(bundle);
     const campsiteTips =
-      category === "campsite_tips" ? await this.collectCampsiteTips(bundle) : null;
+      category === "campsite_tips"
+        ? await this.collectCampsiteTips(bundle, signal)
+        : null;
     const bundleWithCampsiteTips = campsiteTips
       ? {
           ...bundle,
@@ -373,9 +394,11 @@ export class AnalysisService {
       overrideInstructions: input.override_instructions,
     });
 
+    throwIfAborted(signal);
     const rawMarkdown = await this.modelClient.generateMarkdown({
       systemPrompt: prompts.system,
       userPrompt,
+      signal,
     });
     const markdown = extractTripAnalysisCategoryMarkdown(category, rawMarkdown);
 
@@ -390,6 +413,7 @@ export class AnalysisService {
     const currentResults =
       (await this.repository.readTripAnalysisResultsCache(input.trip_id)) ??
       createEmptyTripAnalysisResultsCache(bundle.trip);
+    throwIfAborted(signal);
     const nextResults = upsertTripAnalysisCategoryResult(currentResults, {
       category,
       markdown,
@@ -401,11 +425,13 @@ export class AnalysisService {
       resultsCache: nextResults,
     });
 
+    throwIfAborted(signal);
     return this.repository.saveOutput(input.trip_id, composedMarkdown);
   }
 
   private async collectCampsiteTips(
     bundle: Awaited<ReturnType<CampingRepository["loadTripBundle"]>>,
+    signal?: AbortSignal,
   ): Promise<CampsiteTipsResearch | null> {
     const campsiteName = bundle.trip.location?.campsite_name?.trim();
 
@@ -422,10 +448,19 @@ export class AnalysisService {
     }
 
     try {
-      const research = await this.campsiteTipClient.collectCampsiteTips({ bundle });
+      throwIfAborted(signal);
+      const research = await this.campsiteTipClient.collectCampsiteTips({
+        bundle,
+        signal,
+      });
+      throwIfAborted(signal);
       await this.repository.saveCampsiteTipResearch(bundle.trip.trip_id, research);
       return research;
     } catch (error) {
+      if (error instanceof Error && error.name === "AbortError") {
+        throw error;
+      }
+
       if (cached) {
         return cached;
       }
@@ -494,4 +529,12 @@ function resolveTripAnalysisCategories(
 ): TripAnalysisCategory[] {
   const selected = new Set(categories ?? ALL_TRIP_ANALYSIS_CATEGORIES);
   return ALL_TRIP_ANALYSIS_CATEGORIES.filter((category) => selected.has(category));
+}
+
+function throwIfAborted(signal?: AbortSignal) {
+  if (signal?.aborted) {
+    const error = new Error("사용자 요청으로 AI 분석이 중단되었습니다.");
+    error.name = "AbortError";
+    throw error;
+  }
 }

@@ -587,6 +587,10 @@ code {
   margin-top: 20px;
 }
 
+.nav-actions .button {
+  width: 100%;
+}
+
 .nav-note {
   display: grid;
   gap: 8px;
@@ -594,6 +598,16 @@ code {
   border-radius: 20px;
   border: 1px solid var(--line);
   background: rgba(255, 255, 255, 0.34);
+}
+
+.nav-note strong {
+  font-size: 0.95rem;
+  line-height: 1.3;
+}
+
+.nav-note--danger {
+  border-color: rgba(138, 52, 43, 0.18);
+  background: rgba(236, 197, 190, 0.28);
 }
 
 .panel--nav code {
@@ -1206,6 +1220,18 @@ textarea.form-grid__full {
 
 .button--primary:hover {
   background: linear-gradient(135deg, #356d5d, #24493f);
+}
+
+.button--danger {
+  border-color: rgba(138, 52, 43, 0.24);
+  background: rgba(255, 248, 247, 0.92);
+  color: var(--danger);
+  box-shadow: 0 10px 24px rgba(138, 52, 43, 0.08);
+}
+
+.button--danger:hover {
+  border-color: rgba(138, 52, 43, 0.34);
+  background: rgba(255, 242, 240, 0.96);
 }
 
 .empty-state {

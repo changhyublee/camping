@@ -284,6 +284,20 @@ function consumeAnalysisStatusResponse(tripId: string) {
   return response;
 }
 
+function peekAnalysisStatusResponse(tripId: string) {
+  const response = state.analysisStatuses[tripId];
+
+  if (!response) {
+    return createAnalysisResponse(tripId);
+  }
+
+  if (Array.isArray(response)) {
+    return response[0]?.body ?? createAnalysisResponse(tripId);
+  }
+
+  return response.body;
+}
+
 function consumeMetadataStatusResponse(itemId: string) {
   const response = state.metadataStatuses[itemId];
 
@@ -384,6 +398,83 @@ function mockFetch(input: RequestInfo | URL, init?: RequestInit) {
 
     state.dataBackups.unshift(item);
     return jsonResponse({ item });
+  }
+
+  if (pathname === "/api/ai-jobs/cancel-all" && method === "POST") {
+    const cancelledTripIds = Object.keys(state.analysisStatuses).filter((tripId) => {
+      const status = peekAnalysisStatusResponse(tripId);
+      return status.status === "queued" || status.status === "running";
+    });
+    const cancelledAnalysisCategoryCount = cancelledTripIds.reduce((count, tripId) => {
+      const status = peekAnalysisStatusResponse(tripId);
+      return (
+        count +
+        status.categories.filter(
+          (category) => category.status === "queued" || category.status === "running",
+        ).length
+      );
+    }, 0);
+    const cancelledMetadataItemIds = Object.keys(state.metadataStatuses).filter((itemId) => {
+      const response = consumeMetadataStatusResponse(itemId);
+
+      if (!response) {
+        return false;
+      }
+
+      state.metadataStatuses[itemId] = response;
+      return response.body.status === "queued" || response.body.status === "running";
+    });
+
+    for (const tripId of cancelledTripIds) {
+      const status = peekAnalysisStatusResponse(tripId);
+      state.analysisStatuses[tripId] = {
+        body: {
+          ...status,
+          status: "interrupted",
+          finished_at: "2026-03-24T10:05:00.000Z",
+          categories: status.categories.map((category) =>
+            category.status === "queued" || category.status === "running"
+              ? {
+                  ...category,
+                  status: "interrupted",
+                  finished_at: "2026-03-24T10:05:00.000Z",
+                  error: {
+                    code: "INTERNAL_ERROR",
+                    message: "사용자 요청으로 모든 AI 분석을 중단했습니다.",
+                  },
+                }
+              : category,
+          ),
+          error: {
+            code: "INTERNAL_ERROR",
+            message: "사용자 요청으로 모든 AI 분석을 중단했습니다.",
+          },
+        },
+      };
+    }
+
+    for (const itemId of cancelledMetadataItemIds) {
+      state.metadataStatuses[itemId] = {
+        body: {
+          item_id: itemId,
+          status: "interrupted",
+          requested_at: "2026-03-24T10:00:00.000Z",
+          started_at: "2026-03-24T10:00:01.000Z",
+          finished_at: "2026-03-24T10:05:00.000Z",
+          error: {
+            code: "INTERNAL_ERROR",
+            message: "사용자 요청으로 모든 AI 요청을 중단했습니다.",
+          },
+        },
+      };
+    }
+
+    return jsonResponse({
+      status: "cancelled",
+      cancelled_analysis_trip_count: cancelledTripIds.length,
+      cancelled_analysis_category_count: cancelledAnalysisCategoryCount,
+      cancelled_metadata_item_count: cancelledMetadataItemIds.length,
+    });
   }
 
   if (pathname === "/api/trips" && method === "POST") {
@@ -1307,6 +1398,68 @@ describe("App", () => {
     });
 
     expect(backupCall).toBeDefined();
+  });
+
+  it("cancels all AI jobs from the sidebar and refreshes the selected planning state", async () => {
+    const runningAnalysis = createAnalysisResponse("2026-04-18-gapyeong", {
+      status: "running",
+      requested_at: "2026-03-24T10:00:00.000Z",
+      started_at: "2026-03-24T10:00:01.000Z",
+      output_path: ".camping-data/outputs/2026-04-18-gapyeong-plan.md",
+    });
+    runningAnalysis.categories = runningAnalysis.categories.map((category) =>
+      category.category === "equipment"
+        ? {
+            ...category,
+            status: "running",
+            requested_at: "2026-03-24T10:00:00.000Z",
+            started_at: "2026-03-24T10:00:01.000Z",
+          }
+        : category,
+    );
+    state.analysisStatuses["2026-04-18-gapyeong"] = {
+      body: runningAnalysis,
+    };
+    state.metadataStatuses["family-tent"] = {
+      body: {
+        item_id: "family-tent",
+        status: "running",
+        requested_at: "2026-03-24T10:00:00.000Z",
+        started_at: "2026-03-24T10:00:01.000Z",
+        finished_at: null,
+      },
+    };
+    window.sessionStorage.setItem(
+      "camping.ui-state",
+      JSON.stringify({
+        activePage: "planning",
+        selectedTripId: "2026-04-18-gapyeong",
+        selectedHistoryId: null,
+        equipmentSection: "durable",
+      }),
+    );
+
+    render(<App />);
+
+    await userEvent.click(await screen.findByRole("button", { name: "모든 AI 요청 중단" }));
+
+    expect(await screen.findByText("모든 AI 요청 중단 완료")).toBeInTheDocument();
+    expect(await screen.findByText("분석 중단")).toBeInTheDocument();
+    expect(
+      screen.getAllByText("사용자 요청으로 모든 AI 분석을 중단했습니다.").length,
+    ).toBeGreaterThan(0);
+
+    const cancelCall = fetchMock.mock.calls.find(([input, init]) => {
+      const rawUrl = typeof input === "string" ? input : input.toString();
+      const pathname = new URL(rawUrl, "http://localhost").pathname;
+
+      return (
+        pathname === "/api/ai-jobs/cancel-all" &&
+        (init?.method?.toUpperCase() ?? "GET") === "POST"
+      );
+    });
+
+    expect(cancelCall).toBeDefined();
   });
 
   it("keeps startup warning visible after a later floating toast appears", async () => {

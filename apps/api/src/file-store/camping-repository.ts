@@ -1005,6 +1005,34 @@ export class CampingRepository {
     return normalized;
   }
 
+  async listTripAnalysisStatuses(): Promise<GetTripAnalysisStatusResponse[]> {
+    const jobFiles = await this.listJsonFiles(this.getTripAnalysisJobDir());
+    const statuses = await Promise.all(
+      jobFiles.map(async (fileName) => {
+        const tripId = fileName.replace(/\.json$/u, "");
+
+        if (!isTripId(tripId)) {
+          return null;
+        }
+
+        return this.readTripAnalysisStatus(tripId);
+      }),
+    );
+
+    return statuses
+      .filter((status): status is GetTripAnalysisStatusResponse => status !== null)
+      .sort((left, right) => {
+        const leftRequestedAt = left.requested_at ?? "";
+        const rightRequestedAt = right.requested_at ?? "";
+
+        if (leftRequestedAt !== rightRequestedAt) {
+          return rightRequestedAt.localeCompare(leftRequestedAt);
+        }
+
+        return left.trip_id.localeCompare(right.trip_id, "ko");
+      });
+  }
+
   async deleteTripAnalysisStatus(tripId: TripId): Promise<void> {
     await rm(this.getTripAnalysisStatusPath(tripId), { force: true });
   }

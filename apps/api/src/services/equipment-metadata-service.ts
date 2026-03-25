@@ -9,12 +9,17 @@ import {
   type DurableEquipmentMetadataSource,
 } from "@camping/shared";
 import { AppError } from "./app-error";
-import { runCommand, type CommandRunner } from "./openai-client";
+import {
+  isAbortError,
+  runCommand,
+  type CommandRunner,
+} from "./openai-client";
 
 export type EquipmentMetadataSearchClient = {
   collectDurableEquipmentMetadata(input: {
     item: DurableEquipmentItem;
     categoryLabel?: string;
+    signal?: AbortSignal;
   }): Promise<DurableEquipmentMetadata>;
 };
 
@@ -43,6 +48,7 @@ export class OpenAIEquipmentMetadataClient
   async collectDurableEquipmentMetadata(input: {
     item: DurableEquipmentItem;
     categoryLabel?: string;
+    signal?: AbortSignal;
   }): Promise<DurableEquipmentMetadata> {
     const response = await this.requestMetadata(input);
     const rawText = extractResponseText(response);
@@ -61,37 +67,45 @@ export class OpenAIEquipmentMetadataClient
   private async requestMetadata(input: {
     item: DurableEquipmentItem;
     categoryLabel?: string;
+    signal?: AbortSignal;
   }) {
     try {
-      return await this.client.responses.create({
-        model: this.model,
-        reasoning: { effort: "low" },
-        tools: [{ type: "web_search_preview" }],
-        tool_choice: "auto",
-        input: [
-          {
-            role: "system",
-            content: [
-              {
-                type: "input_text",
-                text: buildSystemPrompt({
-                  runtime: "openai",
-                }),
-              },
-            ],
-          },
-          {
-            role: "user",
-            content: [
-              {
-                type: "input_text",
-                text: buildUserPrompt(input),
-              },
-            ],
-          },
-        ],
-      });
+      return await this.client.responses.create(
+        {
+          model: this.model,
+          reasoning: { effort: "low" },
+          tools: [{ type: "web_search_preview" }],
+          tool_choice: "auto",
+          input: [
+            {
+              role: "system",
+              content: [
+                {
+                  type: "input_text",
+                  text: buildSystemPrompt({
+                    runtime: "openai",
+                  }),
+                },
+              ],
+            },
+            {
+              role: "user",
+              content: [
+                {
+                  type: "input_text",
+                  text: buildUserPrompt(input),
+                },
+              ],
+            },
+          ],
+        },
+        input.signal ? { signal: input.signal } : undefined,
+      );
     } catch (error) {
+      if (isAbortError(error)) {
+        throw error;
+      }
+
       throw new AppError(
         "OPENAI_REQUEST_FAILED",
         error instanceof Error
@@ -120,6 +134,7 @@ export class CodexCliEquipmentMetadataClient
   async collectDurableEquipmentMetadata(input: {
     item: DurableEquipmentItem;
     categoryLabel?: string;
+    signal?: AbortSignal;
   }): Promise<DurableEquipmentMetadata> {
     const tempDir = await mkdtemp(path.join(os.tmpdir(), "camping-codex-metadata-"));
     const outputFile = path.join(tempDir, "equipment-metadata.json");
@@ -152,6 +167,7 @@ export class CodexCliEquipmentMetadataClient
           "-",
         ],
         stdin: buildCodexPrompt(input),
+        signal: input.signal,
       });
 
       if (result.exitCode !== 0) {
@@ -166,6 +182,10 @@ export class CodexCliEquipmentMetadataClient
       const rawText = await readFile(outputFile, "utf8");
       return normalizeMetadataPayload(rawText, []);
     } catch (error) {
+      if (isAbortError(error)) {
+        throw error;
+      }
+
       if (error instanceof AppError) {
         throw error;
       }
@@ -187,6 +207,7 @@ export class CodexCliEquipmentMetadataClient
     args: string[];
     cwd: string;
     stdin?: string;
+    signal?: AbortSignal;
   }) {
     return (this.options.runner ?? runCommand)(input);
   }

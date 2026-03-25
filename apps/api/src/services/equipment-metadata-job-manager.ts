@@ -5,9 +5,11 @@ import type {
 import type { CampingRepository } from "../file-store/camping-repository";
 import type { EquipmentMetadataSearchClient } from "./equipment-metadata-service";
 import { AppError, isAppError, toApiError } from "./app-error";
+import { isAbortError } from "./openai-client";
 
 export class EquipmentMetadataJobManager {
   private readonly activeJobs = new Map<string, Promise<void>>();
+  private readonly activeAbortControllers = new Map<string, AbortController>();
   private readonly pendingEnqueues = new Map<
     string,
     Promise<DurableMetadataJobStatusResponse>
@@ -32,6 +34,22 @@ export class EquipmentMetadataJobManager {
 
   async listDurableMetadataJobStatuses() {
     return this.repository.listDurableMetadataJobStatuses();
+  }
+
+  async cancelAllDurableMetadataRefreshes() {
+    const statuses = await this.repository.listDurableMetadataJobStatuses();
+    const itemIds = new Set<string>([
+      ...statuses.map((status) => status.item_id),
+      ...this.activeJobs.keys(),
+      ...this.pendingEnqueues.keys(),
+    ]);
+    let cancelledItemCount = 0;
+
+    for (const itemId of itemIds) {
+      cancelledItemCount += await this.interruptDurableMetadataRefresh(itemId);
+    }
+
+    return { cancelledItemCount };
   }
 
   async enqueueDurableMetadataRefresh(
@@ -84,6 +102,8 @@ export class EquipmentMetadataJobManager {
           this.activeJobs.delete(itemId);
         }
 
+        this.activeAbortControllers.delete(itemId);
+
         if (!this.cancelledItems.has(itemId)) {
           this.latestRequestedFingerprints.delete(itemId);
         }
@@ -110,7 +130,41 @@ export class EquipmentMetadataJobManager {
     this.rerunRequested.delete(itemId);
     this.latestRequestedFingerprints.delete(itemId);
     this.bumpJobGeneration(itemId);
+    this.activeAbortControllers.get(itemId)?.abort();
     await this.repository.deleteDurableMetadataJobStatus(itemId);
+  }
+
+  private async interruptDurableMetadataRefresh(itemId: string): Promise<number> {
+    return this.withItemLock(itemId, async () => {
+      const currentStatus = await this.repository.readDurableMetadataJobStatus(itemId);
+
+      this.cancelledItems.add(itemId);
+      this.rerunRequested.delete(itemId);
+      this.latestRequestedFingerprints.delete(itemId);
+      this.bumpJobGeneration(itemId);
+      this.activeAbortControllers.get(itemId)?.abort();
+
+      if (
+        !currentStatus ||
+        !isPendingDurableMetadataJobStatus(currentStatus.status)
+      ) {
+        return 0;
+      }
+
+      await this.repository.saveDurableMetadataJobStatus({
+        item_id: itemId,
+        status: "interrupted",
+        requested_at: currentStatus.requested_at ?? null,
+        started_at: currentStatus.started_at ?? null,
+        finished_at: new Date().toISOString(),
+        error: {
+          code: "INTERNAL_ERROR",
+          message: "사용자 요청으로 모든 AI 요청을 중단했습니다.",
+        },
+      });
+
+      return 1;
+    });
   }
 
   private async reusePendingJobStatus(
@@ -182,13 +236,24 @@ export class EquipmentMetadataJobManager {
         finished_at: null,
       });
 
+      const controller = new AbortController();
+      this.activeAbortControllers.set(itemId, controller);
+
+      if (!this.isCurrentGeneration(itemId, generation)) {
+        return;
+      }
+
       try {
         const metadata = await this.metadataClient.collectDurableEquipmentMetadata({
           item: input.item,
           categoryLabel: input.categoryLabel,
+          signal: controller.signal,
         });
 
-        if (!this.isCurrentGeneration(itemId, generation)) {
+        if (
+          !this.isCurrentGeneration(itemId, generation) ||
+          controller.signal.aborted
+        ) {
           return;
         }
 
@@ -221,7 +286,11 @@ export class EquipmentMetadataJobManager {
         await this.repository.deleteDurableMetadataJobStatus(itemId);
         return;
       } catch (error) {
-        if (!this.isCurrentGeneration(itemId, generation)) {
+        if (
+          !this.isCurrentGeneration(itemId, generation) ||
+          controller.signal.aborted ||
+          isAbortError(error)
+        ) {
           return;
         }
 
@@ -255,6 +324,10 @@ export class EquipmentMetadataJobManager {
         });
         return;
       } finally {
+        if (this.activeAbortControllers.get(itemId) === controller) {
+          this.activeAbortControllers.delete(itemId);
+        }
+
         releaseSlot();
       }
     }

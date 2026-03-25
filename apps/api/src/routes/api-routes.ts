@@ -440,6 +440,10 @@ export async function registerApiRoutes(
     return reply.status(202).send(response);
   });
 
+  app.post("/api/ai-jobs/cancel-all", async () => {
+    return analysisService.cancelAllAiJobs();
+  });
+
   app.get("/api/trips/:tripId/analysis-status", async (request) => {
     const tripId = readIdParam(
       (request.params as { tripId?: unknown }).tripId,
