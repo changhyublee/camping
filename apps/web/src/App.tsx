@@ -30,11 +30,14 @@ import type {
   PrecheckItem,
   PrecheckItemInput,
   TripDraft,
+  TripAnalysisCategory,
+  TripAnalysisCategoryStatusResponse,
   TripSummary,
   Vehicle,
   VehicleInput,
 } from "@camping/shared";
 import {
+  ALL_TRIP_ANALYSIS_CATEGORIES,
   AGE_GROUP_LABELS,
   CONSUMABLE_STATUS_LABELS,
   DURABLE_METADATA_STATUS_LABELS,
@@ -43,6 +46,8 @@ import {
   EQUIPMENT_SECTION_LABELS,
   EXTERNAL_LINK_CATEGORY_LABELS,
   PRECHECK_STATUS_LABELS,
+  TRIP_ANALYSIS_CATEGORY_METADATA,
+  TRIP_ANALYSIS_STATUS_LABELS,
   getConsumableStatus,
 } from "@camping/shared";
 import { cloneEquipmentCategories } from "@camping/shared";
@@ -169,6 +174,9 @@ export function App() {
     useState<GetOutputResponse | null>(null);
   const [analysisStatus, setAnalysisStatus] =
     useState<AnalyzeTripResponse | null>(null);
+  const [selectedAnalysisCategories, setSelectedAnalysisCategories] = useState<
+    TripAnalysisCategory[]
+  >([...ALL_TRIP_ANALYSIS_CATEGORIES]);
   const [assistantResponse, setAssistantResponse] =
     useState<PlanningAssistantResponse | null>(null);
   const [assistantInput, setAssistantInput] = useState("");
@@ -349,12 +357,7 @@ export function App() {
           }
 
           applyAnalysisStatus({
-            trip_id: selectedTripId,
-            status: "idle",
-            requested_at: null,
-            started_at: null,
-            finished_at: null,
-            output_path: null,
+            ...createIdleAnalysisStatus(selectedTripId),
           });
         });
       })
@@ -372,6 +375,14 @@ export function App() {
   const selectedHistory = useMemo(
     () => history.find((item) => item.history_id === selectedHistoryId) ?? null,
     [history, selectedHistoryId],
+  );
+  const analysisCategoryStatuses = useMemo(
+    () => analysisStatus?.categories ?? createIdleAnalysisCategoryStatuses(),
+    [analysisStatus],
+  );
+  const completedAnalysisCategoryCount = useMemo(
+    () => analysisCategoryStatuses.filter((category) => category.has_result).length,
+    [analysisCategoryStatuses],
   );
 
   const linkGroups = useMemo(
@@ -437,6 +448,10 @@ export function App() {
     setHistoryOutputError(null);
     setHistoryOutputLoading(false);
   }, [selectedHistoryId]);
+
+  useEffect(() => {
+    setSelectedAnalysisCategories([...ALL_TRIP_ANALYSIS_CATEGORIES]);
+  }, [isCreatingTrip, selectedTripId]);
 
   useEffect(() => {
     setMarkdownLayer(null);
@@ -1060,6 +1075,22 @@ export function App() {
     setOperationState(null);
   }
 
+  function toggleAnalysisCategorySelection(category: TripAnalysisCategory) {
+    setSelectedAnalysisCategories((current) =>
+      current.includes(category)
+        ? current.filter((item) => item !== category)
+        : [...current, category],
+    );
+  }
+
+  function selectAllAnalysisCategories() {
+    setSelectedAnalysisCategories([...ALL_TRIP_ANALYSIS_CATEGORIES]);
+  }
+
+  function clearAnalysisCategorySelection() {
+    setSelectedAnalysisCategories([]);
+  }
+
   function updateTripDraft(
     updater: (current: TripDraft) => TripDraft,
   ) {
@@ -1381,8 +1412,15 @@ export function App() {
     }
   }
 
-  async function handleAnalyze() {
-    if (!selectedTripId || isAnalysisPending) return;
+  async function requestAnalysisRun(
+    categories: TripAnalysisCategory[],
+    options: {
+      forceRefresh?: boolean;
+      successTitle: string;
+      successDescription: string;
+    },
+  ) {
+    if (!selectedTripId || categories.length === 0) return;
 
     const tripId = selectedTripId;
     const requestId = planningLoadRequestIdRef.current;
@@ -1391,6 +1429,8 @@ export function App() {
     try {
       const response = await apiClient.analyzeTrip({
         trip_id: tripId,
+        categories,
+        force_refresh: options.forceRefresh,
         save_output: true,
       });
 
@@ -1403,11 +1443,9 @@ export function App() {
       if (response.status === "completed") {
         await loadPlanningOutput(tripId, requestId, { preserveCurrent: true });
         setOperationState({
-          title: "분석 완료",
+          title: options.successTitle,
           tone: "success",
-          description:
-            response.output_path ??
-            "분석 결과를 저장하고 최신 Markdown을 다시 불러왔습니다.",
+          description: response.output_path ?? options.successDescription,
         });
       } else if (response.status === "failed") {
         setOperationState({
@@ -1426,10 +1464,9 @@ export function App() {
         });
       } else {
         setOperationState({
-          title: "분석 작업 시작",
+          title: options.successTitle,
           tone: "success",
-          description:
-            "현재 저장된 계획을 기준으로 백그라운드 분석을 시작했습니다.",
+          description: options.successDescription,
         });
       }
     } catch (error) {
@@ -1443,6 +1480,30 @@ export function App() {
         description: getErrorMessage(error),
       });
     }
+  }
+
+  async function handleAnalyzeSelected() {
+    await requestAnalysisRun(selectedAnalysisCategories, {
+      successTitle: "섹션 수집 시작",
+      successDescription:
+        "선택한 섹션을 기준으로 백그라운드 분석을 시작했습니다.",
+    });
+  }
+
+  async function handleAnalyzeAll() {
+    await requestAnalysisRun([...ALL_TRIP_ANALYSIS_CATEGORIES], {
+      successTitle: "전체 분석 시작",
+      successDescription:
+        "전체 섹션을 기준으로 백그라운드 분석을 시작했습니다.",
+    });
+  }
+
+  async function handleRefreshAnalysisCategory(category: TripAnalysisCategory) {
+    await requestAnalysisRun([category], {
+      forceRefresh: true,
+      successTitle: "섹션 재수집 시작",
+      successDescription: "선택한 섹션을 다시 수집하기 시작했습니다.",
+    });
   }
 
   function handleOpenAnalysisLayer() {
@@ -4363,10 +4424,10 @@ export function App() {
                           <button
                             className="button button--primary"
                             disabled={isAnalysisPending}
-                            onClick={handleAnalyze}
+                            onClick={handleAnalyzeAll}
                             type="button"
                           >
-                            {isAnalysisPending ? "분석 중..." : "분석 실행"}
+                            {isAnalysisPending ? "분석 중..." : "전체 분석 실행"}
                           </button>
                         ) : null}
                       </div>
@@ -4479,23 +4540,129 @@ export function App() {
                         </button>
                       ) : null}
                     </div>
-                    <div className="action-card action-card--soft">
-                      <strong>분석 결과는 최종 정리할 때 확인</strong>
-                      <p>
-                        계획과 장비 점검이 끝난 뒤 분석을 실행하면 준비물, 체크리스트,
-                        식단, 이동 추천, 캠핑장 tip, 다음 캠핑 추천이 Markdown으로
-                        정리됩니다.
-                      </p>
-                    </div>
-
                     {selectedTripId ? (
                       <>
                         <div className="section-label section-label--analysis">
-                          <strong>분석 결과</strong>
+                          <strong>섹션별 분석</strong>
                           <p>
-                            입력과 점검이 끝났다면 분석 실행을 눌러 이번 캠핑의 최종
-                            정리본을 확인합니다.
+                            필요한 섹션만 먼저 수집하고, 누적된 결과를 하나의 Markdown
+                            플랜으로 계속 합성합니다.
                           </p>
+                        </div>
+                        <div className="analysis-category-summary">
+                          <div className="meta-chip">
+                            <span>전체 섹션</span>
+                            <strong>{analysisCategoryStatuses.length}개</strong>
+                          </div>
+                          <div className="meta-chip">
+                            <span>수집 완료</span>
+                            <strong>{completedAnalysisCategoryCount}개</strong>
+                          </div>
+                          <div className="meta-chip">
+                            <span>선택 상태</span>
+                            <strong>{selectedAnalysisCategories.length}개 선택</strong>
+                          </div>
+                        </div>
+                        <div className="analysis-category-toolbar">
+                          <div className="button-row">
+                            <button
+                              className="button"
+                              onClick={selectAllAnalysisCategories}
+                              type="button"
+                            >
+                              전체 선택
+                            </button>
+                            <button
+                              className="button"
+                              onClick={clearAnalysisCategorySelection}
+                              type="button"
+                            >
+                              선택 해제
+                            </button>
+                            <button
+                              className="button"
+                              disabled={selectedAnalysisCategories.length === 0}
+                              onClick={handleAnalyzeSelected}
+                              type="button"
+                            >
+                              선택 수집
+                            </button>
+                            <button
+                              className="button button--primary"
+                              onClick={handleAnalyzeAll}
+                              type="button"
+                            >
+                              전체 실행
+                            </button>
+                          </div>
+                        </div>
+                        <div className="analysis-category-list">
+                          {analysisCategoryStatuses.map((categoryStatus) => {
+                            const metadata =
+                              TRIP_ANALYSIS_CATEGORY_METADATA[categoryStatus.category];
+                            const isSelected = selectedAnalysisCategories.includes(
+                              categoryStatus.category,
+                            );
+                            const isCategoryPending = isPendingAnalysisStatus(
+                              categoryStatus.status,
+                            );
+
+                            return (
+                              <article className="analysis-category-card" key={categoryStatus.category}>
+                                <div className="analysis-category-card__header">
+                                  <label className="analysis-category-card__toggle">
+                                    <input
+                                      checked={isSelected}
+                                      onChange={() =>
+                                        toggleAnalysisCategorySelection(categoryStatus.category)
+                                      }
+                                      type="checkbox"
+                                    />
+                                    <span>
+                                      <strong>{metadata.label}</strong>
+                                      <span>{metadata.summary}</span>
+                                    </span>
+                                  </label>
+                                  <div className="analysis-category-card__meta">
+                                    <span
+                                      className={`analysis-status-chip analysis-status-chip--${categoryStatus.status}`}
+                                    >
+                                      {getTripAnalysisStatusLabel(categoryStatus.status)}
+                                    </span>
+                                    <button
+                                      className="button"
+                                      disabled={isCategoryPending}
+                                      onClick={() =>
+                                        handleRefreshAnalysisCategory(categoryStatus.category)
+                                      }
+                                      type="button"
+                                    >
+                                      {categoryStatus.has_result ? "재수집" : "이 섹션 수집"}
+                                    </button>
+                                  </div>
+                                </div>
+                                <div className="analysis-category-card__body">
+                                  <p>
+                                    섹션:{" "}
+                                    {metadata.sections
+                                      .map((section) => `${section.order}. ${section.title}`)
+                                      .join(", ")}
+                                  </p>
+                                  <p>
+                                    마지막 수집:{" "}
+                                    {categoryStatus.collected_at
+                                      ? formatRelativeDate(categoryStatus.collected_at)
+                                      : "아직 없음"}
+                                  </p>
+                                  {categoryStatus.error ? (
+                                    <p className="analysis-category-card__error">
+                                      {categoryStatus.error.message}
+                                    </p>
+                                  ) : null}
+                                </div>
+                              </article>
+                            );
+                          })}
                         </div>
 
                         {analysisStatus?.status === "queued" ||
@@ -4503,7 +4670,7 @@ export function App() {
                           <StatusBanner
                             tone="info"
                             title="백그라운드 분석 진행 중"
-                            description="현재 저장된 계획을 기준으로 분석 중입니다. 완료되면 최신 Markdown을 자동으로 다시 불러옵니다."
+                            description="선택한 섹션을 순차적으로 수집 중입니다. 완료될 때마다 최신 Markdown을 자동으로 다시 불러옵니다."
                           />
                         ) : null}
 
@@ -4535,9 +4702,8 @@ export function App() {
                           </article>
                         ) : (
                           <div className="empty-state">
-                            계획 저장 후 분석 실행을 누르면 추천 장비, 개인 준비물, 출발 전
-                            체크리스트, 식단, 이동/주변 추천, 캠핑장 tip, 다음 캠핑 추천
-                            결과가 여기에 표시됩니다.
+                            계획 저장 후 섹션을 선택해 수집하면, 누적된 최종 Markdown
+                            플랜이 여기에 표시됩니다.
                           </div>
                         )}
 
@@ -6620,8 +6786,40 @@ function sortLinks(left: ExternalLink, right: ExternalLink) {
   return left.name.localeCompare(right.name, "ko");
 }
 
+function createIdleAnalysisCategoryStatuses(): TripAnalysisCategoryStatusResponse[] {
+  return ALL_TRIP_ANALYSIS_CATEGORIES.map((category) => ({
+    category,
+    label: TRIP_ANALYSIS_CATEGORY_METADATA[category].label,
+    sections: TRIP_ANALYSIS_CATEGORY_METADATA[category].sections,
+    status: "idle",
+    has_result: false,
+    requested_at: null,
+    started_at: null,
+    finished_at: null,
+    collected_at: null,
+  }));
+}
+
+function createIdleAnalysisStatus(tripId: string): AnalyzeTripResponse {
+  return {
+    trip_id: tripId,
+    status: "idle",
+    requested_at: null,
+    started_at: null,
+    finished_at: null,
+    output_path: null,
+    categories: createIdleAnalysisCategoryStatuses(),
+    completed_category_count: 0,
+    total_category_count: ALL_TRIP_ANALYSIS_CATEGORIES.length,
+  };
+}
+
 function isPendingAnalysisStatus(status?: AnalyzeTripResponse["status"] | null) {
   return status === "queued" || status === "running";
+}
+
+function getTripAnalysisStatusLabel(status: AnalyzeTripResponse["status"]) {
+  return TRIP_ANALYSIS_STATUS_LABELS[status] ?? status;
 }
 
 function getStatusLabel(

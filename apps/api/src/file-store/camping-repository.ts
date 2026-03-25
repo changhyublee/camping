@@ -8,6 +8,7 @@ import {
 } from "node:fs/promises";
 import path from "node:path";
 import {
+  ALL_TRIP_ANALYSIS_CATEGORIES,
   analyzeTripResponseSchema,
   campsiteTipsResearchSchema,
   cloneEquipmentCategories,
@@ -25,10 +26,12 @@ import {
   getTripOutputRelativePath,
   humanizeEquipmentCategoryId,
   EQUIPMENT_CATEGORY_CODE_REQUIRED_MESSAGE,
+  TRIP_ANALYSIS_CATEGORY_METADATA,
   historyRecordSchema,
   isTripId,
   precheckSchema,
   profileSchema,
+  tripAnalysisResultsCacheSchema,
   toTripSummary,
   travelPreferencesSchema,
   tripSchema,
@@ -62,7 +65,10 @@ import {
   type PrecheckItem,
   type PrecheckItemInput,
   type TripBundle,
+  type TripAnalysisCategoryResult,
+  type TripAnalysisCategoryStatusResponse,
   type TripAnalysisStatus,
+  type TripAnalysisResultsCache,
   type TripData,
   type TripDraft,
   type TripId,
@@ -100,6 +106,16 @@ type EquipmentItemInput =
   | PrecheckItemInput;
 
 type EquipmentItem = DurableEquipmentItem | ConsumableEquipmentItem | PrecheckItem;
+type TripAnalysisStatusInput = Omit<
+  GetTripAnalysisStatusResponse,
+  "categories" | "completed_category_count" | "total_category_count"
+> &
+  Partial<
+    Pick<
+      GetTripAnalysisStatusResponse,
+      "categories" | "completed_category_count" | "total_category_count"
+    >
+  >;
 
 export class CampingRepository {
   constructor(private readonly config: AppConfig) {}
@@ -952,7 +968,14 @@ export class CampingRepository {
     try {
       const raw = await readFile(statusPath, "utf8");
       const parsed = analyzeTripResponseSchema.safeParse(JSON.parse(raw));
-      return parsed.success ? parsed.data : null;
+      if (!parsed.success) {
+        return null;
+      }
+
+      return this.normalizeTripAnalysisStatus(
+        parsed.data,
+        await this.readTripAnalysisResultsCache(tripId),
+      );
     } catch {
       return null;
     }
@@ -961,21 +984,25 @@ export class CampingRepository {
   async createIdleTripAnalysisStatus(
     tripId: TripId,
   ): Promise<GetTripAnalysisStatusResponse> {
-    return {
+    return this.normalizeTripAnalysisStatus({
       trip_id: tripId,
       status: "idle",
       requested_at: null,
       started_at: null,
       finished_at: null,
       output_path: await this.findTripOutputPath(tripId),
-    };
+    });
   }
 
   async saveTripAnalysisStatus(
-    value: GetTripAnalysisStatusResponse,
+    value: TripAnalysisStatusInput,
   ): Promise<GetTripAnalysisStatusResponse> {
-    await this.writeJsonFile(this.getTripAnalysisStatusPath(value.trip_id), value);
-    return value;
+    const normalized = this.normalizeTripAnalysisStatus(
+      value,
+      await this.readTripAnalysisResultsCache(value.trip_id),
+    );
+    await this.writeJsonFile(this.getTripAnalysisStatusPath(value.trip_id), normalized);
+    return normalized;
   }
 
   async deleteTripAnalysisStatus(tripId: TripId): Promise<void> {
@@ -986,6 +1013,31 @@ export class CampingRepository {
     return (await fileExists(this.getTripOutputPath(tripId)))
       ? getTripOutputRelativePath(tripId)
       : null;
+  }
+
+  async readTripAnalysisResultsCache(
+    tripId: TripId,
+  ): Promise<TripAnalysisResultsCache | null> {
+    const resultPath = this.getTripAnalysisResultPath(tripId);
+
+    if (!(await fileExists(resultPath))) {
+      return null;
+    }
+
+    try {
+      const raw = await readFile(resultPath, "utf8");
+      const parsed = tripAnalysisResultsCacheSchema.safeParse(JSON.parse(raw));
+      return parsed.success ? parsed.data : null;
+    } catch {
+      return null;
+    }
+  }
+
+  async saveTripAnalysisResultsCache(
+    value: TripAnalysisResultsCache,
+  ): Promise<TripAnalysisResultsCache> {
+    await this.writeJsonFile(this.getTripAnalysisResultPath(value.trip_id), value);
+    return value;
   }
 
   async markPendingTripAnalysisStatusesInterrupted() {
@@ -1011,6 +1063,19 @@ export class CampingRepository {
           started_at: status.started_at ?? null,
           finished_at: new Date().toISOString(),
           output_path: await this.findTripOutputPath(tripId),
+          categories: status.categories.map((category) =>
+            isPendingTripAnalysisStatus(category.status)
+              ? {
+                  ...category,
+                  status: "interrupted",
+                  finished_at: new Date().toISOString(),
+                  error: {
+                    code: "INTERNAL_ERROR",
+                    message: "API 서버 재시작으로 이전 분석이 중단되었습니다.",
+                  },
+                }
+              : category,
+          ),
           error: {
             code: "INTERNAL_ERROR",
             message: "API 서버 재시작으로 이전 분석이 중단되었습니다.",
@@ -1666,6 +1731,14 @@ export class CampingRepository {
     return path.join(this.getTripAnalysisJobDir(), `${tripId}.json`);
   }
 
+  private getTripAnalysisResultDir() {
+    return path.join(this.config.dataDir, "cache", "analysis-results");
+  }
+
+  private getTripAnalysisResultPath(tripId: string) {
+    return path.join(this.getTripAnalysisResultDir(), `${tripId}.json`);
+  }
+
   private getHistoryDir() {
     return path.join(this.config.dataDir, "history");
   }
@@ -1684,6 +1757,48 @@ export class CampingRepository {
 
   private getVehiclesPath() {
     return path.join(this.config.dataDir, "vehicles.yaml");
+  }
+
+  private normalizeTripAnalysisStatus(
+    value: TripAnalysisStatusInput,
+    resultsCache?: TripAnalysisResultsCache | null,
+  ): GetTripAnalysisStatusResponse {
+    const resultMap = new Map(
+      (resultsCache?.categories ?? []).map((category) => [category.category, category]),
+    );
+    const categoryMap = new Map(
+      (value.categories ?? []).map((category) => [category.category, category]),
+    );
+    const categories = ALL_TRIP_ANALYSIS_CATEGORIES.map((categoryId) => {
+      const metadata = TRIP_ANALYSIS_CATEGORY_METADATA[categoryId];
+      const current = categoryMap.get(categoryId);
+      const storedResult = resultMap.get(categoryId);
+
+      return {
+        category: categoryId,
+        label: metadata.label,
+        sections: metadata.sections,
+        status: current?.status ?? (storedResult ? "completed" : "idle"),
+        has_result: storedResult !== undefined,
+        requested_at: current?.requested_at ?? null,
+        started_at: current?.started_at ?? null,
+        finished_at: current?.finished_at ?? null,
+        collected_at: storedResult?.updated_at ?? current?.collected_at ?? null,
+        error: current?.error,
+      } satisfies TripAnalysisCategoryStatusResponse;
+    });
+
+    const completedCount = categories.filter((category) => category.has_result).length;
+    const normalizedStatus =
+      value.status === "idle" && completedCount > 0 ? "completed" : value.status;
+
+    return {
+      ...value,
+      status: normalizedStatus,
+      categories,
+      completed_category_count: completedCount,
+      total_category_count: categories.length,
+    };
   }
 
   private getDurablePath() {

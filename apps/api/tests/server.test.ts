@@ -827,7 +827,7 @@ describe("API server", () => {
 
   it("queues background analysis and saves markdown output after completion", async () => {
     const dataDir = await createSeededDataDir();
-    const markdown = "# 테스트 분석 결과";
+    const markdown = ["## 9. 캠핑장 tip", "", "- 테스트 캠핑장 tip"].join("\n");
     const modelClient = new DeferredAnalysisClient();
     const campsiteTipClient = new MockCampsiteTipClient();
     const app = await buildServer({
@@ -842,6 +842,7 @@ describe("API server", () => {
       url: "/api/analyze-trip",
       payload: {
         trip_id: "2026-04-18-gapyeong",
+        categories: ["campsite_tips"],
       },
     });
 
@@ -861,7 +862,9 @@ describe("API server", () => {
       path.join(dataDir, "outputs", "2026-04-18-gapyeong-plan.md"),
       "utf8",
     );
-    expect(saved).toBe(markdown);
+    expect(saved).toContain("# 4월 가평 가족 캠핑 캠핑 분석 결과");
+    expect(saved).toContain("## 9. 캠핑장 tip");
+    expect(saved).toContain("- 테스트 캠핑장 tip");
     expect(
       JSON.parse(
         await readFile(
@@ -1098,6 +1101,7 @@ describe("API server", () => {
         url: "/api/analyze-trip",
         payload: {
           trip_id: "2026-04-18-gapyeong",
+          categories: ["equipment"],
         },
       }),
       app.inject({
@@ -1105,6 +1109,7 @@ describe("API server", () => {
         url: "/api/analyze-trip",
         payload: {
           trip_id: "2026-04-18-gapyeong",
+          categories: ["equipment"],
         },
       }),
     ]);
@@ -1114,7 +1119,7 @@ describe("API server", () => {
     expect(["queued", "running"]).toContain(firstResponse.json().status);
     expect(["queued", "running"]).toContain(secondResponse.json().status);
 
-    modelClient.complete("# 중복 방지 테스트");
+    modelClient.complete("## 2. 추천 장비\n\n- 중복 방지 테스트");
     await waitForTripAnalysisStatus(app, "2026-04-18-gapyeong", "completed");
     expect(modelClient.calls).toBe(1);
 

@@ -13,6 +13,7 @@
 - 동행자, 차량, 장비, 계획, 히스토리, 링크는 YAML로 저장한다
 - 분석 결과는 Markdown으로 저장한다
 - 분석 실행 상태는 `cache/analysis-jobs/*.json` 으로 분리해 저장한다
+- 섹션별 분석 fragment 는 `cache/analysis-results/*.json` 으로 분리해 저장한다
 - 반복 장비 메타데이터 수집 상태는 `cache/equipment-metadata/jobs/durable/*.json` 으로 분리해 저장한다
 - 기본 분석 백엔드는 로컬 `codex exec` 이다
 - 반복 장비 메타데이터처럼 AI가 수집한 보강 정보는 `cache/` 아래 별도 파일로 저장하고 API에서 병합한다
@@ -30,6 +31,7 @@
     -> 로컬 codex CLI 또는 fallback AI 백엔드를 백그라운드에서 호출
     -> outputs/*.md 저장
     -> cache/analysis-jobs/*.json 상태 갱신
+    -> cache/analysis-results/*.json fragment 저장
     -> cache/equipment-metadata/durable/*.json 저장
     -> cache/equipment-metadata/jobs/durable/*.json 상태 갱신
 ```
@@ -81,6 +83,7 @@
 ├── links.yaml
 └── cache/
     ├── analysis-jobs/
+    ├── analysis-results/
     ├── campsite-tips/
     ├── places/
     ├── weather/
@@ -144,7 +147,8 @@
 - AI 보조는 제안을 반환하지만 자동 저장하지 않는다
 - 분석 결과 저장은 `outputs/*.md` 로 분리한다
 - 분석 상태는 `cache/analysis-jobs/<trip-id>.json` 에 저장한다
-- 같은 `trip_id` 가 이미 `queued` 또는 `running` 상태면 중복 실행하지 않고 현재 상태를 그대로 반환한다
+- 섹션별 결과는 `cache/analysis-results/<trip-id>.json` 에 누적 저장한다
+- 같은 `trip_id` 안에서는 섹션 job 을 순차 실행하고, 이미 `queued` 또는 `running` 인 섹션은 중복 실행하지 않는다
 - 분석 중에는 계획 삭제와 히스토리 아카이브를 막는다
 - API 서버가 재시작되면 남아 있던 `queued` 또는 `running` 상태는 `interrupted` 로 전환한다
 

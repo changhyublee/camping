@@ -57,6 +57,11 @@ import type {
   saveOutputResponseSchema,
   travelPreferencesSchema,
   tripDraftSchema,
+  tripAnalysisCategoryResultSchema,
+  tripAnalysisCategorySchema,
+  tripAnalysisCategoryStatusResponseSchema,
+  tripAnalysisResultsCacheSchema,
+  tripAnalysisSectionSchema,
   tripAnalysisStatusSchema,
   tripSchema,
   tripSummarySchema,
@@ -153,6 +158,17 @@ export type PlanningAssistantResponse = z.infer<
 >;
 export type AnalyzeTripRequest = z.infer<typeof analyzeTripRequestSchema>;
 export type AnalyzeTripResponse = z.infer<typeof analyzeTripResponseSchema>;
+export type TripAnalysisCategory = z.infer<typeof tripAnalysisCategorySchema>;
+export type TripAnalysisSection = z.infer<typeof tripAnalysisSectionSchema>;
+export type TripAnalysisCategoryStatusResponse = z.infer<
+  typeof tripAnalysisCategoryStatusResponseSchema
+>;
+export type TripAnalysisCategoryResult = z.infer<
+  typeof tripAnalysisCategoryResultSchema
+>;
+export type TripAnalysisResultsCache = z.infer<
+  typeof tripAnalysisResultsCacheSchema
+>;
 export type ValidateTripRequest = z.infer<typeof validateTripRequestSchema>;
 export type ValidateTripResponse = z.infer<typeof validateTripResponseSchema>;
 export type SaveOutputRequest = z.infer<typeof saveOutputRequestSchema>;

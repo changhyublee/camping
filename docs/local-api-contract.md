@@ -55,9 +55,13 @@
 - 새 작업이 등록되거나 이미 같은 계획 분석이 진행 중이면 `202 Accepted` 로 응답한다
 - `GET /api/trips/:tripId/analysis-status` 는 현재 계획의 분석 상태를 조회한다
 - 상태 값은 `idle`, `queued`, `running`, `completed`, `failed`, `interrupted` 를 사용한다
+- 분석 섹션 값은 `summary`, `equipment`, `personal_items`, `shortage`, `precheck`, `meals`, `travel_route`, `nearby_places`, `campsite_tips`, `risks_limits`, `next_camping` 을 사용한다
+- `categories` 를 보내면 선택한 섹션만 queue 에 넣고, 생략하면 전체 섹션을 요청한 것으로 본다
+- 같은 `trip_id` 안에서는 섹션 job 을 순차 실행하고, 섹션별 상태는 응답의 `categories` 배열로 확인한다
+- `force_refresh: true` 는 이미 결과가 있는 섹션도 다시 수집할 때 사용한다
 - `save_output` 을 생략하거나 `true` 로 보내면 완료 후 `.camping-data/outputs/<trip-id>-plan.md` 에 저장한다
 - `save_output` 을 `false` 로 보내는 비동기 분석 요청은 지원하지 않으며 `TRIP_INVALID` 로 거절한다
-- 같은 `trip_id` 가 이미 `queued` 또는 `running` 상태면 새 분석을 만들지 않고 기존 상태를 그대로 반환한다
+- 같은 `trip_id` 와 같은 섹션이 이미 `queued` 또는 `running` 상태면 새 job 을 만들지 않고 기존 상태를 그대로 반환한다
 - 분석이 진행 중이면 `DELETE /api/trips/:tripId` 와 `POST /api/trips/:tripId/archive` 는 `CONFLICT` 로 거절한다
 - API 서버 재시작 시 남아 있던 `queued` 또는 `running` 상태는 `interrupted` 로 복구된다
 
@@ -196,6 +200,23 @@
   "started_at": null,
   "finished_at": null,
   "output_path": null,
+  "categories": [
+    {
+      "category": "campsite_tips",
+      "label": "9. 캠핑장 tip",
+      "sections": [
+        { "order": 9, "title": "캠핑장 tip" }
+      ],
+      "status": "queued",
+      "has_result": false,
+      "requested_at": "2026-03-24T10:15:00.000Z",
+      "started_at": null,
+      "finished_at": null,
+      "collected_at": null
+    }
+  ],
+  "completed_category_count": 0,
+  "total_category_count": 11,
   "error": null
 }
 ```
@@ -240,6 +261,21 @@
   "started_at": "2026-03-24T10:15:01.000Z",
   "finished_at": "2026-03-24T10:15:12.000Z",
   "output_path": ".camping-data/outputs/2026-04-18-gapyeong-plan.md",
+  "categories": [
+    {
+      "category": "equipment",
+      "label": "2. 추천 장비",
+      "sections": [{ "order": 2, "title": "추천 장비" }],
+      "status": "completed",
+      "has_result": true,
+      "requested_at": "2026-03-24T10:15:00.000Z",
+      "started_at": "2026-03-24T10:15:01.000Z",
+      "finished_at": "2026-03-24T10:15:04.000Z",
+      "collected_at": "2026-03-24T10:15:04.000Z"
+    }
+  ],
+  "completed_category_count": 1,
+  "total_category_count": 11,
   "error": null
 }
 ```

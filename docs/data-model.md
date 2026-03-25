@@ -28,6 +28,7 @@
 
 - 계획 원본인 `trips/*.yaml` 에 분석 상태를 섞지 않는다
 - 분석 상태는 `cache/analysis-jobs/*.json` 으로 저장한다
+- 섹션별 누적 분석 결과는 `cache/analysis-results/*.json` 으로 저장한다
 
 ### 원칙 5. 반복 장비 메타데이터 상태도 원본 장비 파일과 분리한 JSON 캐시로 둔다
 
@@ -61,6 +62,7 @@
 ├── links.yaml
 └── cache/
     ├── analysis-jobs/
+    ├── analysis-results/
     ├── campsite-tips/
     ├── places/
     ├── weather/
@@ -105,6 +107,7 @@
 ### 4.3 작업 상태 및 캐시 데이터
 
 - 분석 작업 상태
+- 섹션별 누적 분석 결과
 - 반복 장비 메타데이터 작업 상태
 - 날씨 캐시
 - 장소 캐시
@@ -113,6 +116,7 @@
 저장 위치:
 
 - `cache/analysis-jobs/*.json`
+- `cache/analysis-results/*.json`
 - `cache/equipment-metadata/jobs/durable/*.json`
 - `cache/weather/*.json`
 - `cache/places/*.json`
@@ -205,9 +209,16 @@
 ### `cache/analysis-jobs/*.json`
 
 - 계획별 백그라운드 분석 상태 캐시
-- `status`, `requested_at`, `started_at`, `finished_at`, `output_path`, `error` 저장
+- trip-level `status`, `requested_at`, `started_at`, `finished_at`, `output_path`, `error` 저장
+- 섹션별 `status`, `has_result`, `collected_at` 도 함께 저장
 - `trips/*.yaml` 원본과 분리해 저장하고 UI는 상태 조회 API로 읽는다
 - 같은 `trip_id` 가 `queued` 또는 `running` 이면 중복 분석 시작을 막는 기준으로 사용한다
+
+### `cache/analysis-results/*.json`
+
+- 계획별 섹션 fragment Markdown 누적 캐시
+- 섹션 ID, 담당 섹션, 마지막 저장 시각, fragment Markdown 저장
+- 최종 `outputs/*.md` 재합성의 입력 데이터로 사용한다
 
 ### `.camping-backups/<timestamp>/backup.json`
 

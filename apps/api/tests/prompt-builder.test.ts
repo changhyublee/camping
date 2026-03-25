@@ -137,6 +137,7 @@ describe("buildAnalysisPrompt", () => {
     const prompt = buildAnalysisPrompt({
       bundle: createBundle(),
       analysisPrompt: "# 분석 규칙",
+      categories: ["next_camping"],
       referenceDocuments: [],
       warnings: [],
       referenceDate: new Date("2026-03-23T12:00:00.000Z"),
@@ -155,6 +156,7 @@ describe("buildAnalysisPrompt", () => {
         notes: [],
       }),
       analysisPrompt: "# 분석 규칙",
+      categories: ["equipment"],
       referenceDocuments: [],
       warnings: [],
       referenceDate: new Date("2026-03-23T12:00:00.000Z"),
@@ -202,6 +204,7 @@ describe("buildAnalysisPrompt", () => {
     const enrichedPrompt = buildAnalysisPrompt({
       bundle: enrichedBundle,
       analysisPrompt: "# 분석 규칙",
+      categories: ["equipment"],
       referenceDocuments: [],
       warnings: [],
       referenceDate: new Date("2026-03-23T12:00:00.000Z"),
@@ -259,6 +262,7 @@ describe("buildAnalysisPrompt", () => {
     const prompt = buildAnalysisPrompt({
       bundle,
       analysisPrompt: "# 분석 규칙",
+      categories: ["campsite_tips"],
       referenceDocuments: [],
       warnings: [],
       referenceDate: new Date("2026-03-23T12:00:00.000Z"),

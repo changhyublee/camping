@@ -1,7 +1,11 @@
 import { fireEvent, render, screen, waitFor, within } from "@testing-library/react";
 import userEvent from "@testing-library/user-event";
 import { afterEach, beforeEach, describe, expect, it, vi } from "vitest";
-import { EQUIPMENT_CATEGORY_CODE_REQUIRED_MESSAGE } from "@camping/shared";
+import {
+  ALL_TRIP_ANALYSIS_CATEGORIES,
+  EQUIPMENT_CATEGORY_CODE_REQUIRED_MESSAGE,
+  TRIP_ANALYSIS_CATEGORY_METADATA,
+} from "@camping/shared";
 import type {
   AnalyzeTripResponse,
   Companion,
@@ -233,16 +237,39 @@ function readEquipmentCategoryParams(pathname: string) {
   };
 }
 
+function createAnalysisResponse(
+  tripId: string,
+  overrides: Partial<AnalyzeTripResponse> = {},
+): AnalyzeTripResponse {
+  const categories = ALL_TRIP_ANALYSIS_CATEGORIES.map((category) => ({
+    category,
+    label: TRIP_ANALYSIS_CATEGORY_METADATA[category].label,
+    sections: TRIP_ANALYSIS_CATEGORY_METADATA[category].sections,
+    status: "idle" as const,
+    has_result: false,
+    requested_at: null,
+    started_at: null,
+    finished_at: null,
+    collected_at: null,
+  }));
+
+  return {
+    trip_id: tripId,
+    status: "idle",
+    requested_at: null,
+    started_at: null,
+    finished_at: null,
+    output_path: null,
+    categories,
+    completed_category_count: 0,
+    total_category_count: ALL_TRIP_ANALYSIS_CATEGORIES.length,
+    ...overrides,
+  };
+}
+
 function consumeAnalysisStatusResponse(tripId: string) {
   const idleResponse: ApiResponse<AnalyzeTripResponse> = {
-    body: {
-      trip_id: tripId,
-      status: "idle",
-      requested_at: null,
-      started_at: null,
-      finished_at: null,
-      output_path: null,
-    },
+    body: createAnalysisResponse(tripId),
   };
   const response = state.analysisStatuses[tripId];
 
@@ -736,10 +763,10 @@ describe("App", () => {
 
     expect(await screen.findByText("4월 가평 가족 캠핑")).toBeInTheDocument();
     expect(await screen.findByText("AI 보조는 저장 후 질문할 때 사용")).toBeInTheDocument();
-    expect(await screen.findByText("분석 결과는 최종 정리할 때 확인")).toBeInTheDocument();
+    expect(await screen.findByText("섹션별 분석")).toBeInTheDocument();
     expect(
       screen.getByText(
-        "계획과 장비 점검이 끝난 뒤 분석을 실행하면 준비물, 체크리스트, 식단, 이동 추천, 캠핑장 tip, 다음 캠핑 추천이 Markdown으로 정리됩니다.",
+        "필요한 섹션만 먼저 수집하고, 누적된 결과를 하나의 Markdown 플랜으로 계속 합성합니다.",
       ),
     ).toBeInTheDocument();
     expect(
@@ -749,12 +776,12 @@ describe("App", () => {
     ).toBeInTheDocument();
     expect(
       screen.getByText(
-        "계획 저장 후 분석 실행을 누르면 추천 장비, 개인 준비물, 출발 전 체크리스트, 식단, 이동/주변 추천, 캠핑장 tip, 다음 캠핑 추천 결과가 여기에 표시됩니다.",
+        "1. 요약",
       ),
     ).toBeInTheDocument();
 
     await userEvent.click(
-      await screen.findByRole("button", { name: "분석 실행" }),
+      await screen.findByRole("button", { name: "전체 분석 실행" }),
     );
 
     expect(await screen.findByText("테스트 결과")).toBeInTheDocument();
@@ -767,7 +794,7 @@ describe("App", () => {
     render(<App />);
 
     await userEvent.click(await screen.findByRole("button", { name: "캠핑 계획" }));
-    await userEvent.click(await screen.findByRole("button", { name: "분석 실행" }));
+    await userEvent.click(await screen.findByRole("button", { name: "전체 분석 실행" }));
 
     expect(await screen.findByText("테스트 결과")).toBeInTheDocument();
 
@@ -820,7 +847,7 @@ describe("App", () => {
 
     render(<App />);
 
-    expect(await screen.findByRole("button", { name: "분석 실행" })).toBeInTheDocument();
+    expect(await screen.findByRole("button", { name: "전체 분석 실행" })).toBeInTheDocument();
     expect(await screen.findByText("자동 복원")).toBeInTheDocument();
   });
 
@@ -835,20 +862,44 @@ describe("App", () => {
       }),
     );
     state.analysisStatuses["2026-04-18-gapyeong"] = {
-      body: {
-        trip_id: "2026-04-18-gapyeong",
-        status: "running",
-        requested_at: "2026-03-24T10:00:00.000Z",
-        started_at: "2026-03-24T10:00:01.000Z",
-        finished_at: null,
-        output_path: null,
-      },
+      body: (() => {
+        const response = createAnalysisResponse("2026-04-18-gapyeong", {
+          status: "running",
+          requested_at: "2026-03-24T10:00:00.000Z",
+          started_at: "2026-03-24T10:00:01.000Z",
+        });
+
+        return {
+          ...response,
+          categories: response.categories.map((category, index) =>
+            index === 0
+              ? {
+                  ...category,
+                  status: "running",
+                  requested_at: "2026-03-24T10:00:00.000Z",
+                  started_at: "2026-03-24T10:00:01.000Z",
+                }
+              : category,
+          ),
+        };
+      })(),
     };
 
     render(<App />);
 
     const button = await screen.findByRole("button", { name: "분석 중..." });
     expect(button).toBeDisabled();
+
+    const sectionCollectButton = await screen.findByRole("button", { name: "선택 수집" });
+    expect(sectionCollectButton).toBeEnabled();
+
+    await userEvent.click(sectionCollectButton);
+
+    const analyzeCalls = fetchMock.mock.calls.filter(([input]) => {
+      const rawUrl = typeof input === "string" ? input : input.toString();
+      return new URL(rawUrl, "http://localhost").pathname === "/api/analyze-trip";
+    });
+    expect(analyzeCalls.length).toBeGreaterThan(0);
   });
 
   it("does not block planning details while saved output is still loading", async () => {
@@ -938,17 +989,14 @@ describe("App", () => {
     };
     state.analysis = {
       status: 502,
-      body: {
-        trip_id: "2026-04-18-gapyeong",
+      body: createAnalysisResponse("2026-04-18-gapyeong", {
         status: "failed",
-        requested_at: null,
-        started_at: null,
         finished_at: "2026-03-24T10:05:00.000Z",
         error: {
           code: "OPENAI_REQUEST_FAILED",
           message: "OpenAI 분석 요청에 실패했습니다.",
         },
-      },
+      }),
     };
 
     render(<App />);
@@ -959,7 +1007,7 @@ describe("App", () => {
       await screen.findByText("예상 날씨 정보가 없어 결과 정확도가 제한될 수 있습니다."),
     ).toBeInTheDocument();
 
-    await userEvent.click(await screen.findByRole("button", { name: "분석 실행" }));
+    await userEvent.click(await screen.findByRole("button", { name: "전체 분석 실행" }));
 
     await waitFor(() => {
       expect(screen.getByText("분석 실패")).toBeInTheDocument();
@@ -977,8 +1025,7 @@ describe("App", () => {
       markdown: "# 이전 분석 결과\n\n- 그대로 유지",
     };
     state.analysis = {
-      body: {
-        trip_id: "2026-04-18-gapyeong",
+      body: createAnalysisResponse("2026-04-18-gapyeong", {
         status: "failed",
         requested_at: "2026-03-24T10:00:00.000Z",
         started_at: "2026-03-24T10:00:01.000Z",
@@ -988,14 +1035,14 @@ describe("App", () => {
           code: "OUTPUT_SAVE_FAILED",
           message: "분석 결과를 저장하지 못했습니다: 2026-04-18-gapyeong",
         },
-      },
+      }),
     };
 
     render(<App />);
 
     await userEvent.click(await screen.findByRole("button", { name: "캠핑 계획" }));
     expect(await screen.findByText("그대로 유지")).toBeInTheDocument();
-    await userEvent.click(await screen.findByRole("button", { name: "분석 실행" }));
+    await userEvent.click(await screen.findByRole("button", { name: "전체 분석 실행" }));
 
     expect(
       (
@@ -1011,7 +1058,7 @@ describe("App", () => {
     render(<App />);
 
     await userEvent.click(await screen.findByRole("button", { name: "캠핑 계획" }));
-    await userEvent.click(await screen.findByRole("button", { name: "분석 실행" }));
+    await userEvent.click(await screen.findByRole("button", { name: "전체 분석 실행" }));
 
     const analyzeCall = fetchMock.mock.calls.find(([input]) => {
       const rawUrl = typeof input === "string" ? input : input.toString();
@@ -1077,7 +1124,7 @@ describe("App", () => {
     render(<App />);
 
     await userEvent.click(await screen.findByRole("button", { name: "캠핑 계획" }));
-    await userEvent.click(await screen.findByRole("button", { name: "분석 실행" }));
+    await userEvent.click(await screen.findByRole("button", { name: "전체 분석 실행" }));
     await userEvent.click(
       await screen.findByRole("button", { name: /양양 테스트 캠핑/u }),
     );
@@ -1085,12 +1132,13 @@ describe("App", () => {
     expect(await screen.findByDisplayValue("양양 테스트 캠핑")).toBeInTheDocument();
 
     deferredAnalysis.resolve({
-      trip_id: "2026-04-18-gapyeong",
-      status: "completed",
-      requested_at: "2026-03-24T10:00:00.000Z",
-      started_at: "2026-03-24T10:00:01.000Z",
-      finished_at: "2026-03-24T10:00:10.000Z",
-      output_path: ".camping-data/outputs/2026-04-18-gapyeong-plan.md",
+      ...createAnalysisResponse("2026-04-18-gapyeong", {
+        status: "completed",
+        requested_at: "2026-03-24T10:00:00.000Z",
+        started_at: "2026-03-24T10:00:01.000Z",
+        finished_at: "2026-03-24T10:00:10.000Z",
+        output_path: ".camping-data/outputs/2026-04-18-gapyeong-plan.md",
+      }),
     });
 
     await waitFor(() => {
@@ -2647,25 +2695,17 @@ function createMockState(): MockState {
       },
     },
     analysis: {
-      body: {
-        trip_id: "2026-04-18-gapyeong",
+      body: createAnalysisResponse("2026-04-18-gapyeong", {
         status: "completed",
         requested_at: "2026-03-24T10:00:00.000Z",
         started_at: "2026-03-24T10:00:01.000Z",
         finished_at: "2026-03-24T10:00:10.000Z",
         output_path: ".camping-data/outputs/2026-04-18-gapyeong-plan.md",
-      },
+      }),
     },
     analysisStatuses: {
       [trip.trip_id]: {
-        body: {
-          trip_id: trip.trip_id,
-          status: "idle",
-          requested_at: null,
-          started_at: null,
-          finished_at: null,
-          output_path: null,
-        },
+        body: createAnalysisResponse(trip.trip_id),
       },
     },
     equipment: {

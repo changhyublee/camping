@@ -1,5 +1,9 @@
 import { stringify } from "yaml";
-import type { TripBundle } from "@camping/shared";
+import {
+  TRIP_ANALYSIS_CATEGORY_METADATA,
+  type TripAnalysisCategory,
+  type TripBundle,
+} from "@camping/shared";
 
 type PromptDocument = {
   name: string;
@@ -11,6 +15,7 @@ type SeasonId = "spring" | "summer" | "autumn" | "winter";
 type BuildPromptInput = {
   bundle: TripBundle;
   analysisPrompt: string;
+  categories: TripAnalysisCategory[];
   referenceDocuments: PromptDocument[];
   warnings: string[];
   overrideInstructions?: string;
@@ -28,6 +33,7 @@ function serializeJsonSection(title: string, value: unknown): string {
 export function buildAnalysisPrompt({
   bundle,
   analysisPrompt,
+  categories,
   referenceDocuments,
   warnings,
   overrideInstructions,
@@ -60,14 +66,32 @@ export function buildAnalysisPrompt({
   const overrideBlock = overrideInstructions?.trim()
     ? `\n## 추가 사용자 지시\n${overrideInstructions.trim()}\n`
     : "";
+  const categoryBlock = categories
+    .map((category) => {
+      const metadata = TRIP_ANALYSIS_CATEGORY_METADATA[category];
+      return [
+        `- ${metadata.label}`,
+        `  - 포함 섹션: ${metadata.sections
+          .map((section) => `${section.order}. ${section.title}`)
+          .join(", ")}`,
+        `  - 범위 요약: ${metadata.summary}`,
+      ].join("\n");
+    })
+    .join("\n");
 
   return [
     "# 분석 작업 지시",
     analysisPrompt.trim(),
     "",
+    "## 이번 실행 범위",
+    "- 이번 요청은 아래 섹션만 작성한다.",
+    "- 최상단 `# <trip 제목> 캠핑 분석 결과` 제목은 출력하지 않는다.",
+    "- 아래에 적힌 `## n.` 섹션만 순서대로 작성하고, 다른 섹션은 쓰지 않는다.",
+    categoryBlock,
+    overrideBlock.trim(),
+    "",
     "## 검증 경고",
     warningLines,
-    overrideBlock.trim(),
     "",
     "# 문서 기준",
     documentBlock,

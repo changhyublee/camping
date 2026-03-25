@@ -458,8 +458,24 @@ export const planningAssistantActionSchema = z.object({
   precheck_item: precheckItemSchema.optional(),
 });
 
+export const tripAnalysisCategorySchema = z.enum([
+  "summary",
+  "equipment",
+  "personal_items",
+  "shortage",
+  "precheck",
+  "meals",
+  "travel_route",
+  "nearby_places",
+  "campsite_tips",
+  "risks_limits",
+  "next_camping",
+]);
+
 export const analyzeTripRequestSchema = z.object({
   trip_id: tripIdSchema,
+  categories: z.array(tripAnalysisCategorySchema).min(1).optional(),
+  force_refresh: z.boolean().optional(),
   override_instructions: z.string().optional(),
   save_output: z.boolean().optional(),
 });
@@ -532,6 +548,24 @@ export const tripAnalysisStatusSchema = z.enum([
   "interrupted",
 ]);
 
+export const tripAnalysisSectionSchema = z.object({
+  order: z.number().int().positive(),
+  title: z.string().min(1),
+});
+
+export const tripAnalysisCategoryStatusResponseSchema = z.object({
+  category: tripAnalysisCategorySchema,
+  label: z.string().min(1),
+  sections: z.array(tripAnalysisSectionSchema).min(1),
+  status: tripAnalysisStatusSchema,
+  has_result: z.boolean().default(false),
+  requested_at: z.string().datetime().nullable().optional(),
+  started_at: z.string().datetime().nullable().optional(),
+  finished_at: z.string().datetime().nullable().optional(),
+  collected_at: z.string().datetime().nullable().optional(),
+  error: apiErrorSchema.optional(),
+});
+
 export const analyzeTripResponseSchema = z.object({
   trip_id: tripIdSchema,
   status: tripAnalysisStatusSchema,
@@ -539,10 +573,28 @@ export const analyzeTripResponseSchema = z.object({
   started_at: z.string().datetime().nullable().optional(),
   finished_at: z.string().datetime().nullable().optional(),
   output_path: z.string().nullable().optional(),
+  categories: z.array(tripAnalysisCategoryStatusResponseSchema).default([]),
+  completed_category_count: z.number().int().nonnegative().default(0),
+  total_category_count: z.number().int().nonnegative().default(0),
   error: apiErrorSchema.optional(),
 });
 
 export const getTripAnalysisStatusResponseSchema = analyzeTripResponseSchema;
+
+export const tripAnalysisCategoryResultSchema = z.object({
+  category: tripAnalysisCategorySchema,
+  label: z.string().min(1),
+  sections: z.array(tripAnalysisSectionSchema).min(1),
+  markdown: z.string().min(1),
+  updated_at: z.string().datetime(),
+});
+
+export const tripAnalysisResultsCacheSchema = z.object({
+  trip_id: tripIdSchema,
+  title: z.string().min(1),
+  updated_at: z.string().datetime(),
+  categories: z.array(tripAnalysisCategoryResultSchema).default([]),
+});
 
 export const durableMetadataJobStatusSchema = z.enum([
   "queued",

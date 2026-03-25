@@ -24,11 +24,13 @@ import type {
   SaveOutputRequest,
   SaveOutputResponse,
   TripDraft,
+  TripAnalysisCategory,
   TripId,
   ValidateTripResponse,
   Vehicle,
   VehicleInput,
 } from "@camping/shared";
+import { ALL_TRIP_ANALYSIS_CATEGORIES } from "@camping/shared";
 import type { CampingRepository } from "../file-store/camping-repository";
 import type { DataBackupReason } from "../file-store/local-data-backup";
 import { AppError } from "./app-error";
@@ -39,6 +41,12 @@ import type { EquipmentMetadataSearchClient } from "./equipment-metadata-service
 import type { AnalysisModelClient } from "./openai-client";
 import { runPlanningAssistant } from "./planning-assistant";
 import { buildAnalysisPrompt } from "./prompt-builder";
+import {
+  composeTripAnalysisMarkdown,
+  createEmptyTripAnalysisResultsCache,
+  extractTripAnalysisCategoryMarkdown,
+  upsertTripAnalysisCategoryResult,
+} from "./trip-analysis-composer";
 import { validateTripBundle } from "./trip-validation";
 
 type EquipmentItemInput =
@@ -319,9 +327,21 @@ export class AnalysisService {
   }
 
   private async executeTripAnalysis(input: AnalyzeTripRequest): Promise<string> {
+    const categories = resolveTripAnalysisCategories(input.categories);
+
+    if (categories.length !== 1) {
+      throw new AppError(
+        "TRIP_INVALID",
+        "백그라운드 분석 작업은 한 번에 하나의 분석 섹션만 실행합니다.",
+        400,
+      );
+    }
+
+    const [category] = categories;
     const bundle = await this.repository.loadTripBundle(input.trip_id);
     const { warnings } = validateTripBundle(bundle);
-    const campsiteTips = await this.collectCampsiteTips(bundle);
+    const campsiteTips =
+      category === "campsite_tips" ? await this.collectCampsiteTips(bundle) : null;
     const bundleWithCampsiteTips = campsiteTips
       ? {
           ...bundle,
@@ -347,17 +367,41 @@ export class AnalysisService {
     const userPrompt = buildAnalysisPrompt({
       bundle: bundleWithCampsiteTips,
       analysisPrompt: prompts.analysis,
+      categories: [category],
       referenceDocuments,
       warnings,
       overrideInstructions: input.override_instructions,
     });
 
-    const markdown = await this.modelClient.generateMarkdown({
+    const rawMarkdown = await this.modelClient.generateMarkdown({
       systemPrompt: prompts.system,
       userPrompt,
     });
+    const markdown = extractTripAnalysisCategoryMarkdown(category, rawMarkdown);
 
-    return this.repository.saveOutput(input.trip_id, markdown);
+    if (!markdown.trim()) {
+      throw new AppError(
+        "OPENAI_REQUEST_FAILED",
+        `분석 섹션 결과가 비어 있습니다: ${category}`,
+        502,
+      );
+    }
+
+    const currentResults =
+      (await this.repository.readTripAnalysisResultsCache(input.trip_id)) ??
+      createEmptyTripAnalysisResultsCache(bundle.trip);
+    const nextResults = upsertTripAnalysisCategoryResult(currentResults, {
+      category,
+      markdown,
+    });
+
+    await this.repository.saveTripAnalysisResultsCache(nextResults);
+    const composedMarkdown = composeTripAnalysisMarkdown({
+      title: bundle.trip.title,
+      resultsCache: nextResults,
+    });
+
+    return this.repository.saveOutput(input.trip_id, composedMarkdown);
   }
 
   private async collectCampsiteTips(
@@ -443,4 +487,11 @@ function createFailedResearch(
     best_site_items: [],
     sources: [],
   };
+}
+
+function resolveTripAnalysisCategories(
+  categories?: TripAnalysisCategory[],
+): TripAnalysisCategory[] {
+  const selected = new Set(categories ?? ALL_TRIP_ANALYSIS_CATEGORIES);
+  return ALL_TRIP_ANALYSIS_CATEGORIES.filter((category) => selected.has(category));
 }
