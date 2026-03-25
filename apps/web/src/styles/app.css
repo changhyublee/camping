@@ -1375,9 +1375,11 @@ textarea.form-grid__full {
 
 .markdown-pane--layer {
   margin-top: 0;
-  min-height: min(72vh, 920px);
+  flex: 1 1 auto;
+  min-height: 0;
   padding: 28px 32px;
   overflow: auto;
+  overscroll-behavior: contain;
   background:
     linear-gradient(180deg, rgba(255, 253, 249, 0.98), rgba(246, 242, 236, 0.96));
 }
@@ -1522,10 +1524,12 @@ textarea.form-grid__full {
 
 .markdown-layer__panel {
   position: relative;
-  display: grid;
+  display: flex;
+  flex-direction: column;
   gap: 18px;
   width: min(1240px, calc(100vw - 32px));
   max-height: calc(100vh - 32px);
+  min-height: 0;
   padding: 26px;
   border: 1px solid rgba(63, 53, 39, 0.14);
   border-radius: 30px;
@@ -1533,10 +1537,12 @@ textarea.form-grid__full {
     radial-gradient(circle at top right, rgba(47, 98, 83, 0.08), transparent 30%),
     linear-gradient(180deg, rgba(252, 249, 244, 0.98), rgba(241, 237, 230, 0.96));
   box-shadow: 0 30px 90px rgba(29, 25, 19, 0.28);
+  overflow: hidden;
 }
 
 .markdown-layer__header {
   display: flex;
+  flex: 0 0 auto;
   align-items: flex-start;
   justify-content: space-between;
   gap: 18px;
