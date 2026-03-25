@@ -763,6 +763,46 @@ describe("App", () => {
     ).toBeGreaterThan(0);
   });
 
+  it("opens the planning analysis markdown in a wide layer and closes it with Escape", async () => {
+    render(<App />);
+
+    await userEvent.click(await screen.findByRole("button", { name: "캠핑 계획" }));
+    await userEvent.click(await screen.findByRole("button", { name: "분석 실행" }));
+
+    expect(await screen.findByText("테스트 결과")).toBeInTheDocument();
+
+    await userEvent.click(screen.getByRole("button", { name: "넓게 보기" }));
+
+    const dialog = await screen.findByRole("dialog", {
+      name: "4월 가평 가족 캠핑 분석 결과",
+    });
+    expect(
+      within(dialog).getByText(
+        "본문 폭을 넓혀 이번 캠핑의 최종 Markdown 정리본을 다시 읽는 전용 보기입니다.",
+      ),
+    ).toBeInTheDocument();
+    expect(
+      within(dialog).getByText(".camping-data/outputs/2026-04-18-gapyeong-plan.md"),
+    ).toBeInTheDocument();
+    expect(
+      within(dialog).getByRole("button", { name: "결과 레이어 닫기" }),
+    ).toHaveFocus();
+
+    await userEvent.tab();
+
+    expect(
+      within(dialog).getByRole("button", { name: "결과 레이어 닫기" }),
+    ).toHaveFocus();
+
+    fireEvent.keyDown(window, { key: "Escape" });
+
+    await waitFor(() => {
+      expect(
+        screen.queryByRole("dialog", { name: "4월 가평 가족 캠핑 분석 결과" }),
+      ).toBeNull();
+    });
+  });
+
   it("keeps the planning page after remount and restores saved analysis output", async () => {
     state.outputs["2026-04-18-gapyeong"] = {
       trip_id: "2026-04-18-gapyeong",
@@ -2252,6 +2292,91 @@ describe("App", () => {
 
     expect(await screen.findByText("양평 히스토리 결과")).toBeInTheDocument();
     expect(screen.getByText("타프와 난방 장비 확인")).toBeInTheDocument();
+  });
+
+  it("opens archived output markdown in a wide layer from history detail", async () => {
+    state.history = [
+      {
+        version: 1,
+        history_id: "2026-03-08-yangpyeong",
+        source_trip_id: "2026-03-08-yangpyeong",
+        title: "3월 양평 주말 캠핑",
+        date: {
+          start: "2026-03-08",
+          end: "2026-03-09",
+        },
+        location: {
+          region: "yangpyeong",
+        },
+        companion_ids: ["self", "child-1"],
+        companion_snapshots: [state.companions[0], state.companions[1]],
+        attendee_count: 2,
+        vehicle_snapshot: state.vehicles[0],
+        notes: ["비 예보가 있어 타프를 추가함"],
+        archived_at: "2026-03-10T09:00:00.000Z",
+        output_path: ".camping-data/outputs/2026-03-08-yangpyeong-plan.md",
+        trip_snapshot: {
+          version: 1,
+          trip_id: "2026-03-08-yangpyeong",
+          title: "3월 양평 주말 캠핑",
+          date: {
+            start: "2026-03-08",
+            end: "2026-03-09",
+          },
+          location: {
+            region: "yangpyeong",
+          },
+          party: {
+            companion_ids: ["self", "child-1"],
+          },
+          vehicle: {
+            id: "family-suv",
+            name: "패밀리 SUV",
+            passenger_capacity: 5,
+            load_capacity_kg: 400,
+            notes: [],
+          },
+          notes: [],
+        },
+      },
+    ];
+    state.outputs["2026-03-08-yangpyeong"] = {
+      trip_id: "2026-03-08-yangpyeong",
+      output_path: ".camping-data/outputs/2026-03-08-yangpyeong-plan.md",
+      markdown: "# 양평 히스토리 결과\n\n- 타프와 난방 장비 확인",
+    };
+    state.outputAvailability["2026-03-08-yangpyeong"] = true;
+
+    render(<App />);
+
+    await userEvent.click(await screen.findByRole("button", { name: "캠핑 히스토리" }));
+    await userEvent.click(await screen.findByRole("button", { name: "결과 열기" }));
+
+    expect(await screen.findByText("양평 히스토리 결과")).toBeInTheDocument();
+
+    await userEvent.click(screen.getByRole("button", { name: "넓게 보기" }));
+
+    const dialog = await screen.findByRole("dialog", {
+      name: "3월 양평 주말 캠핑 저장 결과",
+    });
+    expect(
+      within(dialog).getByText(
+        "아카이브 당시 저장된 Markdown 결과를 넓은 폭으로 다시 확인하는 보기입니다.",
+      ),
+    ).toBeInTheDocument();
+    expect(
+      within(dialog).getByText(".camping-data/outputs/2026-03-08-yangpyeong-plan.md"),
+    ).toBeInTheDocument();
+
+    await userEvent.click(
+      within(dialog).getByRole("button", { name: "결과 레이어 닫기" }),
+    );
+
+    await waitFor(() => {
+      expect(
+        screen.queryByRole("dialog", { name: "3월 양평 주말 캠핑 저장 결과" }),
+      ).toBeNull();
+    });
   });
 
   it("ignores stale history output responses after selection changes", async () => {

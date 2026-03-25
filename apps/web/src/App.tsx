@@ -129,6 +129,14 @@ type PersistedUiState = {
   equipmentSection: EquipmentSection;
 };
 
+type MarkdownLayerState = {
+  eyebrow: string;
+  title: string;
+  description: string;
+  outputPath: string | null;
+  markdown: string;
+};
+
 type CategoryDrafts = Record<EquipmentSection, EquipmentCategoryCreateInput>;
 type CategoryLabelDrafts = Record<EquipmentSection, Record<string, string>>;
 type EquipmentCategorySelectionDrafts = Record<
@@ -196,6 +204,7 @@ export function App() {
   const [historyOutput, setHistoryOutput] = useState<GetOutputResponse | null>(null);
   const [historyOutputLoading, setHistoryOutputLoading] = useState(false);
   const [historyOutputError, setHistoryOutputError] = useState<string | null>(null);
+  const [markdownLayer, setMarkdownLayer] = useState<MarkdownLayerState | null>(null);
   const [links, setLinks] = useState<ExternalLink[]>([]);
   const [linkDraft, setLinkDraft] = useState<ExternalLinkInput>(createEmptyLink());
   const [durableDraft, setDurableDraft] =
@@ -428,6 +437,31 @@ export function App() {
     setHistoryOutputError(null);
     setHistoryOutputLoading(false);
   }, [selectedHistoryId]);
+
+  useEffect(() => {
+    setMarkdownLayer(null);
+  }, [activePage, isCreatingTrip, selectedHistoryId, selectedTripId]);
+
+  useEffect(() => {
+    if (!markdownLayer) {
+      return;
+    }
+
+    const previousOverflow = document.body.style.overflow;
+    const handleWindowKeyDown = (event: KeyboardEvent) => {
+      if (event.key === "Escape") {
+        setMarkdownLayer(null);
+      }
+    };
+
+    document.body.style.overflow = "hidden";
+    window.addEventListener("keydown", handleWindowKeyDown);
+
+    return () => {
+      document.body.style.overflow = previousOverflow;
+      window.removeEventListener("keydown", handleWindowKeyDown);
+    };
+  }, [markdownLayer]);
 
   useEffect(() => {
     if (isCreatingTrip || !selectedTripId || !isAnalysisPending) {
@@ -1411,6 +1445,21 @@ export function App() {
     }
   }
 
+  function handleOpenAnalysisLayer() {
+    if (!analysisOutput?.markdown) {
+      return;
+    }
+
+    setMarkdownLayer({
+      eyebrow: "계획 분석 레이어",
+      title: `${tripDraft?.title ?? "현재 계획"} 분석 결과`,
+      description:
+        "본문 폭을 넓혀 이번 캠핑의 최종 Markdown 정리본을 다시 읽는 전용 보기입니다.",
+      outputPath: analysisOutput.output_path,
+      markdown: analysisOutput.markdown,
+    });
+  }
+
   async function handleAssistantSubmit() {
     if (!selectedTripId || !assistantInput.trim()) return;
 
@@ -2025,6 +2074,21 @@ export function App() {
     }
   }
 
+  function handleOpenHistoryOutputLayer() {
+    if (!historyOutput?.markdown) {
+      return;
+    }
+
+    setMarkdownLayer({
+      eyebrow: "히스토리 결과 레이어",
+      title: `${selectedHistory?.title ?? "보관 기록"} 저장 결과`,
+      description:
+        "아카이브 당시 저장된 Markdown 결과를 넓은 폭으로 다시 확인하는 보기입니다.",
+      outputPath: historyOutput.output_path,
+      markdown: historyOutput.markdown,
+    });
+  }
+
   async function handleDeleteHistory(historyId: string) {
     if (!confirmDeletion(`캠핑 히스토리를 삭제할까요?\n${historyId}`)) return;
 
@@ -2180,6 +2244,17 @@ export function App() {
             variant="floating"
           />
         </div>
+      ) : null}
+
+      {markdownLayer ? (
+        <MarkdownLayer
+          description={markdownLayer.description}
+          eyebrow={markdownLayer.eyebrow}
+          markdown={markdownLayer.markdown}
+          outputPath={markdownLayer.outputPath}
+          title={markdownLayer.title}
+          onClose={() => setMarkdownLayer(null)}
+        />
       ) : null}
 
       <div className="app-layout">
@@ -4394,6 +4469,15 @@ export function App() {
                     <div className="panel__eyebrow">분석 결과</div>
                     <div className="panel__header">
                       <h2>분석 결과</h2>
+                      {analysisOutput?.markdown ? (
+                        <button
+                          className="button"
+                          onClick={handleOpenAnalysisLayer}
+                          type="button"
+                        >
+                          넓게 보기
+                        </button>
+                      ) : null}
                     </div>
                     <div className="action-card action-card--soft">
                       <strong>분석 결과는 최종 정리할 때 확인</strong>
@@ -4630,14 +4714,25 @@ export function App() {
                               : "이 히스토리에는 저장된 분석 결과 경로가 없습니다."}
                           </p>
                         </div>
-                        <button
-                          className="button"
-                          disabled={!selectedHistory.output_path || historyOutputLoading}
-                          onClick={handleOpenHistoryOutput}
-                          type="button"
-                        >
-                          {historyOutputLoading ? "불러오는 중..." : "결과 열기"}
-                        </button>
+                        <div className="history-output-card__actions">
+                          <button
+                            className="button"
+                            disabled={!selectedHistory.output_path || historyOutputLoading}
+                            onClick={handleOpenHistoryOutput}
+                            type="button"
+                          >
+                            {historyOutputLoading ? "불러오는 중..." : "결과 열기"}
+                          </button>
+                          {historyOutput?.markdown ? (
+                            <button
+                              className="button"
+                              onClick={handleOpenHistoryOutputLayer}
+                              type="button"
+                            >
+                              넓게 보기
+                            </button>
+                          ) : null}
+                        </div>
                       </div>
                       {selectedHistory.output_path ? (
                         <code className="output-path">{selectedHistory.output_path}</code>
@@ -4926,6 +5021,108 @@ export function App() {
       </div>
     </div>
   );
+}
+
+function MarkdownLayer(props: {
+  eyebrow: string;
+  title: string;
+  description: string;
+  outputPath: string | null;
+  markdown: string;
+  onClose: () => void;
+}) {
+  const panelRef = useRef<HTMLElement | null>(null);
+  const closeButtonRef = useRef<HTMLButtonElement | null>(null);
+  const previousFocusRef = useRef<HTMLElement | null>(null);
+
+  useEffect(() => {
+    previousFocusRef.current =
+      document.activeElement instanceof HTMLElement ? document.activeElement : null;
+    closeButtonRef.current?.focus();
+
+    return () => {
+      previousFocusRef.current?.focus();
+    };
+  }, []);
+
+  function handleKeyDown(event: ReactKeyboardEvent<HTMLElement>) {
+    if (event.key !== "Tab" || !panelRef.current) {
+      return;
+    }
+
+    const focusableElements = getFocusableElements(panelRef.current);
+
+    if (focusableElements.length === 0) {
+      event.preventDefault();
+      return;
+    }
+
+    const firstElement = focusableElements[0];
+    const lastElement = focusableElements[focusableElements.length - 1];
+    const currentElement =
+      document.activeElement instanceof HTMLElement ? document.activeElement : null;
+
+    if (event.shiftKey) {
+      if (currentElement === firstElement || !panelRef.current.contains(currentElement)) {
+        event.preventDefault();
+        lastElement.focus();
+      }
+
+      return;
+    }
+
+    if (currentElement === lastElement || !panelRef.current.contains(currentElement)) {
+      event.preventDefault();
+      firstElement.focus();
+    }
+  }
+
+  return (
+    <div
+      aria-labelledby="markdown-layer-title"
+      aria-modal="true"
+      className="markdown-layer"
+      onClick={props.onClose}
+      role="dialog"
+    >
+      <div className="markdown-layer__backdrop" />
+      <section
+        className="markdown-layer__panel"
+        onKeyDown={handleKeyDown}
+        onClick={(event) => event.stopPropagation()}
+        ref={panelRef}
+      >
+        <div className="markdown-layer__header">
+          <div className="markdown-layer__copy">
+            <div className="panel__eyebrow">{props.eyebrow}</div>
+            <h2 id="markdown-layer-title">{props.title}</h2>
+            <p>{props.description}</p>
+          </div>
+          <button
+            aria-label="결과 레이어 닫기"
+            className="button"
+            onClick={props.onClose}
+            ref={closeButtonRef}
+            type="button"
+          >
+            닫기
+          </button>
+        </div>
+        {props.outputPath ? <code className="output-path">{props.outputPath}</code> : null}
+        <article className="markdown-pane markdown-pane--layer">
+          <ReactMarkdown>{props.markdown}</ReactMarkdown>
+        </article>
+      </section>
+    </div>
+  );
+}
+
+function getFocusableElements(container: HTMLElement) {
+  return Array.from(
+    container.querySelectorAll<HTMLElement>(
+      'button:not([disabled]), [href], input:not([disabled]), select:not([disabled]), textarea:not([disabled]), [tabindex]:not([tabindex="-1"])',
+    ),
+  ).filter((element) => !element.hasAttribute("aria-hidden"));
 }
 
 function navButtonClass(active: boolean) {
