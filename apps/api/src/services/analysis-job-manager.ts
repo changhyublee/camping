@@ -8,6 +8,7 @@ import {
 } from "@camping/shared";
 import type { CampingRepository } from "../file-store/camping-repository";
 import { isAppError, toApiError } from "./app-error";
+import type { AiJobEventBroker } from "./ai-job-event-broker";
 import { isAbortError } from "./openai-client";
 
 type AnalysisJobExecutor = (
@@ -44,6 +45,7 @@ export class AnalysisJobManager {
   constructor(
     private readonly repository: CampingRepository,
     private readonly executeJob: AnalysisJobExecutor,
+    private readonly eventBroker: AiJobEventBroker,
   ) {}
 
   async recoverInterruptedJobs() {
@@ -98,7 +100,7 @@ export class AnalysisJobManager {
       let currentStatus = await this.getTripAnalysisStatus(tripId);
 
       if (isPendingTripAnalysisStatus(currentStatus.status) && !activeJob) {
-        currentStatus = await this.repository.saveTripAnalysisStatus(
+        currentStatus = await this.saveTripAnalysisStatus(
           buildInterruptedTripAnalysisStatus(
             currentStatus,
             await this.repository.findTripOutputPath(tripId),
@@ -157,7 +159,7 @@ export class AnalysisJobManager {
         this.sessionErrors.delete(tripId);
       }
 
-      const queuedStatus = await this.repository.saveTripAnalysisStatus({
+      const queuedStatus = await this.saveTripAnalysisStatus({
         trip_id: tripId,
         status:
           hasBlockingActiveJob &&
@@ -272,7 +274,7 @@ export class AnalysisJobManager {
 
       this.queuedJobs.set(tripId, rest);
 
-      await this.repository.saveTripAnalysisStatus({
+      await this.saveTripAnalysisStatus({
         trip_id: tripId,
         status: "running",
         requested_at: currentStatus.requested_at ?? startedAt,
@@ -307,7 +309,7 @@ export class AnalysisJobManager {
       const remainingQueueLength = this.queuedJobs.get(tripId)?.length ?? 0;
       const sessionError = this.sessionErrors.get(tripId);
 
-      await this.repository.saveTripAnalysisStatus({
+      await this.saveTripAnalysisStatus({
         trip_id: tripId,
         status:
           remainingQueueLength > 0
@@ -348,7 +350,7 @@ export class AnalysisJobManager {
       const finishedAt = new Date().toISOString();
       const remainingQueueLength = this.queuedJobs.get(tripId)?.length ?? 0;
 
-      await this.repository.saveTripAnalysisStatus({
+      await this.saveTripAnalysisStatus({
         trip_id: tripId,
         status: remainingQueueLength > 0 ? "queued" : "failed",
         requested_at: currentStatus.requested_at ?? finishedAt,
@@ -390,7 +392,7 @@ export class AnalysisJobManager {
 
       const finishedAt = new Date().toISOString();
 
-      await this.repository.saveTripAnalysisStatus({
+      await this.saveTripAnalysisStatus({
         trip_id: tripId,
         status: "interrupted",
         requested_at: currentStatus.requested_at ?? finishedAt,
@@ -435,7 +437,7 @@ export class AnalysisJobManager {
 
       const finishedAt = new Date().toISOString();
 
-      await this.repository.saveTripAnalysisStatus({
+      await this.saveTripAnalysisStatus({
         trip_id: tripId,
         status: "interrupted",
         requested_at: currentStatus.requested_at ?? finishedAt,
@@ -500,6 +502,12 @@ export class AnalysisJobManager {
 
   private isCurrentGeneration(tripId: TripId, generation: number) {
     return (this.tripGenerations.get(tripId) ?? 0) === generation;
+  }
+
+  private async saveTripAnalysisStatus(input: TripAnalysisStatusInput) {
+    const status = await this.repository.saveTripAnalysisStatus(input);
+    this.eventBroker.publishAnalysisStatus(status);
+    return status;
   }
 }
 

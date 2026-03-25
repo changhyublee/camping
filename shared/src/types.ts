@@ -1,6 +1,12 @@
 import type { z } from "zod";
 import type {
   ageGroupSchema,
+  aiJobAnalysisStatusEventSchema,
+  aiJobDurableMetadataCompletedEventSchema,
+  aiJobDurableMetadataStatusEventSchema,
+  aiJobEventSchema,
+  aiJobHeartbeatEventSchema,
+  aiJobReadyEventSchema,
   analysisBackendSchema,
   analyzeTripRequestSchema,
   analyzeTripResponseSchema,
@@ -192,6 +198,18 @@ export type DurableMetadataJobStatusResponse = z.infer<
 export type ListDurableMetadataJobStatusesResponse = z.infer<
   typeof listDurableMetadataJobStatusesResponseSchema
 >;
+export type AiJobReadyEvent = z.infer<typeof aiJobReadyEventSchema>;
+export type AiJobHeartbeatEvent = z.infer<typeof aiJobHeartbeatEventSchema>;
+export type AiJobAnalysisStatusEvent = z.infer<
+  typeof aiJobAnalysisStatusEventSchema
+>;
+export type AiJobDurableMetadataStatusEvent = z.infer<
+  typeof aiJobDurableMetadataStatusEventSchema
+>;
+export type AiJobDurableMetadataCompletedEvent = z.infer<
+  typeof aiJobDurableMetadataCompletedEventSchema
+>;
+export type AiJobEvent = z.infer<typeof aiJobEventSchema>;
 export type ApiError = z.infer<typeof apiErrorSchema>;
 export type AnalysisBackend = z.infer<typeof analysisBackendSchema>;
 export type BackendHealth = z.infer<typeof backendHealthSchema>;

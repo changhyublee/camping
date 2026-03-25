@@ -28,8 +28,89 @@ import type {
 import { App } from "./App";
 
 const fetchMock = vi.fn<typeof fetch>();
+const originalEventSource = globalThis.EventSource;
 
 vi.stubGlobal("fetch", fetchMock);
+
+class MockEventSource {
+  static instances: MockEventSource[] = [];
+
+  readonly url: string;
+  readonly withCredentials = false;
+  readyState = 0;
+  private readonly listeners = new Map<string, Set<EventListener>>();
+
+  constructor(url: string | URL) {
+    this.url = url.toString();
+    MockEventSource.instances.push(this);
+  }
+
+  static latest() {
+    const instance = MockEventSource.instances.at(-1);
+
+    if (!instance) {
+      throw new Error("No EventSource instance was created.");
+    }
+
+    return instance;
+  }
+
+  static reset() {
+    MockEventSource.instances = [];
+  }
+
+  addEventListener(type: string, listener: EventListenerOrEventListenerObject) {
+    const normalizedListener =
+      typeof listener === "function"
+        ? listener
+        : (event: Event) => listener.handleEvent(event);
+    const listeners = this.listeners.get(type) ?? new Set<EventListener>();
+    listeners.add(normalizedListener);
+    this.listeners.set(type, listeners);
+  }
+
+  removeEventListener(type: string, listener: EventListenerOrEventListenerObject) {
+    const listeners = this.listeners.get(type);
+
+    if (!listeners) {
+      return;
+    }
+
+    const normalizedListener =
+      typeof listener === "function"
+        ? listener
+        : (event: Event) => listener.handleEvent(event);
+    listeners.delete(normalizedListener);
+
+    if (listeners.size === 0) {
+      this.listeners.delete(type);
+    }
+  }
+
+  close() {
+    this.readyState = 2;
+  }
+
+  open() {
+    this.readyState = 1;
+    this.dispatch("open", new Event("open"));
+  }
+
+  error() {
+    this.readyState = 0;
+    this.dispatch("error", new Event("error"));
+  }
+
+  emit(type: string, payload: unknown) {
+    this.dispatch(type, new MessageEvent(type, { data: JSON.stringify(payload) }));
+  }
+
+  private dispatch(type: string, event: Event) {
+    for (const listener of this.listeners.get(type) ?? []) {
+      listener(event);
+    }
+  }
+}
 
 type ApiResponse<T> = {
   body: T;
@@ -93,12 +174,26 @@ beforeEach(() => {
   fetchMock.mockImplementation(mockFetch);
   vi.spyOn(window, "confirm").mockReturnValue(true);
   window.sessionStorage.clear();
+  MockEventSource.reset();
+
+  if (originalEventSource) {
+    vi.stubGlobal("EventSource", originalEventSource);
+  } else {
+    delete (globalThis as { EventSource?: typeof EventSource }).EventSource;
+  }
 });
 
 afterEach(() => {
   fetchMock.mockReset();
   vi.useRealTimers();
   vi.restoreAllMocks();
+  MockEventSource.reset();
+
+  if (originalEventSource) {
+    vi.stubGlobal("EventSource", originalEventSource);
+  } else {
+    delete (globalThis as { EventSource?: typeof EventSource }).EventSource;
+  }
 });
 
 function jsonResponse(body: unknown, status = 200) {
@@ -991,6 +1086,71 @@ describe("App", () => {
       return new URL(rawUrl, "http://localhost").pathname === "/api/analyze-trip";
     });
     expect(analyzeCalls.length).toBeGreaterThan(0);
+  });
+
+  it("updates planning status and output immediately from SSE analysis events", async () => {
+    vi.stubGlobal("EventSource", MockEventSource as unknown as typeof EventSource);
+
+    render(<App />);
+
+    await userEvent.click(await screen.findByRole("button", { name: "캠핑 계획" }));
+    MockEventSource.latest().open();
+
+    const runningResponse = createAnalysisResponse("2026-04-18-gapyeong", {
+      status: "running",
+      requested_at: "2026-03-24T10:00:00.000Z",
+      started_at: "2026-03-24T10:00:01.000Z",
+      categories: createAnalysisResponse("2026-04-18-gapyeong").categories.map(
+        (category, index) =>
+          index === 0
+            ? {
+                ...category,
+                status: "running",
+                requested_at: "2026-03-24T10:00:00.000Z",
+                started_at: "2026-03-24T10:00:01.000Z",
+              }
+            : category,
+      ),
+    });
+
+    MockEventSource.latest().emit("analysis-status", {
+      type: "analysis-status",
+      status: runningResponse,
+    });
+
+    expect(await screen.findByRole("button", { name: "분석 중..." })).toBeDisabled();
+
+    state.outputs["2026-04-18-gapyeong"] = {
+      trip_id: "2026-04-18-gapyeong",
+      output_path: ".camping-data/outputs/2026-04-18-gapyeong-plan.md",
+      markdown: "# SSE 최신 결과\n\n- 실시간으로 갱신됨",
+    };
+    state.outputAvailability["2026-04-18-gapyeong"] = true;
+
+    MockEventSource.latest().emit("analysis-status", {
+      type: "analysis-status",
+      status: {
+        ...runningResponse,
+        status: "completed",
+        finished_at: "2026-03-24T10:05:00.000Z",
+        output_path: ".camping-data/outputs/2026-04-18-gapyeong-plan.md",
+        completed_category_count: 1,
+        categories: runningResponse.categories.map((category, index) =>
+          index === 0
+            ? {
+                ...category,
+                status: "completed",
+                has_result: true,
+                finished_at: "2026-03-24T10:05:00.000Z",
+                collected_at: "2026-03-24T10:05:00.000Z",
+              }
+            : category,
+        ),
+      },
+    });
+
+    expect(await screen.findByText("실시간으로 갱신됨")).toBeInTheDocument();
+    expect(await screen.findByText("분석 완료")).toBeInTheDocument();
   });
 
   it("does not block planning details while saved output is still loading", async () => {
@@ -2087,6 +2247,87 @@ describe("App", () => {
         return pathname === "/api/equipment/durable/metadata-statuses" && !init?.method;
       }),
     ).toBe(true);
+  });
+
+  it("updates durable metadata cards immediately from SSE completion events", async () => {
+    vi.stubGlobal("EventSource", MockEventSource as unknown as typeof EventSource);
+
+    state.equipment.durable.items = [
+      {
+        id: "family-tent",
+        name: "패밀리 텐트",
+        model: "리빙쉘 4P",
+        purchase_link: "https://example.com/product",
+        category: "shelter",
+        quantity: 1,
+        status: "ok",
+      },
+    ];
+    state.metadataStatuses["family-tent"] = {
+      body: {
+        item_id: "family-tent",
+        status: "queued",
+        requested_at: "2026-03-24T10:00:00.000Z",
+        started_at: null,
+        finished_at: null,
+      },
+    };
+
+    render(<App />);
+
+    await userEvent.click(await screen.findByRole("button", { name: "장비 관리" }));
+    MockEventSource.latest().open();
+    await userEvent.click(screen.getByRole("button", { name: "쉘터/텐트 카테고리 펼치기" }));
+    await userEvent.click(screen.getByRole("button", { name: "패밀리 텐트 상세 펼치기" }));
+
+    expect(
+      await screen.findByRole("button", { name: "메타데이터 수집 중..." }),
+    ).toBeDisabled();
+
+    state.equipment.durable.items[0] = {
+      ...state.equipment.durable.items[0],
+      metadata: {
+        lookup_status: "found",
+        searched_at: "2026-03-24T10:05:00.000Z",
+        query: "패밀리 텐트 리빙쉘 4P",
+        summary: "포장 크기와 설치 시간을 확인했습니다.",
+        product: {
+          brand: "테스트 브랜드",
+          official_name: "패밀리 텐트",
+          model: "리빙쉘 4P",
+        },
+        packing: {
+          width_cm: 68,
+          depth_cm: 34,
+          height_cm: 30,
+          weight_kg: 14.5,
+        },
+        planning: {
+          setup_time_minutes: 20,
+          recommended_people: 2,
+          capacity_people: 4,
+          season_notes: ["봄, 여름, 가을 중심으로 적합"],
+          weather_notes: ["우천 시 플라이를 먼저 확인"],
+        },
+        sources: [
+          {
+            title: "테스트 상품 페이지",
+            url: "https://example.com/product",
+            domain: "example.com",
+          },
+        ],
+      },
+    };
+
+    MockEventSource.latest().emit("durable-metadata-completed", {
+      type: "durable-metadata-completed",
+      item_id: "family-tent",
+      completed_at: "2026-03-24T10:05:00.000Z",
+    });
+
+    expect(await screen.findByText("수집 완료")).toBeInTheDocument();
+    expect(await screen.findByText("포장 크기와 설치 시간을 확인했습니다.")).toBeInTheDocument();
+    expect(await screen.findByText("68 x 34 x 30 cm")).toBeInTheDocument();
   });
 
   it("moves a consumable into the new category only after saving", async () => {

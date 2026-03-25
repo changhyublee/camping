@@ -1,4 +1,5 @@
 import type {
+  AiJobEvent,
   AnalyzeTripRequest,
   AnalyzeTripResponse,
   CampsiteTipsResearch,
@@ -35,6 +36,7 @@ import { ALL_TRIP_ANALYSIS_CATEGORIES } from "@camping/shared";
 import type { CampingRepository } from "../file-store/camping-repository";
 import type { DataBackupReason } from "../file-store/local-data-backup";
 import { AppError } from "./app-error";
+import { AiJobEventBroker } from "./ai-job-event-broker";
 import { AnalysisJobManager } from "./analysis-job-manager";
 import { EquipmentMetadataJobManager } from "./equipment-metadata-job-manager";
 import type { CampsiteTipSearchClient } from "./campsite-tip-service";
@@ -58,6 +60,7 @@ type EquipmentItemInput =
 export class AnalysisService {
   private readonly analysisJobManager: AnalysisJobManager;
   private readonly metadataJobManager: EquipmentMetadataJobManager;
+  private readonly aiJobEventBroker = new AiJobEventBroker();
 
   constructor(
     private readonly repository: CampingRepository,
@@ -68,10 +71,12 @@ export class AnalysisService {
     this.analysisJobManager = new AnalysisJobManager(
       repository,
       async (input, signal) => this.executeTripAnalysis(input, signal),
+      this.aiJobEventBroker,
     );
     this.metadataJobManager = new EquipmentMetadataJobManager(
       repository,
       equipmentMetadataClient,
+      this.aiJobEventBroker,
       3,
     );
   }
@@ -317,6 +322,18 @@ export class AnalysisService {
       cancelled_analysis_category_count: analysisSummary.cancelledCategoryCount,
       cancelled_metadata_item_count: metadataSummary.cancelledItemCount,
     };
+  }
+
+  subscribeAiJobEvents(listener: (event: AiJobEvent) => void) {
+    return this.aiJobEventBroker.subscribe(listener);
+  }
+
+  createAiJobReadyEvent() {
+    return this.aiJobEventBroker.createReadyEvent();
+  }
+
+  createAiJobHeartbeatEvent() {
+    return this.aiJobEventBroker.createHeartbeatEvent();
   }
 
   async saveOutput(input: SaveOutputRequest): Promise<SaveOutputResponse> {

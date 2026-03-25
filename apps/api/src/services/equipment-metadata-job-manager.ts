@@ -3,6 +3,7 @@ import type {
   DurableEquipmentItem,
 } from "@camping/shared";
 import type { CampingRepository } from "../file-store/camping-repository";
+import type { AiJobEventBroker } from "./ai-job-event-broker";
 import type { EquipmentMetadataSearchClient } from "./equipment-metadata-service";
 import { AppError, isAppError, toApiError } from "./app-error";
 import { isAbortError } from "./openai-client";
@@ -25,6 +26,7 @@ export class EquipmentMetadataJobManager {
   constructor(
     private readonly repository: CampingRepository,
     private readonly metadataClient: EquipmentMetadataSearchClient,
+    private readonly eventBroker: AiJobEventBroker,
     private readonly maxConcurrentJobs = 3,
   ) {}
 
@@ -74,7 +76,7 @@ export class EquipmentMetadataJobManager {
           return this.reusePendingJobStatus(currentStatus, nextFingerprint);
         }
 
-        await this.repository.saveDurableMetadataJobStatus(
+        await this.saveDurableMetadataJobStatus(
           buildInterruptedDurableMetadataJobStatus(currentStatus),
         );
       }
@@ -83,7 +85,7 @@ export class EquipmentMetadataJobManager {
       this.rerunRequested.delete(itemId);
       const generation = this.bumpJobGeneration(itemId);
 
-      const queuedStatus = await this.repository.saveDurableMetadataJobStatus({
+      const queuedStatus = await this.saveDurableMetadataJobStatus({
         item_id: itemId,
         status: "queued",
         requested_at: new Date().toISOString(),
@@ -151,7 +153,7 @@ export class EquipmentMetadataJobManager {
         return 0;
       }
 
-      await this.repository.saveDurableMetadataJobStatus({
+      await this.saveDurableMetadataJobStatus({
         item_id: itemId,
         status: "interrupted",
         requested_at: currentStatus.requested_at ?? null,
@@ -193,7 +195,7 @@ export class EquipmentMetadataJobManager {
       finished_at: null,
     };
 
-    return this.repository.saveDurableMetadataJobStatus(queuedStatus);
+    return this.saveDurableMetadataJobStatus(queuedStatus);
   }
 
   private async runQueuedJob(
@@ -228,7 +230,7 @@ export class EquipmentMetadataJobManager {
         return;
       }
 
-      await this.repository.saveDurableMetadataJobStatus({
+      await this.saveDurableMetadataJobStatus({
         item_id: itemId,
         status: "running",
         requested_at: requestedAt,
@@ -267,7 +269,7 @@ export class EquipmentMetadataJobManager {
         if (rerunDecision.action === "rerun") {
           this.rerunRequested.delete(itemId);
           requestedAt = new Date().toISOString();
-          await this.repository.saveDurableMetadataJobStatus({
+          await this.saveDurableMetadataJobStatus({
             item_id: itemId,
             status: "queued",
             requested_at: requestedAt,
@@ -284,6 +286,7 @@ export class EquipmentMetadataJobManager {
 
         await this.repository.saveDurableEquipmentMetadata(itemId, metadata);
         await this.repository.deleteDurableMetadataJobStatus(itemId);
+        this.eventBroker.publishDurableMetadataCompleted(itemId);
         return;
       } catch (error) {
         if (
@@ -304,7 +307,7 @@ export class EquipmentMetadataJobManager {
         if (rerunDecision.action === "rerun") {
           this.rerunRequested.delete(itemId);
           requestedAt = new Date().toISOString();
-          await this.repository.saveDurableMetadataJobStatus({
+          await this.saveDurableMetadataJobStatus({
             item_id: itemId,
             status: "queued",
             requested_at: requestedAt,
@@ -314,7 +317,7 @@ export class EquipmentMetadataJobManager {
           continue;
         }
 
-        await this.repository.saveDurableMetadataJobStatus({
+        await this.saveDurableMetadataJobStatus({
           item_id: itemId,
           status: "failed",
           requested_at: requestedAt,
@@ -445,6 +448,14 @@ export class EquipmentMetadataJobManager {
 
   private isCurrentGeneration(itemId: string, generation: number) {
     return this.jobGenerations.get(itemId) === generation;
+  }
+
+  private async saveDurableMetadataJobStatus(
+    input: DurableMetadataJobStatusResponse,
+  ) {
+    const status = await this.repository.saveDurableMetadataJobStatus(input);
+    this.eventBroker.publishDurableMetadataStatus(status);
+    return status;
   }
 }
 

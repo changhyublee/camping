@@ -263,6 +263,41 @@ export async function registerApiRoutes(
   app: FastifyInstance,
   analysisService: AnalysisService,
 ) {
+  app.get("/api/ai-jobs/events", async (request, reply) => {
+    reply.hijack();
+
+    const response = reply.raw;
+    response.writeHead(200, {
+      "Content-Type": "text/event-stream; charset=utf-8",
+      "Cache-Control": "no-cache, no-transform",
+      Connection: "keep-alive",
+      "X-Accel-Buffering": "no",
+    });
+    response.flushHeaders?.();
+    response.write(formatSseEvent(analysisService.createAiJobReadyEvent()));
+
+    const unsubscribe = analysisService.subscribeAiJobEvents((event) => {
+      response.write(formatSseEvent(event));
+    });
+    const heartbeatTimer = setInterval(() => {
+      response.write(formatSseEvent(analysisService.createAiJobHeartbeatEvent()));
+    }, 15000);
+    let cleanedUp = false;
+
+    const cleanup = () => {
+      if (cleanedUp) {
+        return;
+      }
+
+      cleanedUp = true;
+      clearInterval(heartbeatTimer);
+      unsubscribe();
+    };
+
+    request.raw.once("close", cleanup);
+    request.raw.once("error", cleanup);
+  });
+
   app.get("/api/health", async () => analysisService.getHealthStatus());
 
   app.get("/api/data-backups", async () => ({
@@ -654,4 +689,8 @@ export async function registerApiRoutes(
 
     return analysisService.deleteLink(linkId);
   });
+}
+
+function formatSseEvent(event: { type: string }) {
+  return `event: ${event.type}\ndata: ${JSON.stringify(event)}\n\n`;
 }

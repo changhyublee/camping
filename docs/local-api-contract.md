@@ -20,6 +20,7 @@
 - `GET /api/data-backups`
 - `POST /api/data-backups`
 - `POST /api/ai-jobs/cancel-all`
+- `GET /api/ai-jobs/events`
 
 ### 동행자
 
@@ -55,6 +56,7 @@
 - `POST /api/analyze-trip` 는 백그라운드 작업을 등록하고 현재 분석 상태를 즉시 반환한다
 - 새 작업이 등록되거나 이미 같은 계획 분석이 진행 중이면 `202 Accepted` 로 응답한다
 - `GET /api/trips/:tripId/analysis-status` 는 현재 계획의 분석 상태를 조회한다
+- `GET /api/ai-jobs/events` 는 분석 상태 변경을 SSE로 push 한다
 - 상태 값은 `idle`, `queued`, `running`, `completed`, `failed`, `interrupted` 를 사용한다
 - 분석 섹션 값은 `summary`, `equipment`, `personal_items`, `shortage`, `precheck`, `meals`, `travel_route`, `nearby_places`, `campsite_tips`, `risks_limits`, `next_camping` 을 사용한다
 - `categories` 를 보내면 선택한 섹션만 queue 에 넣고, 생략하면 전체 섹션을 요청한 것으로 본다
@@ -97,6 +99,7 @@
 
 - `POST /api/equipment/durable/items/:itemId/metadata/refresh` 는 메타데이터 수집 작업을 백그라운드에 등록하고 `202 Accepted` 로 현재 작업 상태를 반환한다
 - `GET /api/equipment/durable/metadata-statuses` 는 현재 durable 메타데이터 작업 상태 목록을 반환한다
+- `GET /api/ai-jobs/events` 는 durable 메타데이터 상태 변경과 성공 완료 이벤트를 SSE로 push 한다
 - 상태 값은 `queued`, `running`, `failed`, `interrupted` 를 사용한다
 - 같은 `item_id` 가 이미 `queued` 또는 `running` 이면 새 수집을 만들지 않고 기존 상태를 그대로 반환한다
 - 서로 다른 durable item 은 최대 3건까지 동시에 수집하고 초과 요청은 `queued` 로 대기한다
@@ -106,6 +109,15 @@
 - durable item 삭제 시 메타데이터 결과 파일과 상태 파일을 함께 정리하고, 이미 실행 중이던 작업 결과도 저장하지 않는다
 - API 서버 재시작 시 남아 있던 `queued` 또는 `running` 상태는 `interrupted` 로 복구한다
 - `POST /api/ai-jobs/cancel-all` 는 실행 중인 durable 메타데이터 수집도 함께 중단하고 대기 queue 를 비운다
+
+실시간 이벤트 규칙:
+
+- `GET /api/ai-jobs/events` 는 `text/event-stream` SSE 연결을 유지한다
+- 이벤트 타입은 `ready`, `heartbeat`, `analysis-status`, `durable-metadata-status`, `durable-metadata-completed` 를 사용한다
+- `analysis-status` 는 전체 `AnalyzeTripResponse` payload를 보낸다
+- `durable-metadata-status` 는 전체 `DurableMetadataJobStatusResponse` payload를 보낸다
+- `durable-metadata-completed` 는 `{ item_id, completed_at }` payload를 보낸다
+- 클라이언트는 SSE를 기본 실시간 채널로 사용하고, 재연결 직후에는 기존 상태 조회 API로 재동기화한다
 
 ### 캠핑 히스토리
 

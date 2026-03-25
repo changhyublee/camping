@@ -1,4 +1,5 @@
 import type {
+  AiJobEvent,
   AnalyzeTripRequest,
   AnalyzeTripResponse,
   CancelAllAiJobsResponse,
@@ -32,6 +33,7 @@ import type {
   Vehicle,
   VehicleInput,
 } from "@camping/shared";
+import { aiJobEventSchema } from "@camping/shared";
 
 const API_BASE_URL =
   import.meta.env.VITE_API_BASE_URL ?? "http://localhost:8787";
@@ -47,6 +49,16 @@ type EquipmentItemInput =
   | DurableEquipmentItemInput
   | ConsumableEquipmentItemInput
   | PrecheckItemInput;
+
+type AiJobEventSubscriptionHandlers = {
+  onEvent: (event: AiJobEvent) => void;
+  onOpen?: () => void;
+  onError?: () => void;
+};
+
+export type AiJobEventSubscription = {
+  close: () => void;
+};
 
 export class ApiClientError extends Error {
   code?: string;
@@ -192,6 +204,61 @@ export const apiClient = {
     return request("/api/ai-jobs/cancel-all", {
       method: "POST",
     });
+  },
+  subscribeAiJobEvents(
+    handlers: AiJobEventSubscriptionHandlers,
+  ): AiJobEventSubscription | null {
+    if (typeof EventSource === "undefined") {
+      return null;
+    }
+
+    const eventSource = new EventSource(`${API_BASE_URL}/api/ai-jobs/events`);
+    const eventTypes: AiJobEvent["type"][] = [
+      "ready",
+      "heartbeat",
+      "analysis-status",
+      "durable-metadata-status",
+      "durable-metadata-completed",
+    ];
+    const eventListeners = eventTypes.map((eventType) => {
+      const listener = (messageEvent: MessageEvent<string>) => {
+        try {
+          const parsedEvent = aiJobEventSchema.safeParse(
+            JSON.parse(messageEvent.data),
+          );
+
+          if (parsedEvent.success) {
+            handlers.onEvent(parsedEvent.data);
+          }
+        } catch {
+          return;
+        }
+      };
+
+      eventSource.addEventListener(eventType, listener as EventListener);
+      return { eventType, listener };
+    });
+    const handleOpen = () => {
+      handlers.onOpen?.();
+    };
+    const handleError = () => {
+      handlers.onError?.();
+    };
+
+    eventSource.addEventListener("open", handleOpen);
+    eventSource.addEventListener("error", handleError);
+
+    return {
+      close: () => {
+        for (const { eventType, listener } of eventListeners) {
+          eventSource.removeEventListener(eventType, listener as EventListener);
+        }
+
+        eventSource.removeEventListener("open", handleOpen);
+        eventSource.removeEventListener("error", handleError);
+        eventSource.close();
+      },
+    };
   },
   async getTripAnalysisStatus(
     tripId: string,

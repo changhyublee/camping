@@ -623,6 +623,40 @@ export const listDurableMetadataJobStatusesResponseSchema = z.object({
   items: z.array(durableMetadataJobStatusResponseSchema).default([]),
 });
 
+export const aiJobReadyEventSchema = z.object({
+  type: z.literal("ready"),
+  connected_at: z.string().datetime(),
+});
+
+export const aiJobHeartbeatEventSchema = z.object({
+  type: z.literal("heartbeat"),
+  sent_at: z.string().datetime(),
+});
+
+export const aiJobAnalysisStatusEventSchema = z.object({
+  type: z.literal("analysis-status"),
+  status: analyzeTripResponseSchema,
+});
+
+export const aiJobDurableMetadataStatusEventSchema = z.object({
+  type: z.literal("durable-metadata-status"),
+  status: durableMetadataJobStatusResponseSchema,
+});
+
+export const aiJobDurableMetadataCompletedEventSchema = z.object({
+  type: z.literal("durable-metadata-completed"),
+  item_id: z.string().min(1),
+  completed_at: z.string().datetime(),
+});
+
+export const aiJobEventSchema = z.discriminatedUnion("type", [
+  aiJobReadyEventSchema,
+  aiJobHeartbeatEventSchema,
+  aiJobAnalysisStatusEventSchema,
+  aiJobDurableMetadataStatusEventSchema,
+  aiJobDurableMetadataCompletedEventSchema,
+]);
+
 export const validateTripResponseSchema = z.object({
   status: z.enum(["ok", "failed"]),
   warnings: z.array(z.string()).default([]),

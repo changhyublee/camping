@@ -6,6 +6,7 @@ import type {
 } from "react";
 import ReactMarkdown from "react-markdown";
 import type {
+  AiJobEvent,
   AnalyzeTripResponse,
   Companion,
   ConsumableEquipmentItem,
@@ -51,7 +52,7 @@ import {
   getConsumableStatus,
 } from "@camping/shared";
 import { cloneEquipmentCategories } from "@camping/shared";
-import { apiClient, ApiClientError } from "./api/client";
+import { apiClient, ApiClientError, type AiJobEventSubscription } from "./api/client";
 import { StatusBanner } from "./components/StatusBanner";
 
 type PageKey =
@@ -150,6 +151,7 @@ type EquipmentCategorySelectionDrafts = Record<
 >;
 type SectionTrackedIds = Record<EquipmentSection, string[]>;
 type DurableMetadataJobStatusMap = Record<string, DurableMetadataJobStatusResponse>;
+type AiJobRealtimeMode = "sse" | "fallback";
 
 export function App() {
   const [persistedUiState] = useState(() => readPersistedUiState());
@@ -231,15 +233,24 @@ export function App() {
     null,
   );
   const [loadError, setLoadError] = useState<string | null>(null);
+  const [aiJobRealtimeMode, setAiJobRealtimeMode] = useState<AiJobRealtimeMode>(
+    () => (typeof EventSource === "undefined" ? "fallback" : "sse"),
+  );
   const [commaInputs, setCommaInputs] = useState<CommaSeparatedInputs>(
     createCommaSeparatedInputs(),
   );
+  const selectedTripIdRef = useRef<string | null>(persistedUiState?.selectedTripId ?? null);
   const selectedHistoryIdRef = useRef<string | null>(null);
   const historyOutputRequestIdRef = useRef(0);
   const planningLoadRequestIdRef = useRef(0);
   const durableSearchFingerprintRef = useRef<Record<string, string>>({});
   const durableMetadataJobStatusesRef = useRef<DurableMetadataJobStatusMap>({});
   const analysisStatusRef = useRef<AnalyzeTripResponse | null>(null);
+  const isCreatingTripRef = useRef(false);
+  const aiJobEventSubscriptionRef = useRef<AiJobEventSubscription | null>(null);
+  const aiJobEventReconnectTimeoutRef = useRef<number | null>(null);
+  const aiJobEventReconnectAttemptsRef = useRef(0);
+  const aiJobEventHasConnectedRef = useRef(false);
   const previousEquipmentGroupIdsRef =
     useRef<SectionTrackedIds>(createEmptySectionTrackedIds());
   const previousCategoryEditorIdsRef =
@@ -260,6 +271,14 @@ export function App() {
       equipmentSection,
     });
   }, [activePage, equipmentSection, selectedHistoryId, selectedTripId]);
+
+  useEffect(() => {
+    selectedTripIdRef.current = selectedTripId;
+  }, [selectedTripId]);
+
+  useEffect(() => {
+    isCreatingTripRef.current = isCreatingTrip;
+  }, [isCreatingTrip]);
 
   useEffect(() => {
     if (!operationState) {
@@ -480,7 +499,91 @@ export function App() {
   }, [markdownLayer]);
 
   useEffect(() => {
-    if (isCreatingTrip || !selectedTripId || !isAnalysisPending) {
+    if (typeof EventSource === "undefined") {
+      setAiJobRealtimeMode("fallback");
+      return;
+    }
+
+    let disposed = false;
+
+    const connect = () => {
+      if (disposed) {
+        return;
+      }
+
+      aiJobEventSubscriptionRef.current?.close();
+      const subscription = apiClient.subscribeAiJobEvents({
+        onEvent: (event) => {
+          void handleAiJobEvent(event);
+        },
+        onOpen: () => {
+          if (disposed) {
+            return;
+          }
+
+          aiJobEventReconnectAttemptsRef.current = 0;
+          setAiJobRealtimeMode("sse");
+
+          if (aiJobEventHasConnectedRef.current) {
+            void syncAiJobStateAfterRealtimeReconnect();
+            return;
+          }
+
+          aiJobEventHasConnectedRef.current = true;
+        },
+        onError: () => {
+          if (disposed) {
+            return;
+          }
+
+          aiJobEventSubscriptionRef.current?.close();
+          aiJobEventSubscriptionRef.current = null;
+          setAiJobRealtimeMode("fallback");
+          const reconnectDelay = getAiJobRealtimeReconnectDelay(
+            aiJobEventReconnectAttemptsRef.current,
+          );
+          aiJobEventReconnectAttemptsRef.current += 1;
+
+          if (aiJobEventReconnectTimeoutRef.current !== null) {
+            window.clearTimeout(aiJobEventReconnectTimeoutRef.current);
+          }
+
+          aiJobEventReconnectTimeoutRef.current = window.setTimeout(() => {
+            aiJobEventReconnectTimeoutRef.current = null;
+            connect();
+          }, reconnectDelay);
+        },
+      });
+
+      if (!subscription) {
+        setAiJobRealtimeMode("fallback");
+        return;
+      }
+
+      aiJobEventSubscriptionRef.current = subscription;
+    };
+
+    connect();
+
+    return () => {
+      disposed = true;
+      aiJobEventSubscriptionRef.current?.close();
+      aiJobEventSubscriptionRef.current = null;
+
+      if (aiJobEventReconnectTimeoutRef.current !== null) {
+        window.clearTimeout(aiJobEventReconnectTimeoutRef.current);
+        aiJobEventReconnectTimeoutRef.current = null;
+      }
+    };
+  }, []);
+
+  useEffect(() => {
+    if (
+      aiJobRealtimeMode !== "fallback" ||
+      isCreatingTrip ||
+      !selectedTripId ||
+      !isAnalysisPending
+    ) {
       return;
     }
 
@@ -506,10 +609,14 @@ export function App() {
     return () => {
       window.clearTimeout(timeoutId);
     };
-  }, [isAnalysisPending, isCreatingTrip, selectedTripId]);
+  }, [aiJobRealtimeMode, isAnalysisPending, isCreatingTrip, selectedTripId]);
 
   useEffect(() => {
-    if (activePage !== "equipment" || !hasPendingDurableMetadataJobs) {
+    if (
+      aiJobRealtimeMode !== "fallback" ||
+      activePage !== "equipment" ||
+      !hasPendingDurableMetadataJobs
+    ) {
       return;
     }
 
@@ -529,7 +636,7 @@ export function App() {
     return () => {
       window.clearTimeout(timeoutId);
     };
-  }, [activePage, hasPendingDurableMetadataJobs]);
+  }, [activePage, aiJobRealtimeMode, hasPendingDurableMetadataJobs]);
 
   useEffect(() => {
     setDurableDraft((current) => ({
@@ -818,6 +925,204 @@ export function App() {
     setDurableMetadataJobStatuses(nextStatuses);
   }
 
+  function upsertDurableMetadataJobStatus(status: DurableMetadataJobStatusResponse) {
+    const nextStatuses = {
+      ...durableMetadataJobStatusesRef.current,
+      [status.item_id]: status,
+    };
+
+    durableMetadataJobStatusesRef.current = nextStatuses;
+    setDurableMetadataJobStatuses(nextStatuses);
+  }
+
+  function removeDurableMetadataJobStatus(itemId: string) {
+    const nextStatuses = { ...durableMetadataJobStatusesRef.current };
+    delete nextStatuses[itemId];
+    durableMetadataJobStatusesRef.current = nextStatuses;
+    setDurableMetadataJobStatuses(nextStatuses);
+  }
+
+  function notifyAnalysisStatusTransition(
+    previousStatus: AnalyzeTripResponse | null,
+    nextStatus: AnalyzeTripResponse,
+  ) {
+    if (
+      !previousStatus ||
+      previousStatus.trip_id !== nextStatus.trip_id ||
+      !isPendingAnalysisStatus(previousStatus.status)
+    ) {
+      return;
+    }
+
+    if (nextStatus.status === "completed") {
+      setOperationState({
+        title: "분석 완료",
+        tone: "success",
+        description:
+          nextStatus.output_path ??
+          "분석 결과를 저장하고 최신 Markdown을 다시 불러왔습니다.",
+      });
+      return;
+    }
+
+    if (nextStatus.status === "failed") {
+      setOperationState({
+        title: "분석 실패",
+        tone: "error",
+        description:
+          nextStatus.error?.message ?? "백그라운드 분석 작업이 실패했습니다.",
+      });
+      return;
+    }
+
+    if (nextStatus.status === "interrupted") {
+      setOperationState({
+        title: "분석 중단",
+        tone: "warning",
+        description:
+          nextStatus.error?.message ??
+          "이전 분석 작업이 중단되었습니다. 다시 실행해 주세요.",
+      });
+    }
+  }
+
+  function notifyDurableMetadataTransitions(
+    statuses: DurableMetadataJobStatusResponse[],
+  ) {
+    if (statuses.length === 0) {
+      return;
+    }
+
+    setOperationState({
+      title: "메타데이터 수집 경고",
+      tone: "warning",
+      description:
+        statuses.length === 1
+          ? statuses[0].error?.message ??
+            `${statuses[0].item_id} 메타데이터 수집이 중단되었거나 실패했습니다.`
+          : "일부 장비 메타데이터 수집이 중단되었거나 실패했습니다.",
+      items:
+        statuses.length > 1
+          ? statuses.map(
+              (status) =>
+                `${status.item_id}: ${status.error?.message ?? getDurableMetadataStatusLabel(status.status)}`,
+            )
+          : undefined,
+    });
+  }
+
+  async function syncAiJobStateAfterRealtimeReconnect() {
+    const syncWarnings: string[] = [];
+
+    if (selectedTripIdRef.current && !isCreatingTripRef.current) {
+      try {
+        await syncTripAnalysisStatus(
+          selectedTripIdRef.current,
+          planningLoadRequestIdRef.current,
+          {
+            notifyTransition: true,
+            syncOutputOnComplete: true,
+          },
+        );
+      } catch (error) {
+        syncWarnings.push(`분석 상태 동기화 실패: ${getErrorMessage(error)}`);
+      }
+    }
+
+    try {
+      await syncDurableMetadataJobStatuses({
+        notifyTransitions: true,
+        refreshEquipmentOnCompletion: true,
+      });
+    } catch (error) {
+      syncWarnings.push(`메타데이터 상태 동기화 실패: ${getErrorMessage(error)}`);
+    }
+
+    if (syncWarnings.length > 0) {
+      setOperationState({
+        title: "실시간 상태 재연결 경고",
+        tone: "warning",
+        description: "실시간 연결은 복구했지만 일부 상태를 다시 읽지 못했습니다.",
+        items: syncWarnings,
+      });
+    }
+  }
+
+  async function handleAiJobEvent(event: AiJobEvent) {
+    if (event.type === "analysis-status") {
+      if (selectedTripIdRef.current !== event.status.trip_id) {
+        return;
+      }
+
+      const previousStatus =
+        analysisStatusRef.current?.trip_id === event.status.trip_id
+          ? analysisStatusRef.current
+          : null;
+      const previousCompletedCategoryCount =
+        previousStatus?.completed_category_count ?? 0;
+
+      applyAnalysisStatus(event.status);
+
+      if (
+        event.status.completed_category_count > previousCompletedCategoryCount ||
+        event.status.status === "completed"
+      ) {
+        void loadPlanningOutput(event.status.trip_id, planningLoadRequestIdRef.current, {
+          preserveCurrent: true,
+        }).catch((error) => {
+          setOperationState({
+            title: "분석 결과 동기화 실패",
+            tone: "warning",
+            description: getErrorMessage(error),
+          });
+        });
+      }
+
+      notifyAnalysisStatusTransition(previousStatus, event.status);
+      return;
+    }
+
+    if (event.type === "durable-metadata-status") {
+      const previousStatus = durableMetadataJobStatusesRef.current[event.status.item_id];
+      upsertDurableMetadataJobStatus(event.status);
+
+      if (
+        previousStatus &&
+        isPendingDurableMetadataJobStatus(previousStatus.status) &&
+        (event.status.status === "failed" || event.status.status === "interrupted")
+      ) {
+        notifyDurableMetadataTransitions([event.status]);
+      }
+
+      return;
+    }
+
+    if (event.type === "durable-metadata-completed") {
+      removeDurableMetadataJobStatus(event.item_id);
+
+      try {
+        const syncWarnings = await refreshEquipmentState({
+          syncMetadataStatuses: false,
+        });
+
+        if (syncWarnings.length > 0) {
+          setOperationState({
+            title: "장비 동기화 경고",
+            tone: "warning",
+            description: "메타데이터 수집은 완료됐지만 일부 상태를 다시 불러오지 못했습니다.",
+            items: syncWarnings,
+          });
+        }
+      } catch (error) {
+        setOperationState({
+          title: "장비 동기화 경고",
+          tone: "warning",
+          description: getErrorMessage(error),
+        });
+      }
+    }
+  }
+
   async function loadPlanningOutput(
     tripId: string,
     requestId: number,
@@ -866,39 +1171,21 @@ export function App() {
 
     applyAnalysisStatus(response);
 
-    if (response.status === "completed" && options.syncOutputOnComplete) {
+    const previousCompletedCategoryCount =
+      previousStatus?.trip_id === response.trip_id
+        ? previousStatus.completed_category_count
+        : 0;
+
+    if (
+      options.syncOutputOnComplete &&
+      (response.completed_category_count > previousCompletedCategoryCount ||
+        response.status === "completed")
+    ) {
       await loadPlanningOutput(tripId, requestId, { preserveCurrent: true });
     }
 
-    if (
-      options.notifyTransition &&
-      previousStatus &&
-      isPendingAnalysisStatus(previousStatus.status)
-    ) {
-      if (response.status === "completed") {
-        setOperationState({
-          title: "분석 완료",
-          tone: "success",
-          description:
-            response.output_path ??
-            "분석 결과를 저장하고 최신 Markdown을 다시 불러왔습니다.",
-        });
-      } else if (response.status === "failed") {
-        setOperationState({
-          title: "분석 실패",
-          tone: "error",
-          description:
-            response.error?.message ?? "백그라운드 분석 작업이 실패했습니다.",
-        });
-      } else if (response.status === "interrupted") {
-        setOperationState({
-          title: "분석 중단",
-          tone: "warning",
-          description:
-            response.error?.message ??
-            "이전 분석 작업이 중단되었습니다. 다시 실행해 주세요.",
-        });
-      }
+    if (options.notifyTransition) {
+      notifyAnalysisStatusTransition(previousStatus, response);
     }
 
     return response;
@@ -950,12 +1237,7 @@ export function App() {
   ) {
     try {
       const response = await apiClient.refreshDurableEquipmentMetadata(itemId);
-      applyDurableMetadataJobStatuses([
-        ...Object.values(durableMetadataJobStatusesRef.current).filter(
-          (status) => status.item_id !== itemId,
-        ),
-        response,
-      ]);
+      upsertDurableMetadataJobStatus(response);
 
       return { warning: null as string | null };
     } catch (error) {
@@ -1031,22 +1313,7 @@ export function App() {
     }
 
     if (options.notifyTransitions && transitionedWarnings.length > 0) {
-      setOperationState({
-        title: "메타데이터 수집 경고",
-        tone: "warning",
-        description:
-          transitionedWarnings.length === 1
-            ? transitionedWarnings[0].error?.message ??
-              `${transitionedWarnings[0].item_id} 메타데이터 수집이 중단되었거나 실패했습니다.`
-            : "일부 장비 메타데이터 수집이 중단되었거나 실패했습니다.",
-        items:
-          transitionedWarnings.length > 1
-            ? transitionedWarnings.map(
-                (status) =>
-                  `${status.item_id}: ${status.error?.message ?? getDurableMetadataStatusLabel(status.status)}`,
-              )
-            : undefined,
-      });
+      notifyDurableMetadataTransitions(transitionedWarnings);
     }
 
     return response.items;
@@ -6875,6 +7142,18 @@ function createIdleAnalysisStatus(tripId: string): AnalyzeTripResponse {
 
 function isPendingAnalysisStatus(status?: AnalyzeTripResponse["status"] | null) {
   return status === "queued" || status === "running";
+}
+
+function getAiJobRealtimeReconnectDelay(attemptCount: number) {
+  if (attemptCount <= 0) {
+    return 1000;
+  }
+
+  if (attemptCount === 1) {
+    return 3000;
+  }
+
+  return 5000;
 }
 
 function getTripAnalysisStatusLabel(status: AnalyzeTripResponse["status"]) {
