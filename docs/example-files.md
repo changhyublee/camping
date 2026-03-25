@@ -18,6 +18,7 @@
 - [`docs/examples/preferences/travel.yaml`](examples/preferences/travel.yaml)
 - [`docs/examples/preferences/food.yaml`](examples/preferences/food.yaml)
 - [`docs/examples/trips/2026-04-18-gapyeong.yaml`](examples/trips/2026-04-18-gapyeong.yaml)
+- [`docs/examples/cache/campsite-tips/2026-04-18-gapyeong-campsite-tips.json`](examples/cache/campsite-tips/2026-04-18-gapyeong-campsite-tips.json)
 - [`docs/examples/history/2026-03-08-yangpyeong.yaml`](examples/history/2026-03-08-yangpyeong.yaml)
 - [`docs/examples/links.yaml`](examples/links.yaml)
 - [`docs/examples/outputs/2026-04-18-gapyeong-plan.md`](examples/outputs/2026-04-18-gapyeong-plan.md)
@@ -27,7 +28,7 @@
 1. `docs/examples/` 파일을 참고한다
 2. 실제 운영 시에는 `pnpm seed` 로 `.camping-data/` 아래에 복사한다
 3. 기존 `.camping-data/` 가 이미 있으면 `pnpm seed` 는 중단되며, 예시 데이터로 다시 채우려면 `pnpm seed -- --replace` 를 사용한다
-4. 복사 후 `cache/weather`, `cache/places` 디렉토리도 함께 만든다
+4. 복사 후 `cache/weather`, `cache/places`, `cache/campsite-tips` 디렉토리도 함께 만든다
 5. `cache/analysis-jobs/` 는 예시 복사 대상이 아니라 실제 분석 실행 중에 생성되는 런타임 상태 경로다
 6. UI에서 계획, 장비, 히스토리, 링크를 함께 확인한다
 
@@ -38,6 +39,7 @@
 - `equipment/*.yaml`: 장비, 소모품, 점검 항목
 - `equipment/categories.yaml`: 장비 섹션별 카테고리 코드와 표시 이름
 - `trips/*.yaml`: 앞으로 갈 계획
+- `cache/campsite-tips/*.json`: 같은 캠핑장 후기 블로그에서 뽑은 이용 tip 예시
 - `history/*.yaml`: 완료된 캠핑 기록과 당시 사람/차량 스냅샷
 - `links.yaml`: 참고용 외부 링크 북마크
 - `outputs/*.md`: 분석 결과 형식 예시

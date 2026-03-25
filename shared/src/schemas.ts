@@ -136,6 +136,33 @@ export const durableEquipmentMetadataSourceSchema = z.object({
   domain: z.string().min(1),
 });
 
+export const campsiteTipSourceSchema = durableEquipmentMetadataSourceSchema;
+
+export const campsiteTipItemSchema = z.object({
+  title: z.string().min(1),
+  detail: z.string().min(1),
+  helpful_for: z.string().min(1).optional(),
+});
+
+export const campsiteBestSiteItemSchema = z.object({
+  site_name: z.string().min(1),
+  reason: z.string().min(1),
+  helpful_for: z.string().min(1).optional(),
+  caution: z.string().min(1).optional(),
+});
+
+export const campsiteTipsResearchSchema = z.object({
+  lookup_status: equipmentMetadataLookupStatusSchema,
+  searched_at: z.string().min(1),
+  query: z.string().min(1),
+  campsite_name: z.string().min(1),
+  region: z.string().min(1).optional(),
+  summary: z.string().min(1).optional(),
+  tip_items: z.array(campsiteTipItemSchema).default([]),
+  best_site_items: z.array(campsiteBestSiteItemSchema).default([]),
+  sources: z.array(campsiteTipSourceSchema).default([]),
+});
+
 export const durableEquipmentMetadataSchema = z.object({
   lookup_status: equipmentMetadataLookupStatusSchema,
   searched_at: z.string().min(1),

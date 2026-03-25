@@ -8,6 +8,12 @@ import { CampingRepository } from "./file-store/camping-repository";
 import { registerApiRoutes } from "./routes/api-routes";
 import { AnalysisService } from "./services/analysis-service";
 import {
+  CodexCliCampsiteTipClient,
+  MissingCampsiteTipClient,
+  OpenAICampsiteTipClient,
+  type CampsiteTipSearchClient,
+} from "./services/campsite-tip-service";
+import {
   CodexCliEquipmentMetadataClient,
   MissingEquipmentMetadataClient,
   OpenAIEquipmentMetadataClient,
@@ -25,6 +31,7 @@ export type BuildServerOptions = ConfigOverrides & {
   logger?: boolean;
   modelClient?: AnalysisModelClient;
   equipmentMetadataClient?: EquipmentMetadataSearchClient;
+  campsiteTipClient?: CampsiteTipSearchClient;
 };
 
 export async function buildServer(
@@ -35,10 +42,13 @@ export async function buildServer(
   const modelClient = options.modelClient ?? createModelClient(config);
   const equipmentMetadataClient =
     options.equipmentMetadataClient ?? createEquipmentMetadataClient(config);
+  const campsiteTipClient =
+    options.campsiteTipClient ?? createCampsiteTipClient(config);
   const analysisService = new AnalysisService(
     repository,
     modelClient,
     equipmentMetadataClient,
+    campsiteTipClient,
   );
   await analysisService.initialize();
 
@@ -139,6 +149,30 @@ function createEquipmentMetadataClient(
       )
     : new MissingEquipmentMetadataClient(
         "OPENAI_API_KEY 가 없어 장비 메타데이터를 수집할 수 없습니다.",
+      );
+}
+
+function createCampsiteTipClient(
+  config: ReturnType<typeof resolveConfig>,
+): CampsiteTipSearchClient {
+  if (config.aiBackend === "codex-cli") {
+    return new CodexCliCampsiteTipClient({
+      binary: config.codexBin,
+      model: config.codexMetadataModel,
+      reasoningEffort: config.codexMetadataReasoningEffort,
+      projectRoot: config.projectRoot,
+      outputSchemaPath: path.join(
+        config.projectRoot,
+        "schemas",
+        "codex-campsite-tip-output.schema.json",
+      ),
+    });
+  }
+
+  return config.openaiApiKey
+    ? new OpenAICampsiteTipClient(config.openaiApiKey, config.openaiMetadataModel)
+    : new MissingCampsiteTipClient(
+        "OPENAI_API_KEY 가 없어 캠핑장 후기 tip을 수집할 수 없습니다.",
       );
 }
 

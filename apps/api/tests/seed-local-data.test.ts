@@ -1,4 +1,4 @@
-import { mkdir, mkdtemp, readFile, rm, writeFile } from "node:fs/promises";
+import { mkdir, mkdtemp, readFile, readdir, rm, writeFile } from "node:fs/promises";
 import os from "node:os";
 import path from "node:path";
 import { afterEach, describe, expect, it } from "vitest";
@@ -44,6 +44,9 @@ describe("seedLocalData", () => {
     expect(await readFile(path.join(dataDir, "equipment", "durable.yaml"), "utf8")).toContain(
       "예시 텐트",
     );
+    await expect(
+      readdir(path.join(dataDir, "cache", "campsite-tips")),
+    ).resolves.toEqual([]);
   });
 
   it("refuses to overwrite existing local data without --replace", async () => {

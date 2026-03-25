@@ -1,6 +1,7 @@
 import type {
   AnalyzeTripRequest,
   AnalyzeTripResponse,
+  CampsiteTipsResearch,
   CreateDataBackupResponse,
   Companion,
   CompanionInput,
@@ -33,6 +34,7 @@ import type { DataBackupReason } from "../file-store/local-data-backup";
 import { AppError } from "./app-error";
 import { AnalysisJobManager } from "./analysis-job-manager";
 import { EquipmentMetadataJobManager } from "./equipment-metadata-job-manager";
+import type { CampsiteTipSearchClient } from "./campsite-tip-service";
 import type { EquipmentMetadataSearchClient } from "./equipment-metadata-service";
 import type { AnalysisModelClient } from "./openai-client";
 import { runPlanningAssistant } from "./planning-assistant";
@@ -52,6 +54,7 @@ export class AnalysisService {
     private readonly repository: CampingRepository,
     private readonly modelClient: AnalysisModelClient,
     private readonly equipmentMetadataClient: EquipmentMetadataSearchClient,
+    private readonly campsiteTipClient: CampsiteTipSearchClient,
   ) {
     this.analysisJobManager = new AnalysisJobManager(
       repository,
@@ -318,13 +321,31 @@ export class AnalysisService {
   private async executeTripAnalysis(input: AnalyzeTripRequest): Promise<string> {
     const bundle = await this.repository.loadTripBundle(input.trip_id);
     const { warnings } = validateTripBundle(bundle);
+    const campsiteTips = await this.collectCampsiteTips(bundle);
+    const bundleWithCampsiteTips = campsiteTips
+      ? {
+          ...bundle,
+          caches: {
+            ...bundle.caches,
+            campsiteTips: [
+              ...bundle.caches.campsiteTips.filter(
+                (cache) => cache.name !== `${bundle.trip.trip_id}-campsite-tips.json`,
+              ),
+              {
+                name: `${bundle.trip.trip_id}-campsite-tips.json`,
+                content: campsiteTips,
+              },
+            ],
+          },
+        }
+      : bundle;
     const [prompts, referenceDocuments] = await Promise.all([
       this.repository.loadPromptFiles(),
       this.repository.loadReferenceDocuments(),
     ]);
 
     const userPrompt = buildAnalysisPrompt({
-      bundle,
+      bundle: bundleWithCampsiteTips,
       analysisPrompt: prompts.analysis,
       referenceDocuments,
       warnings,
@@ -339,6 +360,38 @@ export class AnalysisService {
     return this.repository.saveOutput(input.trip_id, markdown);
   }
 
+  private async collectCampsiteTips(
+    bundle: Awaited<ReturnType<CampingRepository["loadTripBundle"]>>,
+  ): Promise<CampsiteTipsResearch | null> {
+    const campsiteName = bundle.trip.location?.campsite_name?.trim();
+
+    if (!campsiteName) {
+      return null;
+    }
+
+    const cached = bundle.caches.campsiteTips.find(
+      (entry) => entry.name === `${bundle.trip.trip_id}-campsite-tips.json`,
+    )?.content;
+
+    if (cached && isFreshResearch(cached)) {
+      return cached;
+    }
+
+    try {
+      const research = await this.campsiteTipClient.collectCampsiteTips({ bundle });
+      await this.repository.saveCampsiteTipResearch(bundle.trip.trip_id, research);
+      return research;
+    } catch (error) {
+      if (cached) {
+        return cached;
+      }
+
+      const fallback = createFailedResearch(bundle, error);
+      await this.repository.saveCampsiteTipResearch(bundle.trip.trip_id, fallback);
+      return fallback;
+    }
+  }
+
   private async ensureTripNotAnalyzing(tripId: TripId, actionLabel: string) {
     if (await this.analysisJobManager.hasPendingTripAnalysis(tripId)) {
       throw new AppError(
@@ -348,4 +401,46 @@ export class AnalysisService {
       );
     }
   }
+}
+
+const CAMPSITE_TIP_CACHE_MAX_AGE_MS = 1000 * 60 * 60 * 24 * 7;
+
+function isFreshResearch(research: CampsiteTipsResearch) {
+  if (research.lookup_status === "failed") {
+    return false;
+  }
+
+  const searchedAt = Date.parse(research.searched_at);
+
+  if (Number.isNaN(searchedAt)) {
+    return false;
+  }
+
+  return Date.now() - searchedAt <= CAMPSITE_TIP_CACHE_MAX_AGE_MS;
+}
+
+function createFailedResearch(
+  bundle: Awaited<ReturnType<CampingRepository["loadTripBundle"]>>,
+  error: unknown,
+): CampsiteTipsResearch {
+  return {
+    lookup_status: "failed",
+    searched_at: new Date().toISOString(),
+    query: [
+      bundle.trip.location?.campsite_name,
+      bundle.trip.location?.region,
+      "후기 블로그",
+    ]
+      .filter(Boolean)
+      .join(" "),
+    campsite_name: bundle.trip.location?.campsite_name ?? "미입력 캠핑장",
+    region: bundle.trip.location?.region,
+    summary:
+      error instanceof Error
+        ? `캠핑장 후기 tip 수집에 실패했습니다. ${error.message}`
+        : "캠핑장 후기 tip 수집에 실패했습니다.",
+    tip_items: [],
+    best_site_items: [],
+    sources: [],
+  };
 }

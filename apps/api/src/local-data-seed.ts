@@ -47,6 +47,9 @@ export async function seedLocalData(options: {
 
   await mkdir(path.join(options.dataPath, "cache", "weather"), { recursive: true });
   await mkdir(path.join(options.dataPath, "cache", "places"), { recursive: true });
+  await mkdir(path.join(options.dataPath, "cache", "campsite-tips"), {
+    recursive: true,
+  });
 
   return {
     backup,

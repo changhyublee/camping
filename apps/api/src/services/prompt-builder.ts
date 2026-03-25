@@ -47,6 +47,9 @@ export function buildAnalysisPrompt({
     ...bundle.caches.places.map((cache) =>
       serializeJsonSection(`cache/places/${cache.name}`, cache.content),
     ),
+    ...bundle.caches.campsiteTips.map((cache) =>
+      serializeJsonSection(`cache/campsite-tips/${cache.name}`, cache.content),
+    ),
   ];
 
   const warningLines =

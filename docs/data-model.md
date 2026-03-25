@@ -61,6 +61,9 @@
 ├── links.yaml
 └── cache/
     ├── analysis-jobs/
+    ├── campsite-tips/
+    ├── places/
+    ├── weather/
     └── equipment-metadata/
         ├── durable/
         └── jobs/
@@ -105,6 +108,7 @@
 - 반복 장비 메타데이터 작업 상태
 - 날씨 캐시
 - 장소 캐시
+- 캠핑장 후기 tip 캐시
 
 저장 위치:
 
@@ -112,6 +116,7 @@
 - `cache/equipment-metadata/jobs/durable/*.json`
 - `cache/weather/*.json`
 - `cache/places/*.json`
+- `cache/campsite-tips/*.json`
 
 ### 4.4 장비 메타데이터 캐시
 

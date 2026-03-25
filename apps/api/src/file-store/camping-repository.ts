@@ -9,6 +9,7 @@ import {
 import path from "node:path";
 import {
   analyzeTripResponseSchema,
+  campsiteTipsResearchSchema,
   cloneEquipmentCategories,
   companionSchema,
   companionsSchema,
@@ -36,6 +37,7 @@ import {
   type ConsumableEquipmentData,
   type ConsumableEquipmentItem,
   type ConsumableEquipmentItemInput,
+  type CampsiteTipsResearch,
   type Companion,
   type CompanionInput,
   type CompanionsData,
@@ -805,6 +807,13 @@ export class CampingRepository {
     await this.writeJsonFile(this.getDurableEquipmentMetadataPath(itemId), metadata);
   }
 
+  async saveCampsiteTipResearch(
+    tripId: TripId,
+    research: CampsiteTipsResearch,
+  ): Promise<void> {
+    await this.writeJsonFile(this.getCampsiteTipCachePath(tripId), research);
+  }
+
   async readEnrichedDurableItem(itemId: string): Promise<DurableEquipmentItem> {
     return this.readDurableItem(itemId);
   }
@@ -1501,10 +1510,13 @@ export class CampingRepository {
       .filter((value): value is string => Boolean(value))
       .map((value) => value.toLowerCase());
 
-    const weather = await this.loadCacheCategory("weather", tokens);
-    const places = await this.loadCacheCategory("places", tokens);
+    const [weather, places, campsiteTips] = await Promise.all([
+      this.loadCacheCategory("weather", tokens),
+      this.loadCacheCategory("places", tokens),
+      this.loadTripCampsiteTipCache(trip.trip_id),
+    ]);
 
-    return { weather, places };
+    return { weather, places, campsiteTips };
   }
 
   private async loadCacheCategory(
@@ -1542,6 +1554,29 @@ export class CampingRepository {
       return values.filter(
         (value): value is { name: string; content: unknown } => value !== null,
       );
+    } catch {
+      return [];
+    }
+  }
+
+  private async loadTripCampsiteTipCache(
+    tripId: TripId,
+  ): Promise<Array<{ name: string; content: CampsiteTipsResearch }>> {
+    const fileName = `${tripId}-campsite-tips.json`;
+    const absolutePath = this.getCampsiteTipCachePath(tripId);
+
+    try {
+      const content = JSON.parse(await readFile(absolutePath, "utf8")) as unknown;
+      const parsed = campsiteTipsResearchSchema.safeParse(content);
+
+      return parsed.success
+        ? [
+            {
+              name: fileName,
+              content: parsed.data,
+            },
+          ]
+        : [];
     } catch {
       return [];
     }
@@ -1675,6 +1710,14 @@ export class CampingRepository {
 
   private getDurableMetadataJobStatusPath(itemId: string) {
     return path.join(this.getDurableMetadataJobDir(), `${itemId}.json`);
+  }
+
+  private getCampsiteTipCacheDir() {
+    return path.join(this.config.dataDir, "cache", "campsite-tips");
+  }
+
+  private getCampsiteTipCachePath(tripId: string) {
+    return path.join(this.getCampsiteTipCacheDir(), `${tripId}-campsite-tips.json`);
   }
 
   private getConsumablesPath() {

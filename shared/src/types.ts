@@ -6,6 +6,10 @@ import type {
   analyzeTripResponseSchema,
   apiErrorSchema,
   backendHealthSchema,
+  campsiteBestSiteItemSchema,
+  campsiteTipItemSchema,
+  campsiteTipSourceSchema,
+  campsiteTipsResearchSchema,
   companionIdSchema,
   companionSchema,
   companionInputSchema,
@@ -92,6 +96,10 @@ export type EquipmentMetadataLookupStatus = z.infer<
 export type DurableEquipmentMetadataSource = z.infer<
   typeof durableEquipmentMetadataSourceSchema
 >;
+export type CampsiteTipSource = z.infer<typeof campsiteTipSourceSchema>;
+export type CampsiteTipItem = z.infer<typeof campsiteTipItemSchema>;
+export type CampsiteBestSiteItem = z.infer<typeof campsiteBestSiteItemSchema>;
+export type CampsiteTipsResearch = z.infer<typeof campsiteTipsResearchSchema>;
 export type DurableEquipmentMetadata = z.infer<
   typeof durableEquipmentMetadataSchema
 >;
@@ -189,5 +197,6 @@ export type TripBundle = {
   caches: {
     weather: Array<{ name: string; content: unknown }>;
     places: Array<{ name: string; content: unknown }>;
+    campsiteTips: Array<{ name: string; content: CampsiteTipsResearch }>;
   };
 };

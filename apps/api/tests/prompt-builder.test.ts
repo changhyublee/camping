@@ -127,6 +127,7 @@ function createBundle(overrides: Partial<TripBundle["trip"]> = {}): TripBundle {
     caches: {
       weather: [],
       places: [],
+      campsiteTips: [],
     },
   };
 }
@@ -210,5 +211,62 @@ describe("buildAnalysisPrompt", () => {
     expect(enrichedPrompt).toContain("purchase_link: https://example.com/product");
     expect(enrichedPrompt).toContain("lookup_status: found");
     expect(enrichedPrompt).toContain("setup_time_minutes: 20");
+  });
+
+  it("includes campsite tip research in the analysis context", () => {
+    const bundle = createBundle({
+      location: {
+        campsite_name: "자라섬 캠핑장",
+        region: "gapyeong",
+      },
+    });
+    bundle.caches.campsiteTips = [
+      {
+        name: "2026-04-18-gapyeong-campsite-tips.json",
+        content: {
+          lookup_status: "found",
+          searched_at: "2026-03-26T08:00:00.000Z",
+          query: "자라섬 캠핑장 후기 블로그",
+          campsite_name: "자라섬 캠핑장",
+          region: "gapyeong",
+          summary: "그늘과 소음, 장보기 접근성 관련 팁이 반복 확인됨.",
+          tip_items: [
+            {
+              title: "그늘 대비 타프 준비",
+              detail: "나무 그늘이 적다는 후기가 반복되어 차광 준비가 유용함.",
+              helpful_for: "봄 낮 시간, 아이 동행",
+            },
+          ],
+          best_site_items: [
+            {
+              site_name: "A4, A7",
+              reason: "앞 시야가 트여 경치가 좋고 가로막힘이 적다고 언급됨.",
+              helpful_for: "뷰를 중시하는 가족 캠핑",
+              caution: "바람을 더 탈 수 있음",
+            },
+          ],
+          sources: [
+            {
+              title: "자라섬 캠핑장 후기",
+              url: "https://example.com/blog-1",
+              domain: "example.com",
+            },
+          ],
+        },
+      },
+    ];
+
+    const prompt = buildAnalysisPrompt({
+      bundle,
+      analysisPrompt: "# 분석 규칙",
+      referenceDocuments: [],
+      warnings: [],
+      referenceDate: new Date("2026-03-23T12:00:00.000Z"),
+    });
+
+    expect(prompt).toContain("cache/campsite-tips/2026-04-18-gapyeong-campsite-tips.json");
+    expect(prompt).toContain("그늘 대비 타프 준비");
+    expect(prompt).toContain("\"A4, A7\"");
+    expect(prompt).toContain("자라섬 캠핑장");
   });
 });

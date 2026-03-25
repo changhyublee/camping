@@ -6,10 +6,12 @@ import { afterEach, describe, expect, it } from "vitest";
 import { parse, stringify } from "yaml";
 import type {
   BackendHealth,
-  DurableEquipmentMetadata,
   DurableMetadataJobStatusResponse,
+  CampsiteTipsResearch,
+  DurableEquipmentMetadata,
 } from "@camping/shared";
 import { buildServer } from "../src/server";
+import type { CampsiteTipSearchClient } from "../src/services/campsite-tip-service";
 import type { EquipmentMetadataSearchClient } from "../src/services/equipment-metadata-service";
 import type { AnalysisModelClient } from "../src/services/openai-client";
 
@@ -212,6 +214,53 @@ class DeferredEquipmentMetadataClient implements EquipmentMetadataSearchClient {
 
   fail(itemId: string, error: unknown) {
     this.rejectors.get(itemId)?.[0]?.(error);
+  }
+}
+
+class MockCampsiteTipClient implements CampsiteTipSearchClient {
+  public calls = 0;
+
+  constructor(
+    private readonly research: CampsiteTipsResearch = {
+      lookup_status: "found",
+      searched_at: "2026-03-26T08:00:00.000Z",
+      query: "자라섬 캠핑장 후기 블로그",
+      campsite_name: "자라섬 캠핑장",
+      region: "gapyeong",
+      summary: "그늘, 철길 소음, 장보기 접근성 관련 후기 팁이 반복 확인됨.",
+      tip_items: [
+        {
+          title: "그늘 대비 타프를 미리 챙기기",
+          detail: "낮 시간 차광이 약하다는 후기가 반복되어 봄·여름에는 타프나 차광막 준비가 유용함.",
+          helpful_for: "아이 동행, 낮 체류 시간이 긴 일정",
+        },
+        {
+          title: "철길 가까운 구역은 소음 확인하기",
+          detail: "일부 후기에서 전철 통과 소음을 언급해 예민하면 배치나 수면 시간을 고려하는 편이 좋음.",
+          helpful_for: "예민한 수면, 어린 자녀 동반",
+        },
+      ],
+      best_site_items: [
+        {
+          site_name: "오토캠핑장 안쪽 159~175번",
+          reason: "철길과 조금 더 떨어진 안쪽 구역으로 언급돼 소음 회피 후보로 볼 수 있음.",
+          helpful_for: "아이 낮잠, 늦잠, 조용한 배치 선호",
+          caution: "캠핑장 전체에서 전철 소음은 들릴 수 있음.",
+        },
+      ],
+      sources: [
+        {
+          title: "자라섬오토캠핑장 오랜만에 후기",
+          url: "https://bemeal2.tistory.com/144",
+          domain: "bemeal2.tistory.com",
+        },
+      ],
+    },
+  ) {}
+
+  async collectCampsiteTips() {
+    this.calls += 1;
+    return this.research;
   }
 }
 
@@ -780,10 +829,12 @@ describe("API server", () => {
     const dataDir = await createSeededDataDir();
     const markdown = "# 테스트 분석 결과";
     const modelClient = new DeferredAnalysisClient();
+    const campsiteTipClient = new MockCampsiteTipClient();
     const app = await buildServer({
       dataDir,
       projectRoot,
       modelClient,
+      campsiteTipClient,
     });
 
     const response = await app.inject({
@@ -811,6 +862,29 @@ describe("API server", () => {
       "utf8",
     );
     expect(saved).toBe(markdown);
+    expect(
+      JSON.parse(
+        await readFile(
+          path.join(
+            dataDir,
+            "cache",
+            "campsite-tips",
+            "2026-04-18-gapyeong-campsite-tips.json",
+          ),
+          "utf8",
+        ),
+      ),
+    ).toEqual(
+      expect.objectContaining({
+        lookup_status: "found",
+        campsite_name: "자라섬 캠핑장",
+        best_site_items: expect.arrayContaining([
+          expect.objectContaining({
+            site_name: "오토캠핑장 안쪽 159~175번",
+          }),
+        ]),
+      }),
+    );
 
     await app.close();
   });
@@ -818,10 +892,12 @@ describe("API server", () => {
   it("includes next camping recommendation context and links in the analyze prompt", async () => {
     const dataDir = await createSeededDataDir();
     const modelClient = new CapturingAnalysisClient("# 테스트 분석 결과");
+    const campsiteTipClient = new MockCampsiteTipClient();
     const app = await buildServer({
       dataDir,
       projectRoot,
       modelClient,
+      campsiteTipClient,
     });
 
     const response = await app.inject({
@@ -846,6 +922,161 @@ describe("API server", () => {
     expect(modelClient.lastInput?.userPrompt).toContain("## links.yaml");
     expect(modelClient.lastInput?.userPrompt).toContain("name: 기상청");
     expect(modelClient.lastInput?.userPrompt).toContain("start: 2026-04-25");
+    expect(modelClient.lastInput?.userPrompt).toContain(
+      "cache/campsite-tips/2026-04-18-gapyeong-campsite-tips.json",
+    );
+    expect(modelClient.lastInput?.userPrompt).toContain(
+      "낮 체류가 길면 타프나 차광막을 따로 준비",
+    );
+    expect(modelClient.lastInput?.userPrompt).toContain(
+      "\"오토캠핑장 안쪽 159~175번\"",
+    );
+
+    await app.close();
+  });
+
+  it("retries campsite tip research when the cached result is marked as failed", async () => {
+    const dataDir = await createSeededDataDir();
+    const cachedPath = path.join(
+      dataDir,
+      "cache",
+      "campsite-tips",
+      "2026-04-18-gapyeong-campsite-tips.json",
+    );
+    const campsiteTipClient = new MockCampsiteTipClient();
+    const app = await buildServer({
+      dataDir,
+      projectRoot,
+      modelClient: new MockAnalysisClient("# 테스트 분석 결과"),
+      campsiteTipClient,
+    });
+
+    await mkdir(path.dirname(cachedPath), { recursive: true });
+    await writeFile(
+      cachedPath,
+      JSON.stringify(
+        {
+          lookup_status: "failed",
+          searched_at: "2026-03-26T08:00:00.000Z",
+          query: "자라섬 캠핑장 후기 블로그",
+          campsite_name: "자라섬 캠핑장",
+          region: "gapyeong",
+          summary: "이전 조사 실패",
+          tip_items: [],
+          best_site_items: [],
+          sources: [],
+        },
+        null,
+        2,
+      ),
+      "utf8",
+    );
+
+    const response = await app.inject({
+      method: "POST",
+      url: "/api/analyze-trip",
+      payload: {
+        trip_id: "2026-04-18-gapyeong",
+      },
+    });
+
+    expect(response.statusCode).toBe(202);
+    await waitForTripAnalysisStatus(app, "2026-04-18-gapyeong", "completed");
+    expect(campsiteTipClient.calls).toBe(1);
+    expect(
+      JSON.parse(await readFile(cachedPath, "utf8")) as CampsiteTipsResearch,
+    ).toEqual(
+      expect.objectContaining({
+        lookup_status: "found",
+        best_site_items: expect.arrayContaining([
+          expect.objectContaining({
+            site_name: "오토캠핑장 안쪽 159~175번",
+          }),
+        ]),
+      }),
+    );
+
+    await app.close();
+  });
+
+  it("does not include another trip's campsite tip cache from the same region", async () => {
+    const dataDir = await createSeededDataDir();
+    const modelClient = new CapturingAnalysisClient("# 테스트 분석 결과");
+    const app = await buildServer({
+      dataDir,
+      projectRoot,
+      modelClient,
+      campsiteTipClient: new MockCampsiteTipClient(),
+    });
+
+    await mkdir(path.join(dataDir, "cache", "campsite-tips"), { recursive: true });
+    await writeFile(
+      path.join(dataDir, "cache", "campsite-tips", "2026-05-03-gapyeong-campsite-tips.json"),
+      JSON.stringify(
+        {
+          lookup_status: "found",
+          searched_at: "2026-03-26T08:00:00.000Z",
+          query: "다른 가평 캠핑장 후기 블로그",
+          campsite_name: "다른 캠핑장",
+          region: "gapyeong",
+          summary: "같은 지역이지만 다른 캠핑장 후기",
+          tip_items: [
+            {
+              title: "다른 캠핑장 팁",
+              detail: "현재 trip에는 포함되면 안 되는 내용",
+              helpful_for: "혼입 검증",
+            },
+            {
+              title: "다른 명당",
+              detail: "같은 지역의 다른 캠핑장",
+              helpful_for: "혼입 검증",
+            },
+          ],
+          best_site_items: [
+            {
+              site_name: "Z9",
+              reason: "다른 캠핑장 테스트 사이트",
+              helpful_for: "혼입 검증",
+              caution: "포함되면 안 됨",
+            },
+          ],
+          sources: [
+            {
+              title: "테스트 후기 1",
+              url: "https://example.com/other-campsite-1",
+              domain: "example.com",
+            },
+            {
+              title: "테스트 후기 2",
+              url: "https://example.com/other-campsite-2",
+              domain: "example.com",
+            },
+          ],
+        },
+        null,
+        2,
+      ),
+      "utf8",
+    );
+
+    const response = await app.inject({
+      method: "POST",
+      url: "/api/analyze-trip",
+      payload: {
+        trip_id: "2026-04-18-gapyeong",
+      },
+    });
+
+    expect(response.statusCode).toBe(202);
+    await waitForTripAnalysisStatus(app, "2026-04-18-gapyeong", "completed");
+    expect(modelClient.lastInput?.userPrompt).toContain(
+      "cache/campsite-tips/2026-04-18-gapyeong-campsite-tips.json",
+    );
+    expect(modelClient.lastInput?.userPrompt).not.toContain(
+      "cache/campsite-tips/2026-05-03-gapyeong-campsite-tips.json",
+    );
+    expect(modelClient.lastInput?.userPrompt).not.toContain("다른 캠핑장 팁");
+    expect(modelClient.lastInput?.userPrompt).not.toContain("\"Z9\"");
 
     await app.close();
   });
@@ -853,10 +1084,12 @@ describe("API server", () => {
   it("returns the current running status instead of starting duplicate analysis for the same trip", async () => {
     const dataDir = await createSeededDataDir();
     const modelClient = new DeferredAnalysisClient();
+    const campsiteTipClient = new MockCampsiteTipClient();
     const app = await buildServer({
       dataDir,
       projectRoot,
       modelClient,
+      campsiteTipClient,
     });
 
     const [firstResponse, secondResponse] = await Promise.all([
@@ -943,10 +1176,12 @@ describe("API server", () => {
   it("blocks deleting and archiving a trip while analysis is running", async () => {
     const dataDir = await createSeededDataDir();
     const modelClient = new DeferredAnalysisClient();
+    const campsiteTipClient = new MockCampsiteTipClient();
     const app = await buildServer({
       dataDir,
       projectRoot,
       modelClient,
+      campsiteTipClient,
     });
 
     await app.inject({
@@ -1936,6 +2171,7 @@ describe("API server", () => {
       dataDir,
       projectRoot,
       modelClient: new MockAnalysisClient("# 테스트 분석 결과"),
+      campsiteTipClient: new MockCampsiteTipClient(),
     });
 
     const response = await app.inject({
@@ -2037,6 +2273,7 @@ describe("API server", () => {
       dataDir,
       projectRoot,
       modelClient: new MockAnalysisClient("# sample"),
+      campsiteTipClient: new MockCampsiteTipClient(),
     });
 
     const response = await app.inject({

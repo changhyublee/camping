@@ -10,7 +10,7 @@
   - 새 환경에서 `docs/examples/` 내용을 `.camping-data/` 로 복사한다
   - 기존 `.camping-data/` 가 있으면 기본 실행은 중단한다
   - `--replace` 사용 시 현재 `.camping-data/` 를 `.camping-backups/<timestamp>/` 에 먼저 백업한 뒤 예시 데이터로 교체한다
-  - `cache/weather`, `cache/places` 디렉토리를 함께 만든다
+  - `cache/weather`, `cache/places`, `cache/campsite-tips` 디렉토리를 함께 만든다
 
 ## 실행 예시
 

@@ -81,6 +81,9 @@
 ├── links.yaml
 └── cache/
     ├── analysis-jobs/
+    ├── campsite-tips/
+    ├── places/
+    ├── weather/
     └── equipment-metadata/
         ├── durable/
         └── jobs/

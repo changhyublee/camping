@@ -3,11 +3,84 @@ import { mkdir, readFile, rm, writeFile } from "node:fs/promises";
 import os from "node:os";
 import path from "node:path";
 import { mkdtemp } from "node:fs/promises";
+import type { TripBundle } from "@camping/shared";
 import { CodexCliClient, type CommandRunner } from "../src/services/openai-client";
+import { CodexCliCampsiteTipClient } from "../src/services/campsite-tip-service";
 import { CodexCliEquipmentMetadataClient } from "../src/services/equipment-metadata-service";
 
 const tempDirs: string[] = [];
 const projectRoot = path.resolve(process.cwd(), "../..");
+
+function createCampsiteTipTestBundle(): TripBundle {
+  return {
+    profile: {
+      version: 1,
+      owner: {
+        name: "테스터",
+      },
+    },
+    companions: {
+      version: 1,
+      companions: [],
+    },
+    vehicles: {
+      version: 1,
+      vehicles: [],
+    },
+    selected_vehicle: null,
+    durableEquipment: {
+      version: 1,
+      items: [],
+    },
+    consumables: {
+      version: 1,
+      items: [],
+    },
+    precheck: {
+      version: 1,
+      items: [],
+    },
+    travelPreferences: {
+      version: 1,
+      travel_style: {},
+      interests: [],
+      constraints: {},
+    },
+    foodPreferences: {
+      version: 1,
+      favorite_styles: [],
+      disliked_ingredients: [],
+      allergies: [],
+      meal_preferences: {},
+      cooking_preferences: {},
+    },
+    links: {
+      version: 1,
+      items: [],
+    },
+    trip: {
+      version: 1,
+      trip_id: "2026-04-18-gapyeong",
+      title: "가평 가족 캠핑",
+      party: {
+        companion_ids: [],
+      },
+      date: {
+        start: "2026-04-18",
+        end: "2026-04-19",
+      },
+      location: {
+        region: "gapyeong",
+        campsite_name: "자라섬 캠핑장",
+      },
+    },
+    caches: {
+      weather: [],
+      places: [],
+      campsiteTips: [],
+    },
+  } as TripBundle;
+}
 
 afterEach(async () => {
   await Promise.all(
@@ -394,6 +467,164 @@ describe("CodexCliClient", () => {
     expect(args).toContain("-c");
     expect(args).toContain("mcp_servers.github.enabled=false");
     expect(args).toContain('model_reasoning_effort="medium"');
+  });
+
+  it("reads structured campsite tip data from the codex output file", async () => {
+    const schemaPath = path.join(
+      projectRoot,
+      "schemas",
+      "codex-campsite-tip-output.schema.json",
+    );
+
+    const runner: CommandRunner = vi.fn().mockImplementation(async ({ args }) => {
+      const outputFileIndex = args.findIndex(
+        (value: string) => value === "--output-last-message",
+      );
+      const outputFile = args[outputFileIndex + 1];
+      await writeFile(
+        outputFile,
+        JSON.stringify({
+          lookup_status: "found",
+          searched_at: "__SERVER_TIMESTAMP__",
+          query: "자라섬 캠핑장 후기 블로그",
+          campsite_name: "자라섬 캠핑장",
+          region: "gapyeong",
+          summary: "그늘과 소음, 명당 후보를 확인함.",
+          tip_items: [
+            {
+              title: "그늘 대비 타프 준비",
+              detail: "낮 시간 차광 준비가 유용함.",
+              helpful_for: "아이 동행",
+            },
+          ],
+          best_site_items: [
+            {
+              site_name: "A4, A7",
+              reason: "앞 시야가 트여 경치가 좋다고 언급됨.",
+              helpful_for: null,
+              caution: null,
+            },
+          ],
+          sources: [
+            {
+              title: "후기 1",
+              url: "https://example.com/blog-1",
+            },
+            {
+              title: "후기 2",
+              url: "https://example.com/blog-2",
+            },
+          ],
+        }),
+        "utf8",
+      );
+
+      return {
+        exitCode: 0,
+        stdout: "",
+        stderr: "",
+      };
+    });
+
+    const client = new CodexCliCampsiteTipClient({
+      binary: "codex",
+      model: "gpt-5.4-mini",
+      reasoningEffort: "low",
+      projectRoot: process.cwd(),
+      outputSchemaPath: schemaPath,
+      runner,
+    });
+
+    await expect(
+      client.collectCampsiteTips({
+        bundle: createCampsiteTipTestBundle(),
+      }),
+    ).resolves.toEqual(
+      expect.objectContaining({
+        lookup_status: "found",
+        best_site_items: [
+          {
+            site_name: "A4, A7",
+            reason: "앞 시야가 트여 경치가 좋다고 언급됨.",
+          },
+        ],
+        sources: [
+          expect.objectContaining({
+            domain: "example.com",
+          }),
+          expect.objectContaining({
+            domain: "example.com",
+          }),
+        ],
+      }),
+    );
+  });
+
+  it("rejects found campsite tip results when fewer than two review blog sources are returned", async () => {
+    const schemaPath = path.join(
+      projectRoot,
+      "schemas",
+      "codex-campsite-tip-output.schema.json",
+    );
+
+    const runner: CommandRunner = vi.fn().mockImplementation(async ({ args }) => {
+      const outputFileIndex = args.findIndex(
+        (value: string) => value === "--output-last-message",
+      );
+      const outputFile = args[outputFileIndex + 1];
+      await writeFile(
+        outputFile,
+        JSON.stringify({
+          lookup_status: "found",
+          searched_at: "__SERVER_TIMESTAMP__",
+          query: "자라섬 캠핑장 후기 블로그",
+          campsite_name: "자라섬 캠핑장",
+          region: "gapyeong",
+          summary: "팁은 있지만 출처가 하나뿐임.",
+          tip_items: [
+            {
+              title: "그늘 대비 타프 준비",
+              detail: "낮 시간 차광 준비가 유용함.",
+              helpful_for: "아이 동행",
+            },
+            {
+              title: "철길 소음 확인",
+              detail: "수면이 예민하면 구역 배치를 확인하는 편이 좋음.",
+              helpful_for: "어린 자녀 동반",
+            },
+          ],
+          best_site_items: [],
+          sources: [
+            {
+              title: "후기 1",
+              url: "https://example.com/blog-1",
+            },
+          ],
+        }),
+        "utf8",
+      );
+
+      return {
+        exitCode: 0,
+        stdout: "",
+        stderr: "",
+      };
+    });
+
+    const client = new CodexCliCampsiteTipClient({
+      binary: "codex",
+      model: "gpt-5.4-mini",
+      reasoningEffort: "low",
+      projectRoot: process.cwd(),
+      outputSchemaPath: schemaPath,
+      runner,
+    });
+
+    await expect(
+      client.collectCampsiteTips({
+        bundle: createCampsiteTipTestBundle(),
+      }),
+    ).rejects.toThrow("후기 블로그 2개 이상");
   });
 
   it("prefers actionable codex error lines over echoed prompt text", async () => {
