@@ -267,12 +267,7 @@ export async function registerApiRoutes(
     reply.hijack();
 
     const response = reply.raw;
-    response.writeHead(200, {
-      "Content-Type": "text/event-stream; charset=utf-8",
-      "Cache-Control": "no-cache, no-transform",
-      Connection: "keep-alive",
-      "X-Accel-Buffering": "no",
-    });
+    response.writeHead(200, buildAiJobEventStreamHeaders(request.headers.origin));
     response.flushHeaders?.();
     response.write(formatSseEvent(analysisService.createAiJobReadyEvent()));
 
@@ -693,4 +688,24 @@ export async function registerApiRoutes(
 
 function formatSseEvent(event: { type: string }) {
   return `event: ${event.type}\ndata: ${JSON.stringify(event)}\n\n`;
+}
+
+export function buildAiJobEventStreamHeaders(originHeader?: string | string[]) {
+  const origin = Array.isArray(originHeader) ? originHeader[0] : originHeader;
+  const headers: Record<string, string> = {
+    "Content-Type": "text/event-stream; charset=utf-8",
+    "Cache-Control": "no-cache, no-transform",
+    Connection: "keep-alive",
+    "X-Accel-Buffering": "no",
+  };
+
+  if (!origin) {
+    return headers;
+  }
+
+  headers["Access-Control-Allow-Origin"] = origin;
+  headers["Access-Control-Allow-Credentials"] = "true";
+  headers.Vary = "Origin";
+
+  return headers;
 }

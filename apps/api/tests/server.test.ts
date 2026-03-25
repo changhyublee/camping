@@ -11,6 +11,7 @@ import type {
   DurableEquipmentMetadata,
   TripBundle,
 } from "@camping/shared";
+import { buildAiJobEventStreamHeaders } from "../src/routes/api-routes";
 import { buildServer } from "../src/server";
 import type { CampsiteTipSearchClient } from "../src/services/campsite-tip-service";
 import type { EquipmentMetadataSearchClient } from "../src/services/equipment-metadata-service";
@@ -572,6 +573,15 @@ describe("API server", () => {
     );
 
     await app.close();
+  });
+
+  it("builds SSE headers with CORS for ai job event streams", () => {
+    const headers = buildAiJobEventStreamHeaders("http://localhost:5173");
+
+    expect(headers["Content-Type"]).toBe("text/event-stream; charset=utf-8");
+    expect(headers["Access-Control-Allow-Origin"]).toBe("http://localhost:5173");
+    expect(headers["Access-Control-Allow-Credentials"]).toBe("true");
+    expect(headers.Vary).toBe("Origin");
   });
 
   it("lists trips and returns trip detail", async () => {
