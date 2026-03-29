@@ -128,13 +128,69 @@ const HISTORY_DETAIL_TABS = [
 ] as const;
 const EQUIPMENT_DETAIL_TABS = ["summary", "create"] as const;
 const CATEGORY_DETAIL_TABS = ["create", "guidelines", "backup"] as const;
+const DASHBOARD_PAGE_TABS = ["overview", "actions", "links"] as const;
+const COMPANION_PAGE_TABS = ["editor", "list"] as const;
+const VEHICLE_PAGE_TABS = ["editor", "list"] as const;
+const EQUIPMENT_PAGE_TABS = ["list", "details"] as const;
+const CATEGORY_PAGE_TABS = ["list", "details"] as const;
+const HELP_PAGE_TABS = ["files", "guide"] as const;
+const PLANNING_PAGE_TABS = ["editor", "list", "details"] as const;
+const HISTORY_PAGE_TABS = ["details", "list"] as const;
+const LINK_PAGE_TABS = ["list", "editor"] as const;
 const UI_STATE_STORAGE_KEY = "camping.ui-state";
 
+type DashboardPageTab = (typeof DASHBOARD_PAGE_TABS)[number];
+type CompanionPageTab = (typeof COMPANION_PAGE_TABS)[number];
+type VehiclePageTab = (typeof VEHICLE_PAGE_TABS)[number];
+type EquipmentPageTab = (typeof EQUIPMENT_PAGE_TABS)[number];
+type CategoryPageTab = (typeof CATEGORY_PAGE_TABS)[number];
+type HelpPageTab = (typeof HELP_PAGE_TABS)[number];
+type PlanningPageTab = (typeof PLANNING_PAGE_TABS)[number];
+type HistoryPageTab = (typeof HISTORY_PAGE_TABS)[number];
+type LinkPageTab = (typeof LINK_PAGE_TABS)[number];
 type PlanningDetailTab = (typeof PLANNING_DETAIL_TABS)[number];
 type HistoryDetailTab = (typeof HISTORY_DETAIL_TABS)[number];
 type EquipmentDetailTab = (typeof EQUIPMENT_DETAIL_TABS)[number];
 type CategoryDetailTab = (typeof CATEGORY_DETAIL_TABS)[number];
 
+const DASHBOARD_PAGE_TAB_LABELS: Record<DashboardPageTab, string> = {
+  overview: "운영 요약",
+  actions: "빠른 실행",
+  links: "최근 기록",
+};
+const COMPANION_PAGE_TAB_LABELS: Record<CompanionPageTab, string> = {
+  editor: "프로필 편집",
+  list: "사람 목록",
+};
+const VEHICLE_PAGE_TAB_LABELS: Record<VehiclePageTab, string> = {
+  editor: "차량 편집",
+  list: "차량 목록",
+};
+const EQUIPMENT_PAGE_TAB_LABELS: Record<EquipmentPageTab, string> = {
+  list: "장비 목록",
+  details: "상세 작업",
+};
+const CATEGORY_PAGE_TAB_LABELS: Record<CategoryPageTab, string> = {
+  list: "카테고리 목록",
+  details: "보조 작업",
+};
+const HELP_PAGE_TAB_LABELS: Record<HelpPageTab, string> = {
+  files: "파일 안내",
+  guide: "운영 메모",
+};
+const PLANNING_PAGE_TAB_LABELS: Record<PlanningPageTab, string> = {
+  editor: "원본 입력",
+  list: "계획 목록",
+  details: "AI·결과",
+};
+const HISTORY_PAGE_TAB_LABELS: Record<HistoryPageTab, string> = {
+  details: "상세 보기",
+  list: "히스토리 목록",
+};
+const LINK_PAGE_TAB_LABELS: Record<LinkPageTab, string> = {
+  list: "링크 목록",
+  editor: "새 링크",
+};
 const PLANNING_DETAIL_TAB_LABELS: Record<PlanningDetailTab, string> = {
   analysis: "분석 결과",
   assistant: "AI 보조",
@@ -186,6 +242,15 @@ type PersistedUiState = {
   selectedTripId: string | null;
   selectedHistoryId: string | null;
   equipmentSection: EquipmentSection;
+  dashboardPageTab: DashboardPageTab;
+  companionPageTab: CompanionPageTab;
+  vehiclePageTab: VehiclePageTab;
+  equipmentPageTab: EquipmentPageTab;
+  categoryPageTab: CategoryPageTab;
+  helpPageTab: HelpPageTab;
+  planningPageTab: PlanningPageTab;
+  historyPageTab: HistoryPageTab;
+  linkPageTab: LinkPageTab;
   planningDetailTab: PlanningDetailTab;
   historyDetailTab: HistoryDetailTab;
   equipmentDetailTab: EquipmentDetailTab;
@@ -245,6 +310,24 @@ export function App() {
     useState<EquipmentCategoriesData>(cloneEquipmentCategories());
   const [equipmentSection, setEquipmentSection] =
     useState<EquipmentSection>(persistedUiState?.equipmentSection ?? "durable");
+  const [dashboardPageTab, setDashboardPageTab] =
+    useState<DashboardPageTab>(persistedUiState?.dashboardPageTab ?? "overview");
+  const [companionPageTab, setCompanionPageTab] =
+    useState<CompanionPageTab>(persistedUiState?.companionPageTab ?? "editor");
+  const [vehiclePageTab, setVehiclePageTab] =
+    useState<VehiclePageTab>(persistedUiState?.vehiclePageTab ?? "editor");
+  const [equipmentPageTab, setEquipmentPageTab] =
+    useState<EquipmentPageTab>(persistedUiState?.equipmentPageTab ?? "list");
+  const [categoryPageTab, setCategoryPageTab] =
+    useState<CategoryPageTab>(persistedUiState?.categoryPageTab ?? "list");
+  const [helpPageTab, setHelpPageTab] =
+    useState<HelpPageTab>(persistedUiState?.helpPageTab ?? "files");
+  const [planningPageTab, setPlanningPageTab] =
+    useState<PlanningPageTab>(persistedUiState?.planningPageTab ?? "editor");
+  const [historyPageTab, setHistoryPageTab] =
+    useState<HistoryPageTab>(persistedUiState?.historyPageTab ?? "details");
+  const [linkPageTab, setLinkPageTab] =
+    useState<LinkPageTab>(persistedUiState?.linkPageTab ?? "list");
   const [planningDetailTab, setPlanningDetailTab] =
     useState<PlanningDetailTab>(persistedUiState?.planningDetailTab ?? "analysis");
   const [historyDetailTab, setHistoryDetailTab] =
@@ -349,6 +432,15 @@ export function App() {
       selectedTripId,
       selectedHistoryId,
       equipmentSection,
+      dashboardPageTab,
+      companionPageTab,
+      vehiclePageTab,
+      equipmentPageTab,
+      categoryPageTab,
+      helpPageTab,
+      planningPageTab,
+      historyPageTab,
+      linkPageTab,
       planningDetailTab,
       historyDetailTab,
       equipmentDetailTab,
@@ -356,13 +448,22 @@ export function App() {
     });
   }, [
     activePage,
+    categoryPageTab,
     categoryDetailTab,
+    companionPageTab,
+    dashboardPageTab,
+    equipmentPageTab,
     equipmentDetailTab,
     equipmentSection,
+    helpPageTab,
     historyDetailTab,
+    historyPageTab,
+    linkPageTab,
+    planningPageTab,
     planningDetailTab,
     selectedHistoryId,
     selectedTripId,
+    vehiclePageTab,
   ]);
 
   useEffect(() => {
@@ -530,6 +631,24 @@ export function App() {
   const hasPendingDurableMetadataJobs = refreshingDurableMetadataIds.length > 0;
   const activeEquipmentTabId = getEquipmentSectionTabId(equipmentSection);
   const activeEquipmentPanelId = getEquipmentSectionPanelId(equipmentSection);
+  const activeDashboardPageTabId = getDetailTabId("dashboard-page", dashboardPageTab);
+  const activeDashboardPagePanelId = getDetailPanelId("dashboard-page", dashboardPageTab);
+  const activeCompanionPageTabId = getDetailTabId("companion-page", companionPageTab);
+  const activeCompanionPagePanelId = getDetailPanelId("companion-page", companionPageTab);
+  const activeVehiclePageTabId = getDetailTabId("vehicle-page", vehiclePageTab);
+  const activeVehiclePagePanelId = getDetailPanelId("vehicle-page", vehiclePageTab);
+  const activeEquipmentPageTabId = getDetailTabId("equipment-page", equipmentPageTab);
+  const activeEquipmentPagePanelId = getDetailPanelId("equipment-page", equipmentPageTab);
+  const activeCategoryPageTabId = getDetailTabId("category-page", categoryPageTab);
+  const activeCategoryPagePanelId = getDetailPanelId("category-page", categoryPageTab);
+  const activeHelpPageTabId = getDetailTabId("help-page", helpPageTab);
+  const activeHelpPagePanelId = getDetailPanelId("help-page", helpPageTab);
+  const activePlanningPageTabId = getDetailTabId("planning-page", planningPageTab);
+  const activePlanningPagePanelId = getDetailPanelId("planning-page", planningPageTab);
+  const activeHistoryPageTabId = getDetailTabId("history-page", historyPageTab);
+  const activeHistoryPagePanelId = getDetailPanelId("history-page", historyPageTab);
+  const activeLinkPageTabId = getDetailTabId("link-page", linkPageTab);
+  const activeLinkPagePanelId = getDetailPanelId("link-page", linkPageTab);
   const activePlanningDetailTabId = getDetailTabId("planning-detail", planningDetailTab);
   const activePlanningDetailPanelId = getDetailPanelId(
     "planning-detail",
@@ -3195,22 +3314,60 @@ export function App() {
                 </div>
               </section>
 
-              <section className="panel dashboard-grid__feature">
-                <div className="panel__eyebrow">운영 요약</div>
-                <div className="panel__header">
-                  <h2>운영 현황</h2>
-                </div>
-                <div className="metric-grid metric-grid--feature">
-                  <MetricCard label="예정 계획" value={`${dashboardMetrics.trips}건`} />
-                  <MetricCard label="히스토리" value={`${dashboardMetrics.history}건`} />
-                  <MetricCard label="점검/재고 경고" value={`${dashboardMetrics.alerts}건`} />
-                  <MetricCard label="외부 링크" value={`${dashboardMetrics.links}건`} />
-                </div>
-              </section>
+              <div aria-label="대시보드 보기" className="detail-tabs" role="tablist">
+                {DASHBOARD_PAGE_TABS.map((tab) => {
+                  const isActive = dashboardPageTab === tab;
 
-              <section className="dashboard-layout">
-                <div className="panel-stack">
-                  <section className="panel">
+                  return (
+                    <button
+                      key={tab}
+                      aria-controls={isActive ? getDetailPanelId("dashboard-page", tab) : undefined}
+                      aria-selected={isActive}
+                      className={detailTabClass(isActive)}
+                      id={getDetailTabId("dashboard-page", tab)}
+                      onClick={() => setDashboardPageTab(tab)}
+                      onKeyDown={(event) =>
+                        handleDetailTabKeyDown(
+                          event,
+                          DASHBOARD_PAGE_TABS,
+                          tab,
+                          setDashboardPageTab,
+                          "dashboard-page",
+                        )
+                      }
+                      role="tab"
+                      tabIndex={isActive ? 0 : -1}
+                      type="button"
+                    >
+                      {DASHBOARD_PAGE_TAB_LABELS[tab]}
+                    </button>
+                  );
+                })}
+              </div>
+
+              <section
+                aria-labelledby={activeDashboardPageTabId}
+                className="detail-tab-panel"
+                id={activeDashboardPagePanelId}
+                role="tabpanel"
+              >
+                {dashboardPageTab === "overview" ? (
+                <>
+                  <section className="panel dashboard-grid__feature">
+                    <div className="panel__eyebrow">운영 요약</div>
+                    <div className="panel__header">
+                      <h2>운영 현황</h2>
+                    </div>
+                    <div className="metric-grid metric-grid--feature">
+                      <MetricCard label="예정 계획" value={`${dashboardMetrics.trips}건`} />
+                      <MetricCard label="히스토리" value={`${dashboardMetrics.history}건`} />
+                      <MetricCard label="점검/재고 경고" value={`${dashboardMetrics.alerts}건`} />
+                      <MetricCard label="외부 링크" value={`${dashboardMetrics.links}건`} />
+                    </div>
+                  </section>
+
+                  <div className="panel-stack">
+                    <section className="panel">
                     <div className="panel__eyebrow">예정 계획</div>
                     <div className="panel__header">
                       <h2>곧 실행할 계획</h2>
@@ -3225,7 +3382,11 @@ export function App() {
                           <button
                             key={trip.trip_id}
                             className="list-card"
-                            onClick={() => selectTrip(trip.trip_id)}
+                            onClick={() => {
+                              setActivePage("planning");
+                              setPlanningPageTab("editor");
+                              selectTrip(trip.trip_id);
+                            }}
                             type="button"
                           >
                             <strong>{trip.title}</strong>
@@ -3254,9 +3415,12 @@ export function App() {
                         ))}
                       </ul>
                     )}
-                  </section>
-                </div>
+                    </section>
+                  </div>
+                </>
+                ) : null}
 
+                {dashboardPageTab === "links" ? (
                 <div className="panel-stack">
                   <section className="panel">
                     <div className="panel__eyebrow">최근 기록</div>
@@ -3275,6 +3439,7 @@ export function App() {
                             className="list-card"
                             onClick={() => {
                               setActivePage("history");
+                              setHistoryPageTab("details");
                               setSelectedHistoryId(item.history_id);
                             }}
                             type="button"
@@ -3291,6 +3456,31 @@ export function App() {
                     )}
                   </section>
 
+                  <section className="panel">
+                    <div className="panel__eyebrow">링크 현황</div>
+                    <div className="panel__header">
+                      <h2>외부 링크 요약</h2>
+                    </div>
+                    {linkGroups.length === 0 ? (
+                      <div className="empty-state empty-state--compact">
+                        등록된 외부 링크가 없습니다.
+                      </div>
+                    ) : (
+                      <div className="stack-list">
+                        {linkGroups.slice(0, 4).map((group) => (
+                          <article className="summary-card" key={group.category}>
+                            <strong>{group.label}</strong>
+                            <span>{group.items.length}개 링크</span>
+                          </article>
+                        ))}
+                      </div>
+                    )}
+                  </section>
+                </div>
+                ) : null}
+
+                {dashboardPageTab === "actions" ? (
+                <div className="panel-stack">
                   <section className="panel">
                     <div className="panel__eyebrow">빠른 작업</div>
                     <div className="panel__header">
@@ -3323,28 +3513,8 @@ export function App() {
                       </button>
                     </div>
                   </section>
-
-                  <section className="panel">
-                    <div className="panel__eyebrow">링크 현황</div>
-                    <div className="panel__header">
-                      <h2>외부 링크 요약</h2>
-                    </div>
-                    {linkGroups.length === 0 ? (
-                      <div className="empty-state empty-state--compact">
-                        등록된 외부 링크가 없습니다.
-                      </div>
-                    ) : (
-                      <div className="stack-list">
-                        {linkGroups.slice(0, 4).map((group) => (
-                          <article className="summary-card" key={group.category}>
-                            <strong>{group.label}</strong>
-                            <span>{group.items.length}개 링크</span>
-                          </article>
-                        ))}
-                      </div>
-                    )}
-                  </section>
                 </div>
+                ) : null}
               </section>
             </section>
           ) : null}
@@ -3389,15 +3559,60 @@ export function App() {
                 </div>
               </section>
 
-              <section className="page-grid page-grid--two">
-                <section className="panel">
+              <section className="page-stack">
+                <div aria-label="사람 관리 보기" className="detail-tabs" role="tablist">
+                  {COMPANION_PAGE_TABS.map((tab) => {
+                    const isActive = companionPageTab === tab;
+
+                    return (
+                      <button
+                        key={tab}
+                        aria-controls={isActive ? getDetailPanelId("companion-page", tab) : undefined}
+                        aria-selected={isActive}
+                        className={detailTabClass(isActive)}
+                        id={getDetailTabId("companion-page", tab)}
+                        onClick={() => setCompanionPageTab(tab)}
+                        onKeyDown={(event) =>
+                          handleDetailTabKeyDown(
+                            event,
+                            COMPANION_PAGE_TABS,
+                            tab,
+                            setCompanionPageTab,
+                            "companion-page",
+                          )
+                        }
+                        role="tab"
+                        tabIndex={isActive ? 0 : -1}
+                        type="button"
+                      >
+                        {COMPANION_PAGE_TAB_LABELS[tab]}
+                      </button>
+                    );
+                  })}
+                </div>
+
+                <section
+                  aria-labelledby={activeCompanionPageTabId}
+                  className="detail-tab-panel"
+                  id={activeCompanionPagePanelId}
+                  role="tabpanel"
+                >
+                  {companionPageTab === "list" ? (
+                    <section className="panel">
                   <div className="panel__eyebrow">인원 목록</div>
                   <div className="panel__header">
                     <h2>등록된 사람</h2>
                     <span className="pill">{companions.length}명</span>
                   </div>
                   <div className="stack-list">
-                    <button className="button" onClick={() => beginCreateCompanion()} type="button">
+                    <button
+                      className="button"
+                      onClick={() => {
+                        beginCreateCompanion();
+                        setCompanionPageTab("editor");
+                      }}
+                      type="button"
+                    >
                       새 사람 추가
                     </button>
                     {companions.length === 0 ? (
@@ -3411,7 +3626,10 @@ export function App() {
                           className={`list-card${
                             editingCompanionId === companion.id ? " list-card--active" : ""
                           }`}
-                          onClick={() => beginEditCompanion(companion)}
+                          onClick={() => {
+                            beginEditCompanion(companion);
+                            setCompanionPageTab("editor");
+                          }}
                           type="button"
                         >
                           <strong>{companion.name}</strong>
@@ -3426,9 +3644,11 @@ export function App() {
                       ))
                     )}
                   </div>
-                </section>
+                    </section>
+                  ) : null}
 
-                <section className="panel">
+                  {companionPageTab === "editor" ? (
+                    <section className="panel">
                   <div className="panel__eyebrow">프로필 편집</div>
                   <div className="panel__header">
                     <h2>{editingCompanionId ? "사람 정보 수정" : "새 사람 추가"}</h2>
@@ -3595,6 +3815,8 @@ export function App() {
                       </button>
                     ) : null}
                   </div>
+                    </section>
+                  ) : null}
                 </section>
               </section>
             </section>
@@ -3635,15 +3857,60 @@ export function App() {
                 </div>
               </section>
 
-              <section className="page-grid page-grid--two">
-                <section className="panel">
+              <section className="page-stack">
+                <div aria-label="차량 관리 보기" className="detail-tabs" role="tablist">
+                  {VEHICLE_PAGE_TABS.map((tab) => {
+                    const isActive = vehiclePageTab === tab;
+
+                    return (
+                      <button
+                        key={tab}
+                        aria-controls={isActive ? getDetailPanelId("vehicle-page", tab) : undefined}
+                        aria-selected={isActive}
+                        className={detailTabClass(isActive)}
+                        id={getDetailTabId("vehicle-page", tab)}
+                        onClick={() => setVehiclePageTab(tab)}
+                        onKeyDown={(event) =>
+                          handleDetailTabKeyDown(
+                            event,
+                            VEHICLE_PAGE_TABS,
+                            tab,
+                            setVehiclePageTab,
+                            "vehicle-page",
+                          )
+                        }
+                        role="tab"
+                        tabIndex={isActive ? 0 : -1}
+                        type="button"
+                      >
+                        {VEHICLE_PAGE_TAB_LABELS[tab]}
+                      </button>
+                    );
+                  })}
+                </div>
+
+                <section
+                  aria-labelledby={activeVehiclePageTabId}
+                  className="detail-tab-panel"
+                  id={activeVehiclePagePanelId}
+                  role="tabpanel"
+                >
+                  {vehiclePageTab === "list" ? (
+                    <section className="panel">
                   <div className="panel__eyebrow">차량 목록</div>
                   <div className="panel__header">
                     <h2>등록된 차량</h2>
                     <span className="pill">{vehicles.length}대</span>
                   </div>
                   <div className="stack-list">
-                    <button className="button" onClick={beginCreateVehicle} type="button">
+                    <button
+                      className="button"
+                      onClick={() => {
+                        beginCreateVehicle();
+                        setVehiclePageTab("editor");
+                      }}
+                      type="button"
+                    >
                       새 차량 추가
                     </button>
                     {vehicles.length === 0 ? (
@@ -3657,7 +3924,10 @@ export function App() {
                           className={`list-card${
                             editingVehicleId === vehicle.id ? " list-card--active" : ""
                           }`}
-                          onClick={() => beginEditVehicle(vehicle)}
+                          onClick={() => {
+                            beginEditVehicle(vehicle);
+                            setVehiclePageTab("editor");
+                          }}
                           type="button"
                         >
                           <strong>{vehicle.name}</strong>
@@ -3674,9 +3944,11 @@ export function App() {
                       ))
                     )}
                   </div>
-                </section>
+                    </section>
+                  ) : null}
 
-                <section className="panel">
+                  {vehiclePageTab === "editor" ? (
+                    <section className="panel">
                   <div className="panel__eyebrow">차량 편집</div>
                   <div className="panel__header">
                     <h2>{editingVehicleId ? "차량 정보 수정" : "새 차량 추가"}</h2>
@@ -3791,6 +4063,8 @@ export function App() {
                       </button>
                     ) : null}
                   </div>
+                    </section>
+                  ) : null}
                 </section>
               </section>
             </section>
@@ -3867,12 +4141,50 @@ export function App() {
                 </div>
               </section>
 
+              <div aria-label="장비 관리 보기" className="detail-tabs" role="tablist">
+                {EQUIPMENT_PAGE_TABS.map((tab) => {
+                  const isActive = equipmentPageTab === tab;
+
+                  return (
+                    <button
+                      key={tab}
+                      aria-controls={isActive ? getDetailPanelId("equipment-page", tab) : undefined}
+                      aria-selected={isActive}
+                      className={detailTabClass(isActive)}
+                      id={getDetailTabId("equipment-page", tab)}
+                      onClick={() => setEquipmentPageTab(tab)}
+                      onKeyDown={(event) =>
+                        handleDetailTabKeyDown(
+                          event,
+                          EQUIPMENT_PAGE_TABS,
+                          tab,
+                          setEquipmentPageTab,
+                          "equipment-page",
+                        )
+                      }
+                      role="tab"
+                      tabIndex={isActive ? 0 : -1}
+                      type="button"
+                    >
+                      {EQUIPMENT_PAGE_TAB_LABELS[tab]}
+                    </button>
+                  );
+                })}
+              </div>
+
               <section
-                aria-labelledby={activeEquipmentTabId}
-                className="equipment-tab-panel equipment-workspace"
-                id={activeEquipmentPanelId}
+                aria-labelledby={activeEquipmentPageTabId}
+                className="detail-tab-panel"
+                id={activeEquipmentPagePanelId}
                 role="tabpanel"
               >
+                <section
+                  aria-labelledby={activeEquipmentTabId}
+                  className="equipment-tab-panel equipment-workspace"
+                  id={activeEquipmentPanelId}
+                  role="tabpanel"
+                >
+                {equipmentPageTab === "list" ? (
                 <section className="panel">
                   <div className="panel__eyebrow">목록</div>
                   <div className="panel__header">
@@ -4003,7 +4315,9 @@ export function App() {
                     />
                   ) : null}
                 </section>
+                ) : null}
 
+                {equipmentPageTab === "details" ? (
                 <section className="panel equipment-side-stack detail-panel">
                   <div className="panel__eyebrow">현재 섹션</div>
                   <div className="panel__header">
@@ -4326,6 +4640,8 @@ export function App() {
                     </section>
                   </div>
                 </section>
+                ) : null}
+                </section>
               </section>
             </section>
           ) : null}
@@ -4365,7 +4681,44 @@ export function App() {
                 </div>
               </section>
 
-              <section className="page-grid page-grid--categories">
+              <div aria-label="카테고리 설정 보기" className="detail-tabs" role="tablist">
+                {CATEGORY_PAGE_TABS.map((tab) => {
+                  const isActive = categoryPageTab === tab;
+
+                  return (
+                    <button
+                      key={tab}
+                      aria-controls={isActive ? getDetailPanelId("category-page", tab) : undefined}
+                      aria-selected={isActive}
+                      className={detailTabClass(isActive)}
+                      id={getDetailTabId("category-page", tab)}
+                      onClick={() => setCategoryPageTab(tab)}
+                      onKeyDown={(event) =>
+                        handleDetailTabKeyDown(
+                          event,
+                          CATEGORY_PAGE_TABS,
+                          tab,
+                          setCategoryPageTab,
+                          "category-page",
+                        )
+                      }
+                      role="tab"
+                      tabIndex={isActive ? 0 : -1}
+                      type="button"
+                    >
+                      {CATEGORY_PAGE_TAB_LABELS[tab]}
+                    </button>
+                  );
+                })}
+              </div>
+
+              <section
+                aria-labelledby={activeCategoryPageTabId}
+                className="detail-tab-panel"
+                id={activeCategoryPagePanelId}
+                role="tabpanel"
+              >
+                {categoryPageTab === "list" ? (
                 <section className="panel">
                   <div className="panel__eyebrow">카테고리</div>
                   <div className="panel__header">
@@ -4530,7 +4883,9 @@ export function App() {
                     })}
                   </div>
                 </section>
+                ) : null}
 
+                {categoryPageTab === "details" ? (
                 <section className="panel categories-side-stack detail-panel">
                   <div className="panel__eyebrow">보조 작업</div>
                   <div className="panel__header">
@@ -4687,6 +5042,7 @@ export function App() {
                     </section>
                   </div>
                 </section>
+                ) : null}
               </section>
             </section>
           ) : null}
@@ -4726,8 +5082,46 @@ export function App() {
                 </div>
               </section>
 
-              <section className="page-grid page-grid--two">
-                <section className="panel">
+              <section className="page-stack">
+                <div aria-label="보조 설명 보기" className="detail-tabs" role="tablist">
+                  {HELP_PAGE_TABS.map((tab) => {
+                    const isActive = helpPageTab === tab;
+
+                    return (
+                      <button
+                        key={tab}
+                        aria-controls={isActive ? getDetailPanelId("help-page", tab) : undefined}
+                        aria-selected={isActive}
+                        className={detailTabClass(isActive)}
+                        id={getDetailTabId("help-page", tab)}
+                        onClick={() => setHelpPageTab(tab)}
+                        onKeyDown={(event) =>
+                          handleDetailTabKeyDown(
+                            event,
+                            HELP_PAGE_TABS,
+                            tab,
+                            setHelpPageTab,
+                            "help-page",
+                          )
+                        }
+                        role="tab"
+                        tabIndex={isActive ? 0 : -1}
+                        type="button"
+                      >
+                        {HELP_PAGE_TAB_LABELS[tab]}
+                      </button>
+                    );
+                  })}
+                </div>
+
+                <section
+                  aria-labelledby={activeHelpPageTabId}
+                  className="detail-tab-panel"
+                  id={activeHelpPagePanelId}
+                  role="tabpanel"
+                >
+                  {helpPageTab === "files" ? (
+                    <section className="panel">
                   <div className="panel__eyebrow">주 작업 파일</div>
                   <div className="panel__header">
                     <h2>기준 파일 안내</h2>
@@ -4759,10 +5153,12 @@ export function App() {
                       <p>계획을 아카이브하면 당시 스냅샷과 메모가 이 파일에 저장됩니다.</p>
                     </article>
                   </div>
-                </section>
+                    </section>
+                  ) : null}
 
-                <div className="panel-stack">
-                  <section className="panel">
+                  {helpPageTab === "guide" ? (
+                    <div className="panel-stack">
+                      <section className="panel">
                     <div className="panel__eyebrow">생성 규칙</div>
                     <div className="panel__header">
                       <h2>언제 무엇이 만들어지나</h2>
@@ -4793,8 +5189,10 @@ export function App() {
                         <span>경로, 생성 규칙 같은 정보는 이 메뉴에서만 확인합니다.</span>
                       </article>
                     </div>
-                  </section>
-                </div>
+                      </section>
+                    </div>
+                  ) : null}
+                </section>
               </section>
             </section>
           ) : null}
@@ -4830,7 +5228,44 @@ export function App() {
                 </div>
               </section>
 
-              <section className="page-grid page-grid--planning">
+              <div aria-label="캠핑 계획 보기" className="detail-tabs" role="tablist">
+                {PLANNING_PAGE_TABS.map((tab) => {
+                  const isActive = planningPageTab === tab;
+
+                  return (
+                    <button
+                      key={tab}
+                      aria-controls={isActive ? getDetailPanelId("planning-page", tab) : undefined}
+                      aria-selected={isActive}
+                      className={detailTabClass(isActive)}
+                      id={getDetailTabId("planning-page", tab)}
+                      onClick={() => setPlanningPageTab(tab)}
+                      onKeyDown={(event) =>
+                        handleDetailTabKeyDown(
+                          event,
+                          PLANNING_PAGE_TABS,
+                          tab,
+                          setPlanningPageTab,
+                          "planning-page",
+                        )
+                      }
+                      role="tab"
+                      tabIndex={isActive ? 0 : -1}
+                      type="button"
+                    >
+                      {PLANNING_PAGE_TAB_LABELS[tab]}
+                    </button>
+                  );
+                })}
+              </div>
+
+              <section
+                aria-labelledby={activePlanningPageTabId}
+                className="detail-tab-panel"
+                id={activePlanningPagePanelId}
+                role="tabpanel"
+              >
+                {planningPageTab === "list" ? (
                 <section className="panel">
                 <div className="panel__eyebrow">계획 목록</div>
                 <div className="panel__header">
@@ -4838,7 +5273,14 @@ export function App() {
                   <span className="pill">{trips.length}건</span>
                 </div>
                 <div className="stack-list">
-                  <button className="button" onClick={beginCreateTrip} type="button">
+                  <button
+                    className="button"
+                    onClick={() => {
+                      beginCreateTrip();
+                      setPlanningPageTab("editor");
+                    }}
+                    type="button"
+                  >
                     새 계획 작성
                   </button>
                   {trips.map((trip) => (
@@ -4849,7 +5291,10 @@ export function App() {
                           ? " list-card--active"
                           : ""
                       }`}
-                      onClick={() => selectTrip(trip.trip_id)}
+                      onClick={() => {
+                        selectTrip(trip.trip_id);
+                        setPlanningPageTab("editor");
+                      }}
                       type="button"
                     >
                       <strong>{trip.title}</strong>
@@ -4859,9 +5304,11 @@ export function App() {
                     </button>
                   ))}
                 </div>
-              </section>
+                </section>
+                ) : null}
 
-              <section className="panel">
+                {planningPageTab === "editor" ? (
+                <section className="panel">
                 <div className="panel__eyebrow">원본 입력</div>
                 <div className="panel__header">
                   <h2>계획 편집</h2>
@@ -5314,7 +5761,9 @@ export function App() {
                   </div>
                 ) : null}
                 </section>
+                ) : null}
 
+                {planningPageTab === "details" ? (
                 <section className="panel planning-side-stack detail-panel">
                   <div className="panel__eyebrow">상세 보기</div>
                   <div className="panel__header">
@@ -5730,6 +6179,7 @@ export function App() {
                     </section>
                   </div>
                 </section>
+                ) : null}
               </section>
             </section>
           ) : null}
@@ -5773,7 +6223,44 @@ export function App() {
                 </div>
               </section>
 
-              <section className="page-grid page-grid--two">
+              <div aria-label="캠핑 히스토리 보기" className="detail-tabs" role="tablist">
+                {HISTORY_PAGE_TABS.map((tab) => {
+                  const isActive = historyPageTab === tab;
+
+                  return (
+                    <button
+                      key={tab}
+                      aria-controls={isActive ? getDetailPanelId("history-page", tab) : undefined}
+                      aria-selected={isActive}
+                      className={detailTabClass(isActive)}
+                      id={getDetailTabId("history-page", tab)}
+                      onClick={() => setHistoryPageTab(tab)}
+                      onKeyDown={(event) =>
+                        handleDetailTabKeyDown(
+                          event,
+                          HISTORY_PAGE_TABS,
+                          tab,
+                          setHistoryPageTab,
+                          "history-page",
+                        )
+                      }
+                      role="tab"
+                      tabIndex={isActive ? 0 : -1}
+                      type="button"
+                    >
+                      {HISTORY_PAGE_TAB_LABELS[tab]}
+                    </button>
+                  );
+                })}
+              </div>
+
+              <section
+                aria-labelledby={activeHistoryPageTabId}
+                className="detail-tab-panel"
+                id={activeHistoryPagePanelId}
+                role="tabpanel"
+              >
+                {historyPageTab === "list" ? (
                 <section className="panel">
                 <div className="panel__eyebrow">기록 목록</div>
                 <div className="panel__header">
@@ -5789,7 +6276,10 @@ export function App() {
                         className={`list-card${
                           selectedHistoryId === item.history_id ? " list-card--active" : ""
                         }`}
-                        onClick={() => setSelectedHistoryId(item.history_id)}
+                        onClick={() => {
+                          setSelectedHistoryId(item.history_id);
+                          setHistoryPageTab("details");
+                        }}
                         type="button"
                       >
                         <strong>{item.title}</strong>
@@ -5803,9 +6293,11 @@ export function App() {
                     ))}
                   </div>
                 )}
-              </section>
+                </section>
+                ) : null}
 
-              <section className="panel">
+                {historyPageTab === "details" ? (
+                <section className="panel">
                 <div className="panel__eyebrow">기록 상세</div>
                 <div className="panel__header">
                   <h2>히스토리 상세</h2>
@@ -6440,6 +6932,7 @@ export function App() {
                   <div className="empty-state">왼쪽에서 히스토리를 선택하세요.</div>
                 )}
                 </section>
+                ) : null}
               </section>
             </section>
           ) : null}
@@ -6471,8 +6964,46 @@ export function App() {
                 </div>
               </section>
 
-              <section className="page-grid page-grid--two">
-                <section className="panel">
+              <section className="page-stack">
+                <div aria-label="외부 링크 보기" className="detail-tabs" role="tablist">
+                  {LINK_PAGE_TABS.map((tab) => {
+                    const isActive = linkPageTab === tab;
+
+                    return (
+                      <button
+                        key={tab}
+                        aria-controls={isActive ? getDetailPanelId("link-page", tab) : undefined}
+                        aria-selected={isActive}
+                        className={detailTabClass(isActive)}
+                        id={getDetailTabId("link-page", tab)}
+                        onClick={() => setLinkPageTab(tab)}
+                        onKeyDown={(event) =>
+                          handleDetailTabKeyDown(
+                            event,
+                            LINK_PAGE_TABS,
+                            tab,
+                            setLinkPageTab,
+                            "link-page",
+                          )
+                        }
+                        role="tab"
+                        tabIndex={isActive ? 0 : -1}
+                        type="button"
+                      >
+                        {LINK_PAGE_TAB_LABELS[tab]}
+                      </button>
+                    );
+                  })}
+                </div>
+
+                <section
+                  aria-labelledby={activeLinkPageTabId}
+                  className="detail-tab-panel"
+                  id={activeLinkPagePanelId}
+                  role="tabpanel"
+                >
+                  {linkPageTab === "list" ? (
+                    <section className="panel">
                 <div className="panel__eyebrow">링크 목록</div>
                 <div className="panel__header">
                   <h2>외부 링크 목록</h2>
@@ -6593,9 +7124,11 @@ export function App() {
                     ))}
                   </div>
                 )}
-              </section>
+                    </section>
+                  ) : null}
 
-              <section className="panel">
+                  {linkPageTab === "editor" ? (
+                    <section className="panel">
                 <div className="panel__eyebrow">새 링크</div>
                 <div className="panel__header">
                   <h2>새 외부 링크</h2>
@@ -6663,6 +7196,8 @@ export function App() {
                     링크 추가
                   </button>
                 </div>
+                    </section>
+                  ) : null}
                 </section>
               </section>
             </section>
@@ -8052,6 +8587,29 @@ function readPersistedUiState(): PersistedUiState | null {
       selectedHistoryId:
         typeof parsed.selectedHistoryId === "string" ? parsed.selectedHistoryId : null,
       equipmentSection: parsed.equipmentSection,
+      dashboardPageTab: isDashboardPageTab(parsed.dashboardPageTab)
+        ? parsed.dashboardPageTab
+        : "overview",
+      companionPageTab: isCompanionPageTab(parsed.companionPageTab)
+        ? parsed.companionPageTab
+        : "editor",
+      vehiclePageTab: isVehiclePageTab(parsed.vehiclePageTab)
+        ? parsed.vehiclePageTab
+        : "editor",
+      equipmentPageTab: isEquipmentPageTab(parsed.equipmentPageTab)
+        ? parsed.equipmentPageTab
+        : "list",
+      categoryPageTab: isCategoryPageTab(parsed.categoryPageTab)
+        ? parsed.categoryPageTab
+        : "list",
+      helpPageTab: isHelpPageTab(parsed.helpPageTab) ? parsed.helpPageTab : "files",
+      planningPageTab: isPlanningPageTab(parsed.planningPageTab)
+        ? parsed.planningPageTab
+        : "editor",
+      historyPageTab: isHistoryPageTab(parsed.historyPageTab)
+        ? parsed.historyPageTab
+        : "details",
+      linkPageTab: isLinkPageTab(parsed.linkPageTab) ? parsed.linkPageTab : "list",
       planningDetailTab: isPlanningDetailTab(parsed.planningDetailTab)
         ? parsed.planningDetailTab
         : "analysis",
@@ -8084,6 +8642,42 @@ function writePersistedUiState(state: PersistedUiState) {
 
 function isEquipmentSection(value: string): value is EquipmentSection {
   return value === "durable" || value === "consumables" || value === "precheck";
+}
+
+function isDashboardPageTab(value: unknown): value is DashboardPageTab {
+  return typeof value === "string" && DASHBOARD_PAGE_TABS.includes(value as DashboardPageTab);
+}
+
+function isCompanionPageTab(value: unknown): value is CompanionPageTab {
+  return typeof value === "string" && COMPANION_PAGE_TABS.includes(value as CompanionPageTab);
+}
+
+function isVehiclePageTab(value: unknown): value is VehiclePageTab {
+  return typeof value === "string" && VEHICLE_PAGE_TABS.includes(value as VehiclePageTab);
+}
+
+function isEquipmentPageTab(value: unknown): value is EquipmentPageTab {
+  return typeof value === "string" && EQUIPMENT_PAGE_TABS.includes(value as EquipmentPageTab);
+}
+
+function isCategoryPageTab(value: unknown): value is CategoryPageTab {
+  return typeof value === "string" && CATEGORY_PAGE_TABS.includes(value as CategoryPageTab);
+}
+
+function isHelpPageTab(value: unknown): value is HelpPageTab {
+  return typeof value === "string" && HELP_PAGE_TABS.includes(value as HelpPageTab);
+}
+
+function isPlanningPageTab(value: unknown): value is PlanningPageTab {
+  return typeof value === "string" && PLANNING_PAGE_TABS.includes(value as PlanningPageTab);
+}
+
+function isHistoryPageTab(value: unknown): value is HistoryPageTab {
+  return typeof value === "string" && HISTORY_PAGE_TABS.includes(value as HistoryPageTab);
+}
+
+function isLinkPageTab(value: unknown): value is LinkPageTab {
+  return typeof value === "string" && LINK_PAGE_TABS.includes(value as LinkPageTab);
 }
 
 function isPlanningDetailTab(value: unknown): value is PlanningDetailTab {
