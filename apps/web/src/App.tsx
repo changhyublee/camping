@@ -2888,19 +2888,26 @@ export function App() {
     meta: string,
   ) {
     const isActive = activePage === page;
+    const descriptionId = `nav-description-${page}`;
 
     return (
       <button
         aria-current={isActive ? "page" : undefined}
+        aria-describedby={descriptionId}
         aria-label={PAGE_LABELS[page]}
         className={navButtonClass(isActive)}
         onClick={() => setActivePage(page)}
         type="button"
       >
-        <span className="nav-button__title">{PAGE_LABELS[page]}</span>
-        <span className="nav-button__description">{description}</span>
+        <span className="nav-button__head">
+          <span className="nav-button__title">{PAGE_LABELS[page]}</span>
+          <InfoTooltip text={description} />
+        </span>
         <span aria-hidden="true" className="nav-button__meta">
           {meta}
+        </span>
+        <span className="sr-only" id={descriptionId}>
+          {description}
         </span>
       </button>
     );
@@ -2960,8 +2967,11 @@ export function App() {
             {NAVIGATION_GROUPS.map((group) => (
               <section className="nav-section" key={group.title}>
                 <div className="nav-section__header">
-                  <span className="nav-section__title">{group.title}</span>
-                  <span className="nav-section__copy">{group.description}</span>
+                  <div className="nav-section__heading">
+                    <span className="nav-section__title">{group.title}</span>
+                    <InfoTooltip text={group.description} />
+                    <span className="sr-only">{group.description}</span>
+                  </div>
                 </div>
                 <div className="nav-list">
                   {group.items.includes("dashboard")
@@ -6355,6 +6365,14 @@ function getFocusableElements(container: HTMLElement) {
 
 function navButtonClass(active: boolean) {
   return `nav-button${active ? " nav-button--active" : ""}`;
+}
+
+function InfoTooltip(props: { text: string }) {
+  return (
+    <span aria-hidden="true" className="info-tooltip" title={props.text}>
+      <span className="info-tooltip__icon">i</span>
+    </span>
+  );
 }
 
 function equipmentTabClass(active: boolean) {
