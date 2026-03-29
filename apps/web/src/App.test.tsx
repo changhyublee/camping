@@ -3184,6 +3184,47 @@ describe("App", () => {
     expect(state.history[0]?.title).toBe("수정한 히스토리 제목");
   });
 
+  it("keeps retrospective draft when switching history detail tabs", async () => {
+    state.history = [createHistoryRecord()];
+
+    render(<App />);
+
+    await openPageTab("캠핑 히스토리", "상세 보기");
+    await userEvent.click(screen.getByRole("tab", { name: "후기 작성" }));
+
+    const freeformInput = screen.getByRole("textbox", { name: "자유 후기" });
+
+    await userEvent.type(freeformInput, "강풍 때문에 팩을 더 챙겨야 했다");
+    await userEvent.click(screen.getByRole("tab", { name: "학습" }));
+    await userEvent.click(screen.getByRole("tab", { name: "후기 작성" }));
+
+    expect(screen.getByRole("textbox", { name: "자유 후기" })).toHaveValue(
+      "강풍 때문에 팩을 더 챙겨야 했다",
+    );
+  });
+
+  it("saves shared history draft edited across overview and records tabs", async () => {
+    state.history = [createHistoryRecord()];
+
+    render(<App />);
+
+    await openPageTab("캠핑 히스토리", "상세 보기");
+    const titleInput = screen.getByRole("textbox", { name: "히스토리 제목" });
+
+    await userEvent.clear(titleInput);
+    await userEvent.type(titleInput, "탭 이동 후 저장할 제목");
+    await userEvent.click(screen.getByRole("tab", { name: "기록/결과" }));
+    await userEvent.type(
+      screen.getByRole("textbox", { name: "메모" }),
+      "방풍 장비 보강 필요",
+    );
+    await userEvent.click(screen.getByRole("button", { name: "히스토리 저장" }));
+
+    expect(await screen.findByText("히스토리 저장 완료")).toBeInTheDocument();
+    expect(state.history[0]?.title).toBe("탭 이동 후 저장할 제목");
+    expect(state.history[0]?.notes).toEqual(["방풍 장비 보강 필요"]);
+  });
+
   it("opens the history detail tab immediately after selecting a record from the list tab", async () => {
     state.history = [createHistoryRecord()];
 

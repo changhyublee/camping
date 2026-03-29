@@ -1,6 +1,15 @@
-import { cloneElement, isValidElement, useEffect, useMemo, useRef, useState } from "react";
+import {
+  cloneElement,
+  isValidElement,
+  memo,
+  useEffect,
+  useMemo,
+  useRef,
+  useState,
+} from "react";
 import type {
   KeyboardEvent as ReactKeyboardEvent,
+  MutableRefObject,
   ReactElement,
   ReactNode,
 } from "react";
@@ -224,6 +233,17 @@ type CommaSeparatedInputs = {
   requestedStops: string;
 };
 
+type CompanionTextInputs = {
+  healthNotes: string;
+  requiredMedications: string;
+};
+
+type HistoryEditorDraft = {
+  title: string;
+  attendeeCount: string;
+  notes: string;
+};
+
 type RetrospectiveDraft = {
   overallSatisfaction: string;
   usedDurableItemIds: string[];
@@ -359,8 +379,6 @@ export function App() {
   const [selectedHistoryId, setSelectedHistoryId] = useState<string | null>(
     persistedUiState?.selectedHistoryId ?? null,
   );
-  const [retrospectiveDraft, setRetrospectiveDraft] =
-    useState<RetrospectiveDraft>(createEmptyRetrospectiveDraft());
   const [savingRetrospective, setSavingRetrospective] = useState(false);
   const [historyLearningInsight, setHistoryLearningInsight] =
     useState<HistoryLearningInsight | null>(null);
@@ -397,6 +415,15 @@ export function App() {
   const [commaInputs, setCommaInputs] = useState<CommaSeparatedInputs>(
     createCommaSeparatedInputs(),
   );
+  const [companionTextInputs, setCompanionTextInputs] = useState<CompanionTextInputs>(
+    createCompanionTextInputs(),
+  );
+  const [vehicleNoteInput, setVehicleNoteInput] = useState("");
+  const [tripNoteInput, setTripNoteInput] = useState("");
+  const [historyEditorResetVersion, setHistoryEditorResetVersion] = useState(0);
+  const [retrospectiveResetVersion, setRetrospectiveResetVersion] = useState(0);
+  const historyEditorDraftRef = useRef<HistoryEditorDraft>(createHistoryEditorDraft());
+  const retrospectiveDraftRef = useRef<RetrospectiveDraft>(createEmptyRetrospectiveDraft());
   const selectedTripIdRef = useRef<string | null>(persistedUiState?.selectedTripId ?? null);
   const selectedHistoryIdRef = useRef<string | null>(null);
   const historyLearningRequestIdRef = useRef(0);
@@ -550,6 +577,7 @@ export function App() {
 
         setTripDraft(tripResult.value.data);
         setCommaInputs(createCommaSeparatedInputs(tripResult.value.data));
+        setTripNoteInput(joinLineList(tripResult.value.data.notes));
         setLoadError(null);
 
         if (validationResult.status === "fulfilled") {
@@ -757,7 +785,10 @@ export function App() {
   useEffect(() => {
     selectedHistoryIdRef.current = selectedHistoryId;
     historyLearningRequestIdRef.current += 1;
-    setRetrospectiveDraft(createEmptyRetrospectiveDraft());
+    historyEditorDraftRef.current = createHistoryEditorDraft(selectedHistory);
+    retrospectiveDraftRef.current = createEmptyRetrospectiveDraft();
+    setRetrospectiveResetVersion((current) => current + 1);
+    setHistoryEditorResetVersion((current) => current + 1);
     setHistoryLearningInsight(null);
     setHistoryLearningError(null);
     setHistoryLearningLoading(false);
@@ -1826,6 +1857,7 @@ export function App() {
     setSelectedTripId(null);
     setTripDraft(nextDraft);
     setCommaInputs(createCommaSeparatedInputs(nextDraft));
+    setTripNoteInput(joinLineList(nextDraft.notes));
     setValidationWarnings([]);
     setAnalysisOutput(null);
     setAnalysisStatus(null);
@@ -1866,13 +1898,14 @@ export function App() {
   }
 
   function beginCreateCompanion(companionId?: string) {
+    const nextDraft = createEmptyCompanion(companionId);
     setEditingCompanionId(null);
-    setCompanionDraft(createEmptyCompanion(companionId));
+    setCompanionDraft(nextDraft);
+    setCompanionTextInputs(createCompanionTextInputs(nextDraft));
   }
 
   function beginEditCompanion(companion: Companion) {
-    setEditingCompanionId(companion.id);
-    setCompanionDraft({
+    const nextDraft = {
       ...companion,
       health_notes: [...companion.health_notes],
       required_medications: [...companion.required_medications],
@@ -1881,16 +1914,22 @@ export function App() {
         heat_sensitive: companion.traits.heat_sensitive ?? false,
         rain_sensitive: companion.traits.rain_sensitive ?? false,
       },
-    });
+    };
+    setEditingCompanionId(companion.id);
+    setCompanionDraft(nextDraft);
+    setCompanionTextInputs(createCompanionTextInputs(nextDraft));
   }
 
-  async function handleCreateCompanion(input: Companion = companionDraft) {
+  async function handleCreateCompanion() {
     try {
-      const response = await apiClient.createCompanion(input);
+      const response = await apiClient.createCompanion(
+        buildCompanionInput(companionDraft, companionTextInputs),
+      );
       const nextCompanions = [...companions, response.item].sort(sortCompanions);
 
       setCompanions(nextCompanions);
       setCompanionDraft(createEmptyCompanion());
+      setCompanionTextInputs(createCompanionTextInputs());
       setEditingCompanionId(null);
       setOperationState({
         title: "동행자 추가 완료",
@@ -1910,13 +1949,17 @@ export function App() {
     if (!editingCompanionId) return;
 
     try {
-      const response = await apiClient.updateCompanion(editingCompanionId, companionDraft);
+      const response = await apiClient.updateCompanion(
+        editingCompanionId,
+        buildCompanionInput(companionDraft, companionTextInputs),
+      );
       setCompanions((current) =>
         current
           .map((item) => (item.id === response.item.id ? response.item : item))
           .sort(sortCompanions),
       );
       setCompanionDraft(createEmptyCompanion());
+      setCompanionTextInputs(createCompanionTextInputs());
       setEditingCompanionId(null);
       setOperationState({
         title: "동행자 저장 완료",
@@ -1944,6 +1987,7 @@ export function App() {
       if (editingCompanionId === companionId) {
         setEditingCompanionId(null);
         setCompanionDraft(createEmptyCompanion());
+        setCompanionTextInputs(createCompanionTextInputs());
       }
 
       if (tripDraft?.party?.companion_ids.includes(companionId)) {
@@ -1970,23 +2014,30 @@ export function App() {
   }
 
   function beginCreateVehicle() {
+    const nextDraft = createEmptyVehicle();
     setEditingVehicleId(null);
-    setVehicleDraft(createEmptyVehicle());
+    setVehicleDraft(nextDraft);
+    setVehicleNoteInput(joinLineList(nextDraft.notes));
   }
 
   function beginEditVehicle(vehicle: Vehicle) {
-    setEditingVehicleId(vehicle.id);
-    setVehicleDraft({
+    const nextDraft = {
       ...vehicle,
       notes: [...vehicle.notes],
-    });
+    };
+    setEditingVehicleId(vehicle.id);
+    setVehicleDraft(nextDraft);
+    setVehicleNoteInput(joinLineList(nextDraft.notes));
   }
 
-  async function handleCreateVehicle(input: VehicleInput = vehicleDraft) {
+  async function handleCreateVehicle() {
     try {
-      const response = await apiClient.createVehicle(input);
+      const response = await apiClient.createVehicle(
+        buildVehicleInput(vehicleDraft, vehicleNoteInput),
+      );
       setVehicles((current) => [...current, response.item].sort(sortVehicles));
       setVehicleDraft(createEmptyVehicle());
+      setVehicleNoteInput("");
       setEditingVehicleId(null);
       setOperationState({
         title: "차량 추가 완료",
@@ -2006,13 +2057,17 @@ export function App() {
     if (!editingVehicleId) return;
 
     try {
-      const response = await apiClient.updateVehicle(editingVehicleId, vehicleDraft);
+      const response = await apiClient.updateVehicle(
+        editingVehicleId,
+        buildVehicleInput(vehicleDraft, vehicleNoteInput),
+      );
       setVehicles((current) =>
         current
           .map((item) => (item.id === response.item.id ? response.item : item))
           .sort(sortVehicles),
       );
       setVehicleDraft(createEmptyVehicle());
+      setVehicleNoteInput("");
       setEditingVehicleId(null);
       setOperationState({
         title: "차량 저장 완료",
@@ -2038,6 +2093,7 @@ export function App() {
       if (editingVehicleId === vehicleId) {
         setEditingVehicleId(null);
         setVehicleDraft(createEmptyVehicle());
+        setVehicleNoteInput("");
       }
 
       if (tripDraft?.vehicle?.id === vehicleId) {
@@ -2069,8 +2125,11 @@ export function App() {
 
     try {
       const response = isCreatingTrip
-        ? await apiClient.createTrip(tripDraft)
-        : await apiClient.updateTrip(selectedTripId ?? tripDraft.trip_id ?? "", tripDraft);
+        ? await apiClient.createTrip(buildTripDraftForSave(tripDraft, tripNoteInput))
+        : await apiClient.updateTrip(
+            selectedTripId ?? tripDraft.trip_id ?? "",
+            buildTripDraftForSave(tripDraft, tripNoteInput),
+          );
 
       const tripList = await apiClient.getTrips();
       setTrips(tripList.items);
@@ -2078,6 +2137,7 @@ export function App() {
       setIsCreatingTrip(false);
       setTripDraft(response.data);
       setCommaInputs(createCommaSeparatedInputs(response.data));
+      setTripNoteInput(joinLineList(response.data.notes));
       const savedDescription = `${response.data.title} 계획을 저장했습니다.`;
       const backgroundAnalysisNotice = isAnalysisPending
         ? " 현재 분석에는 방금 저장한 변경이 반영되지 않습니다. 완료 후 다시 실행하세요."
@@ -2127,6 +2187,7 @@ export function App() {
       setSelectedTripId(response.items[0]?.trip_id ?? null);
       setTripDraft(null);
       setCommaInputs(createCommaSeparatedInputs());
+      setTripNoteInput("");
       setAnalysisOutput(null);
       setAnalysisStatus(null);
       analysisStatusRef.current = null;
@@ -2161,6 +2222,7 @@ export function App() {
       setSelectedHistoryId(response.item.history_id);
       setTripDraft(null);
       setCommaInputs(createCommaSeparatedInputs());
+      setTripNoteInput("");
       setAnalysisOutput(null);
       setAnalysisStatus(null);
       analysisStatusRef.current = null;
@@ -2824,19 +2886,21 @@ export function App() {
     }
   }
 
-  async function handleSaveHistory() {
+  async function handleSaveHistory(editorDraft: HistoryEditorDraft) {
     if (!selectedHistory) return;
 
     try {
       const response = await apiClient.updateHistory(
         selectedHistory.history_id,
-        selectedHistory,
+        buildHistoryRecordForSave(selectedHistory, editorDraft),
       );
       setHistory((current) =>
         current.map((item) =>
           item.history_id === response.item.history_id ? response.item : item,
         ),
       );
+      historyEditorDraftRef.current = createHistoryEditorDraft(response.item);
+      setHistoryEditorResetVersion((current) => current + 1);
       setOperationState({
         title: "히스토리 저장 완료",
         tone: "success",
@@ -2851,7 +2915,7 @@ export function App() {
     }
   }
 
-  async function handleAddRetrospective() {
+  async function handleAddRetrospective(draft: RetrospectiveDraft) {
     if (!selectedHistory) {
       return;
     }
@@ -2861,7 +2925,7 @@ export function App() {
     try {
       const response = await apiClient.addHistoryRetrospective(
         selectedHistory.history_id,
-        buildRetrospectiveInput(retrospectiveDraft),
+        buildRetrospectiveInput(draft),
       );
 
       setHistory((current) =>
@@ -2870,7 +2934,8 @@ export function App() {
         ),
       );
       applyUserLearningStatus(response.learning_status);
-      setRetrospectiveDraft(createEmptyRetrospectiveDraft());
+      retrospectiveDraftRef.current = createEmptyRetrospectiveDraft();
+      setRetrospectiveResetVersion((current) => current + 1);
       setHistoryLearningError(null);
       setOperationState({
         title: "후기 저장 완료",
@@ -3793,11 +3858,11 @@ export function App() {
                       <textarea
                         className="form-grid__full"
                         placeholder="알레르기, 추위 민감, 멀미, 수면 습관 등 준비물에 영향을 주는 내용을 줄 단위로 입력하세요."
-                        value={joinLineList(companionDraft.health_notes)}
+                        value={companionTextInputs.healthNotes}
                         onChange={(event) =>
-                          setCompanionDraft((current) => ({
+                          setCompanionTextInputs((current) => ({
                             ...current,
-                            health_notes: splitLineList(event.target.value),
+                            healthNotes: event.target.value,
                           }))
                         }
                       />
@@ -3806,11 +3871,11 @@ export function App() {
                       <textarea
                         className="form-grid__full"
                         placeholder="반드시 챙겨야 하는 약, 체온계, 밴드 같은 의료 관련 준비물을 줄 단위로 입력하세요."
-                        value={joinLineList(companionDraft.required_medications)}
+                        value={companionTextInputs.requiredMedications}
                         onChange={(event) =>
-                          setCompanionDraft((current) => ({
+                          setCompanionTextInputs((current) => ({
                             ...current,
-                            required_medications: splitLineList(event.target.value),
+                            requiredMedications: event.target.value,
                           }))
                         }
                       />
@@ -4102,13 +4167,8 @@ export function App() {
                       <textarea
                         className="form-grid__full"
                         placeholder="루프백 사용 여부, 적재 습관, 아이 카시트 배치 같은 메모를 줄 단위로 입력하세요."
-                        value={joinLineList(vehicleDraft.notes)}
-                        onChange={(event) =>
-                          setVehicleDraft((current) => ({
-                            ...current,
-                            notes: splitLineList(event.target.value),
-                          }))
-                        }
+                        value={vehicleNoteInput}
+                        onChange={(event) => setVehicleNoteInput(event.target.value)}
                       />
                     </FormField>
                   </div>
@@ -5758,13 +5818,8 @@ export function App() {
                         <textarea
                           className="form-grid__full"
                           placeholder="사이트 특이사항, 출발 전 꼭 챙길 것, 당일 일정 메모, 아직 장비/링크로 옮기지 않은 임시 메모를 줄 단위로 적어두세요."
-                          value={joinLineList(tripDraft.notes)}
-                          onChange={(event) =>
-                            updateTripDraft((current) => ({
-                              ...current,
-                              notes: splitLineList(event.target.value),
-                            }))
-                          }
+                          value={tripNoteInput}
+                          onChange={(event) => setTripNoteInput(event.target.value)}
                         />
                       </FormField>
                     </div>
@@ -6485,275 +6540,24 @@ export function App() {
                       role="tabpanel"
                     >
                       {historyDetailTab === "overview" ? (
-                        <>
-                          <div className="section-label">
-                            <strong>히스토리 요약</strong>
-                            <p>기본 정보와 현재 학습 요약을 확인하고 필요한 메모를 빠르게 읽습니다.</p>
-                          </div>
-                          <div className="form-grid">
-                            <FormField label="히스토리 제목">
-                              <input
-                                placeholder="히스토리 제목"
-                                value={selectedHistory.title}
-                                onChange={(event) =>
-                                  setHistory((current) =>
-                                    current.map((item) =>
-                                      item.history_id === selectedHistory.history_id
-                                        ? { ...item, title: event.target.value }
-                                        : item,
-                                    ),
-                                  )
-                                }
-                              />
-                            </FormField>
-                            <FormField label="참석 인원">
-                              <input
-                                type="number"
-                                min="0"
-                                placeholder="예: 4"
-                                value={
-                                  selectedHistory.attendee_count ??
-                                  selectedHistory.companion_ids.length
-                                }
-                                onChange={(event) =>
-                                  setHistory((current) =>
-                                    current.map((item) =>
-                                      item.history_id === selectedHistory.history_id
-                                        ? {
-                                            ...item,
-                                            attendee_count: parseInteger(event.target.value) ?? 0,
-                                          }
-                                        : item,
-                                    ),
-                                  )
-                                }
-                              />
-                            </FormField>
-                            <FormField label="보관 시각">
-                              <input value={selectedHistory.archived_at} readOnly />
-                            </FormField>
-                          </div>
-                          <div className="summary-grid summary-grid--compact">
-                            <article className="summary-card">
-                              <span>이번 캠핑에서 AI가 배운 점</span>
-                              <strong>{historyLearningInsight ? "최신 반영됨" : "아직 없음"}</strong>
-                              <p className="panel__copy">
-                                {historyLearningInsight
-                                  ? historyLearningInsight.summary
-                                  : "회고를 남기면 실제 현장 사용 패턴과 다음 준비 힌트를 요약합니다."}
-                              </p>
-                            </article>
-                            <article className="summary-card">
-                              <span>전역 개인화 학습 요약</span>
-                              <strong>{userLearningProfile ? "누적 반영됨" : "아직 없음"}</strong>
-                              <p className="panel__copy">
-                                {userLearningProfile
-                                  ? userLearningProfile.summary
-                                  : "여러 히스토리 회고가 쌓일수록 다음 계획 분석에 자동 반영됩니다."}
-                              </p>
-                            </article>
-                          </div>
-                          <div className="button-row">
-                            <button className="button" onClick={handleSaveHistory} type="button">
-                              히스토리 저장
-                            </button>
-                          </div>
-                        </>
+                        <HistoryOverviewPanel
+                          draftRef={historyEditorDraftRef}
+                          history={selectedHistory}
+                          historyLearningInsight={historyLearningInsight}
+                          onSave={handleSaveHistory}
+                          resetVersion={historyEditorResetVersion}
+                          userLearningProfile={userLearningProfile}
+                        />
                       ) : null}
 
                       {historyDetailTab === "retrospective" ? (
-                        <>
-                          <div className="summary-grid summary-grid--compact">
-                            <article className="summary-card">
-                              <span>후기 / 회고 추가</span>
-                              <strong>실제 사용 기록</strong>
-                              <p className="panel__copy">
-                                현장에서 어떻게 사용했고 무엇이 부족했는지 남기면 다음 계획 힌트가 계속 보정됩니다.
-                              </p>
-                            </article>
-                          </div>
-                          <div className="form-grid">
-                            <FormField full label="만족도">
-                              <div className="retrospective-satisfaction-control">
-                                <select
-                                  aria-label="만족도"
-                                  value={retrospectiveDraft.overallSatisfaction}
-                                  onChange={(event) =>
-                                    setRetrospectiveDraft((current) => ({
-                                      ...current,
-                                      overallSatisfaction: event.target.value,
-                                    }))
-                                  }
-                                >
-                                  <option value="">선택 안 함</option>
-                                  <option value="5">5점 매우 만족</option>
-                                  <option value="4">4점 만족</option>
-                                  <option value="3">3점 보통</option>
-                                  <option value="2">2점 아쉬움</option>
-                                  <option value="1">1점 매우 아쉬움</option>
-                                </select>
-                              </div>
-                            </FormField>
-                            <FormField full label="사용한 반복 장비">
-                              {equipment?.durable.items.length ? (
-                                <div className="choice-list">
-                                  {equipment.durable.items.map((item) => {
-                                    const checked = retrospectiveDraft.usedDurableItemIds.includes(
-                                      item.id,
-                                    );
-
-                                    return (
-                                      <label
-                                        className={`choice-card${
-                                          checked ? " choice-card--active" : ""
-                                        }`}
-                                        key={item.id}
-                                      >
-                                        <input
-                                          checked={checked}
-                                          onChange={() =>
-                                            setRetrospectiveDraft((current) => ({
-                                              ...current,
-                                              usedDurableItemIds: toggleSelectionId(
-                                                current.usedDurableItemIds,
-                                                item.id,
-                                              ),
-                                            }))
-                                          }
-                                          type="checkbox"
-                                        />
-                                        <div className="choice-card__body">
-                                          <strong>{item.name}</strong>
-                                          <span>{item.id}</span>
-                                        </div>
-                                      </label>
-                                    );
-                                  })}
-                                </div>
-                              ) : (
-                                <div className="empty-state empty-state--compact">
-                                  현재 등록된 반복 장비가 없습니다.
-                                </div>
-                              )}
-                            </FormField>
-                            <FormField full label="잘 안 쓴 것 / 과했던 것">
-                              <textarea
-                                className="form-grid__full"
-                                placeholder="줄 단위로 적어 주세요. 예: 대형 랜턴 2개는 과했다"
-                                value={retrospectiveDraft.unusedItems}
-                                onChange={(event) =>
-                                  setRetrospectiveDraft((current) => ({
-                                    ...current,
-                                    unusedItems: event.target.value,
-                                  }))
-                                }
-                              />
-                            </FormField>
-                            <FormField full label="부족했거나 다음에 더 필요한 것">
-                              <textarea
-                                className="form-grid__full"
-                                placeholder="줄 단위로 적어 주세요. 예: 아이 여벌 옷, 바람막이 타프"
-                                value={retrospectiveDraft.missingOrNeededItems}
-                                onChange={(event) =>
-                                  setRetrospectiveDraft((current) => ({
-                                    ...current,
-                                    missingOrNeededItems: event.target.value,
-                                  }))
-                                }
-                              />
-                            </FormField>
-                            <FormField full label="식단 / 요리 회고">
-                              <textarea
-                                className="form-grid__full"
-                                placeholder="줄 단위로 적어 주세요."
-                                value={retrospectiveDraft.mealFeedback}
-                                onChange={(event) =>
-                                  setRetrospectiveDraft((current) => ({
-                                    ...current,
-                                    mealFeedback: event.target.value,
-                                  }))
-                                }
-                              />
-                            </FormField>
-                            <FormField full label="이동 / 동선 회고">
-                              <textarea
-                                className="form-grid__full"
-                                placeholder="줄 단위로 적어 주세요."
-                                value={retrospectiveDraft.routeFeedback}
-                                onChange={(event) =>
-                                  setRetrospectiveDraft((current) => ({
-                                    ...current,
-                                    routeFeedback: event.target.value,
-                                  }))
-                                }
-                              />
-                            </FormField>
-                            <FormField full label="사이트 / 현장 회고">
-                              <textarea
-                                className="form-grid__full"
-                                placeholder="줄 단위로 적어 주세요."
-                                value={retrospectiveDraft.siteFeedback}
-                                onChange={(event) =>
-                                  setRetrospectiveDraft((current) => ({
-                                    ...current,
-                                    siteFeedback: event.target.value,
-                                  }))
-                                }
-                              />
-                            </FormField>
-                            <FormField full label="문제 / 이슈">
-                              <textarea
-                                className="form-grid__full"
-                                placeholder="줄 단위로 적어 주세요."
-                                value={retrospectiveDraft.issues}
-                                onChange={(event) =>
-                                  setRetrospectiveDraft((current) => ({
-                                    ...current,
-                                    issues: event.target.value,
-                                  }))
-                                }
-                              />
-                            </FormField>
-                            <FormField full label="다음엔 이렇게 하고 싶음">
-                              <textarea
-                                className="form-grid__full"
-                                placeholder="줄 단위로 적어 주세요."
-                                value={retrospectiveDraft.nextTimeRequests}
-                                onChange={(event) =>
-                                  setRetrospectiveDraft((current) => ({
-                                    ...current,
-                                    nextTimeRequests: event.target.value,
-                                  }))
-                                }
-                              />
-                            </FormField>
-                            <FormField full label="자유 후기">
-                              <textarea
-                                className="form-grid__full"
-                                placeholder="현장에서 어떻게 캠핑했는지 자유롭게 남겨 주세요."
-                                value={retrospectiveDraft.freeformNote}
-                                onChange={(event) =>
-                                  setRetrospectiveDraft((current) => ({
-                                    ...current,
-                                    freeformNote: event.target.value,
-                                  }))
-                                }
-                              />
-                            </FormField>
-                            <div className="form-grid__full button-row">
-                              <button
-                                className="button button--primary"
-                                disabled={savingRetrospective}
-                                onClick={handleAddRetrospective}
-                                type="button"
-                              >
-                                {savingRetrospective
-                                  ? "후기 저장 중..."
-                                  : "후기 저장 후 학습 업데이트"}
-                              </button>
-                            </div>
-                          </div>
-                        </>
+                        <RetrospectiveEditorPanel
+                          draftRef={retrospectiveDraftRef}
+                          durableItems={equipment?.durable.items ?? []}
+                          onSubmit={handleAddRetrospective}
+                          resetVersion={retrospectiveResetVersion}
+                          saving={savingRetrospective}
+                        />
                       ) : null}
 
                       {historyDetailTab === "learning" ? (
@@ -6966,39 +6770,13 @@ export function App() {
                           </section>
 
                           <section className="detail-section-card">
-                            <div className="form-grid">
-                              <FormField full label="메모">
-                                <textarea
-                                  className="form-grid__full"
-                                  placeholder="누구와 어떤 차량으로 갔는지, 실제로 좋았던 점과 불편했던 점, 다음에 보완할 준비물을 줄 단위로 적어두세요."
-                                  value={joinLineList(selectedHistory.notes)}
-                                  onChange={(event) =>
-                                    setHistory((current) =>
-                                      current.map((item) =>
-                                        item.history_id === selectedHistory.history_id
-                                          ? {
-                                              ...item,
-                                              notes: splitLineList(event.target.value),
-                                            }
-                                          : item,
-                                      ),
-                                    )
-                                  }
-                                />
-                              </FormField>
-                            </div>
-                            <div className="button-row">
-                              <button className="button" onClick={handleSaveHistory} type="button">
-                                히스토리 저장
-                              </button>
-                              <button
-                                className="button"
-                                onClick={() => handleDeleteHistory(selectedHistory.history_id)}
-                                type="button"
-                              >
-                                히스토리 삭제
-                              </button>
-                            </div>
+                            <HistoryNotesEditorPanel
+                              draftRef={historyEditorDraftRef}
+                              history={selectedHistory}
+                              onDelete={() => handleDeleteHistory(selectedHistory.history_id)}
+                              onSave={handleSaveHistory}
+                              resetVersion={historyEditorResetVersion}
+                            />
                           </section>
                         </div>
                       ) : null}
@@ -7493,6 +7271,361 @@ function toggleExpandedEquipmentSections(
   return EQUIPMENT_SECTIONS.filter((section) => nextSections.includes(section));
 }
 
+const HistoryOverviewPanel = memo(function HistoryOverviewPanel(props: {
+  draftRef: MutableRefObject<HistoryEditorDraft>;
+  history: HistoryRecord;
+  historyLearningInsight: HistoryLearningInsight | null;
+  onSave: (draft: HistoryEditorDraft) => void;
+  resetVersion: number;
+  userLearningProfile: UserLearningProfile | null;
+}) {
+  const [draft, setDraft] = useState<HistoryEditorDraft>(() => props.draftRef.current);
+
+  useEffect(() => {
+    setDraft(props.draftRef.current);
+  }, [props.draftRef, props.history.history_id, props.resetVersion]);
+
+  return (
+    <>
+      <div className="section-label">
+        <strong>히스토리 요약</strong>
+        <p>기본 정보와 현재 학습 요약을 확인하고 필요한 메모를 빠르게 읽습니다.</p>
+      </div>
+      <div className="form-grid">
+        <FormField label="히스토리 제목">
+          <input
+            placeholder="히스토리 제목"
+            value={draft.title}
+            onChange={(event) => {
+              const nextDraft = {
+                ...props.draftRef.current,
+                title: event.target.value,
+              };
+
+              props.draftRef.current = nextDraft;
+              setDraft(nextDraft);
+            }}
+          />
+        </FormField>
+        <FormField label="참석 인원">
+          <input
+            type="number"
+            min="0"
+            placeholder="예: 4"
+            value={draft.attendeeCount}
+            onChange={(event) => {
+              const nextDraft = {
+                ...props.draftRef.current,
+                attendeeCount: event.target.value,
+              };
+
+              props.draftRef.current = nextDraft;
+              setDraft(nextDraft);
+            }}
+          />
+        </FormField>
+        <FormField label="보관 시각">
+          <input value={props.history.archived_at} readOnly />
+        </FormField>
+      </div>
+      <div className="summary-grid summary-grid--compact">
+        <article className="summary-card">
+          <span>이번 캠핑에서 AI가 배운 점</span>
+          <strong>{props.historyLearningInsight ? "최신 반영됨" : "아직 없음"}</strong>
+          <p className="panel__copy">
+            {props.historyLearningInsight
+              ? props.historyLearningInsight.summary
+              : "회고를 남기면 실제 현장 사용 패턴과 다음 준비 힌트를 요약합니다."}
+          </p>
+        </article>
+        <article className="summary-card">
+          <span>전역 개인화 학습 요약</span>
+          <strong>{props.userLearningProfile ? "누적 반영됨" : "아직 없음"}</strong>
+          <p className="panel__copy">
+            {props.userLearningProfile
+              ? props.userLearningProfile.summary
+              : "여러 히스토리 회고가 쌓일수록 다음 계획 분석에 자동 반영됩니다."}
+          </p>
+        </article>
+      </div>
+      <div className="button-row">
+        <button
+          className="button"
+          onClick={() => props.onSave(props.draftRef.current)}
+          type="button"
+        >
+          히스토리 저장
+        </button>
+      </div>
+    </>
+  );
+});
+
+const HistoryNotesEditorPanel = memo(function HistoryNotesEditorPanel(props: {
+  draftRef: MutableRefObject<HistoryEditorDraft>;
+  history: HistoryRecord;
+  onDelete: () => void;
+  onSave: (draft: HistoryEditorDraft) => void;
+  resetVersion: number;
+}) {
+  const [notes, setNotes] = useState(() => props.draftRef.current.notes);
+
+  useEffect(() => {
+    setNotes(props.draftRef.current.notes);
+  }, [props.draftRef, props.history.history_id, props.resetVersion]);
+
+  return (
+    <>
+      <div className="form-grid">
+        <FormField full label="메모">
+          <textarea
+            className="form-grid__full"
+            placeholder="누구와 어떤 차량으로 갔는지, 실제로 좋았던 점과 불편했던 점, 다음에 보완할 준비물을 줄 단위로 적어두세요."
+            value={notes}
+            onChange={(event) => {
+              const nextNotes = event.target.value;
+
+              props.draftRef.current = {
+                ...props.draftRef.current,
+                notes: nextNotes,
+              };
+              setNotes(nextNotes);
+            }}
+          />
+        </FormField>
+      </div>
+      <div className="button-row">
+        <button
+          className="button"
+          onClick={() => props.onSave(props.draftRef.current)}
+          type="button"
+        >
+          히스토리 저장
+        </button>
+        <button className="button" onClick={props.onDelete} type="button">
+          히스토리 삭제
+        </button>
+      </div>
+    </>
+  );
+});
+
+function syncRetrospectiveDraft(
+  draftRef: MutableRefObject<RetrospectiveDraft>,
+  setDraft: (draft: RetrospectiveDraft) => void,
+  nextDraft: RetrospectiveDraft,
+) {
+  draftRef.current = nextDraft;
+  setDraft(nextDraft);
+}
+
+const RetrospectiveEditorPanel = memo(function RetrospectiveEditorPanel(props: {
+  draftRef: MutableRefObject<RetrospectiveDraft>;
+  durableItems: DurableEquipmentItem[];
+  onSubmit: (draft: RetrospectiveDraft) => void;
+  resetVersion: number;
+  saving: boolean;
+}) {
+  const [draft, setDraft] = useState<RetrospectiveDraft>(() => props.draftRef.current);
+
+  useEffect(() => {
+    setDraft(props.draftRef.current);
+  }, [props.draftRef, props.resetVersion]);
+
+  return (
+    <>
+      <div className="summary-grid summary-grid--compact">
+        <article className="summary-card">
+          <span>후기 / 회고 추가</span>
+          <strong>실제 사용 기록</strong>
+          <p className="panel__copy">
+            현장에서 어떻게 사용했고 무엇이 부족했는지 남기면 다음 계획 힌트가 계속 보정됩니다.
+          </p>
+        </article>
+      </div>
+      <div className="form-grid">
+        <FormField full label="만족도">
+          <div className="retrospective-satisfaction-control">
+            <select
+              aria-label="만족도"
+              value={draft.overallSatisfaction}
+              onChange={(event) => {
+                const nextDraft = {
+                  ...props.draftRef.current,
+                  overallSatisfaction: event.target.value,
+                };
+
+                props.draftRef.current = nextDraft;
+                setDraft(nextDraft);
+              }}
+            >
+              <option value="">선택 안 함</option>
+              <option value="5">5점 매우 만족</option>
+              <option value="4">4점 만족</option>
+              <option value="3">3점 보통</option>
+              <option value="2">2점 아쉬움</option>
+              <option value="1">1점 매우 아쉬움</option>
+            </select>
+          </div>
+        </FormField>
+        <FormField full label="사용한 반복 장비">
+          {props.durableItems.length ? (
+            <div className="choice-list">
+              {props.durableItems.map((item) => {
+                const checked = draft.usedDurableItemIds.includes(item.id);
+
+                return (
+                  <label
+                    className={`choice-card${checked ? " choice-card--active" : ""}`}
+                    key={item.id}
+                  >
+                    <input
+                      checked={checked}
+                      onChange={() => {
+                        const nextDraft = {
+                          ...props.draftRef.current,
+                          usedDurableItemIds: toggleSelectionId(
+                            props.draftRef.current.usedDurableItemIds,
+                            item.id,
+                          ),
+                        };
+
+                        props.draftRef.current = nextDraft;
+                        setDraft(nextDraft);
+                      }}
+                      type="checkbox"
+                    />
+                    <div className="choice-card__body">
+                      <strong>{item.name}</strong>
+                      <span>{item.id}</span>
+                    </div>
+                  </label>
+                );
+              })}
+            </div>
+          ) : (
+            <div className="empty-state empty-state--compact">현재 등록된 반복 장비가 없습니다.</div>
+          )}
+        </FormField>
+        <FormField full label="잘 안 쓴 것 / 과했던 것">
+          <textarea
+            className="form-grid__full"
+            placeholder="줄 단위로 적어 주세요. 예: 대형 랜턴 2개는 과했다"
+            value={draft.unusedItems}
+            onChange={(event) =>
+              syncRetrospectiveDraft(props.draftRef, setDraft, {
+                ...props.draftRef.current,
+                unusedItems: event.target.value,
+              })
+            }
+          />
+        </FormField>
+        <FormField full label="부족했거나 다음에 더 필요한 것">
+          <textarea
+            className="form-grid__full"
+            placeholder="줄 단위로 적어 주세요. 예: 아이 여벌 옷, 바람막이 타프"
+            value={draft.missingOrNeededItems}
+            onChange={(event) =>
+              syncRetrospectiveDraft(props.draftRef, setDraft, {
+                ...props.draftRef.current,
+                missingOrNeededItems: event.target.value,
+              })
+            }
+          />
+        </FormField>
+        <FormField full label="식단 / 요리 회고">
+          <textarea
+            className="form-grid__full"
+            placeholder="줄 단위로 적어 주세요."
+            value={draft.mealFeedback}
+            onChange={(event) =>
+              syncRetrospectiveDraft(props.draftRef, setDraft, {
+                ...props.draftRef.current,
+                mealFeedback: event.target.value,
+              })
+            }
+          />
+        </FormField>
+        <FormField full label="이동 / 동선 회고">
+          <textarea
+            className="form-grid__full"
+            placeholder="줄 단위로 적어 주세요."
+            value={draft.routeFeedback}
+            onChange={(event) =>
+              syncRetrospectiveDraft(props.draftRef, setDraft, {
+                ...props.draftRef.current,
+                routeFeedback: event.target.value,
+              })
+            }
+          />
+        </FormField>
+        <FormField full label="사이트 / 현장 회고">
+          <textarea
+            className="form-grid__full"
+            placeholder="줄 단위로 적어 주세요."
+            value={draft.siteFeedback}
+            onChange={(event) =>
+              syncRetrospectiveDraft(props.draftRef, setDraft, {
+                ...props.draftRef.current,
+                siteFeedback: event.target.value,
+              })
+            }
+          />
+        </FormField>
+        <FormField full label="문제 / 이슈">
+          <textarea
+            className="form-grid__full"
+            placeholder="줄 단위로 적어 주세요."
+            value={draft.issues}
+            onChange={(event) =>
+              syncRetrospectiveDraft(props.draftRef, setDraft, {
+                ...props.draftRef.current,
+                issues: event.target.value,
+              })
+            }
+          />
+        </FormField>
+        <FormField full label="다음엔 이렇게 하고 싶음">
+          <textarea
+            className="form-grid__full"
+            placeholder="줄 단위로 적어 주세요."
+            value={draft.nextTimeRequests}
+            onChange={(event) =>
+              syncRetrospectiveDraft(props.draftRef, setDraft, {
+                ...props.draftRef.current,
+                nextTimeRequests: event.target.value,
+              })
+            }
+          />
+        </FormField>
+        <FormField full label="자유 후기">
+          <textarea
+            className="form-grid__full"
+            placeholder="현장에서 어떻게 캠핑했는지 자유롭게 남겨 주세요."
+            value={draft.freeformNote}
+            onChange={(event) =>
+              syncRetrospectiveDraft(props.draftRef, setDraft, {
+                ...props.draftRef.current,
+                freeformNote: event.target.value,
+              })
+            }
+          />
+        </FormField>
+        <div className="form-grid__full button-row">
+          <button
+            className="button button--primary"
+            disabled={props.saving}
+            onClick={() => props.onSubmit(props.draftRef.current)}
+            type="button"
+          >
+            {props.saving ? "후기 저장 중..." : "후기 저장 후 학습 업데이트"}
+          </button>
+        </div>
+      </div>
+    </>
+  );
+});
+
 function createEmptyTripDraft(): TripDraft {
   return {
     version: 1,
@@ -7531,6 +7664,29 @@ function createEmptyCompanion(companionId = ""): Companion {
       heat_sensitive: false,
       rain_sensitive: false,
     },
+  };
+}
+
+function createCompanionTextInputs(
+  companion: Pick<Companion, "health_notes" | "required_medications"> = {
+    health_notes: [],
+    required_medications: [],
+  },
+): CompanionTextInputs {
+  return {
+    healthNotes: joinLineList(companion.health_notes),
+    requiredMedications: joinLineList(companion.required_medications),
+  };
+}
+
+function buildCompanionInput(
+  draft: Companion,
+  textInputs: CompanionTextInputs,
+): Companion {
+  return {
+    ...draft,
+    health_notes: splitLineList(textInputs.healthNotes),
+    required_medications: splitLineList(textInputs.requiredMedications),
   };
 }
 
@@ -7584,6 +7740,16 @@ function createEmptyVehicle(): VehicleInput {
   };
 }
 
+function buildVehicleInput(
+  draft: VehicleInput,
+  noteInput: string,
+): VehicleInput {
+  return {
+    ...draft,
+    notes: splitLineList(noteInput),
+  };
+}
+
 function createEmptyEquipmentCategoryDraft(): EquipmentCategoryCreateInput {
   return {
     id: "",
@@ -7627,6 +7793,38 @@ function createCommaSeparatedInputs(draft?: TripDraft | null): CommaSeparatedInp
   return {
     requestedDishes: joinCommaList(draft?.meal_plan?.requested_dishes),
     requestedStops: joinCommaList(draft?.travel_plan?.requested_stops),
+  };
+}
+
+function buildTripDraftForSave(draft: TripDraft, noteInput: string): TripDraft {
+  return {
+    ...draft,
+    notes: splitLineList(noteInput),
+  };
+}
+
+function createHistoryEditorDraft(history?: HistoryRecord | null): HistoryEditorDraft {
+  return {
+    title: history?.title ?? "",
+    attendeeCount:
+      typeof history?.attendee_count === "number"
+        ? String(history.attendee_count)
+        : history
+          ? String(history.companion_ids.length)
+          : "",
+    notes: joinLineList(history?.notes),
+  };
+}
+
+function buildHistoryRecordForSave(
+  history: HistoryRecord,
+  editorDraft: HistoryEditorDraft,
+): HistoryRecord {
+  return {
+    ...history,
+    title: editorDraft.title,
+    attendee_count: parseInteger(editorDraft.attendeeCount) ?? 0,
+    notes: splitLineList(editorDraft.notes),
   };
 }
 
