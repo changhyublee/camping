@@ -273,7 +273,7 @@ type EquipmentCategorySelectionDrafts = Record<
 >;
 type SectionTrackedIds = Record<EquipmentSection, string[]>;
 type DurableMetadataJobStatusMap = Record<string, DurableMetadataJobStatusResponse>;
-type AiJobRealtimeMode = "sse" | "fallback";
+type AiJobRealtimeMode = "inactive" | "sse" | "fallback";
 
 export function App() {
   const [persistedUiState] = useState(() => readPersistedUiState());
@@ -392,9 +392,8 @@ export function App() {
     null,
   );
   const [loadError, setLoadError] = useState<string | null>(null);
-  const [aiJobRealtimeMode, setAiJobRealtimeMode] = useState<AiJobRealtimeMode>(
-    () => (typeof EventSource === "undefined" ? "fallback" : "sse"),
-  );
+  const [aiJobRealtimeMode, setAiJobRealtimeMode] =
+    useState<AiJobRealtimeMode>("inactive");
   const [commaInputs, setCommaInputs] = useState<CommaSeparatedInputs>(
     createCommaSeparatedInputs(),
   );
@@ -629,6 +628,9 @@ export function App() {
     [durableMetadataJobStatuses],
   );
   const hasPendingDurableMetadataJobs = refreshingDurableMetadataIds.length > 0;
+  const isUserLearningPending = isPendingUserLearningStatus(userLearningStatus.status);
+  const shouldEnableAiJobRealtime =
+    isAnalysisPending || hasPendingDurableMetadataJobs || isUserLearningPending;
   const activeEquipmentTabId = getEquipmentSectionTabId(equipmentSection);
   const activeEquipmentPanelId = getEquipmentSectionPanelId(equipmentSection);
   const activeDashboardPageTabId = getDetailTabId("dashboard-page", dashboardPageTab);
@@ -794,7 +796,29 @@ export function App() {
   }, [markdownLayer]);
 
   useEffect(() => {
+    const clearReconnectTimer = () => {
+      if (aiJobEventReconnectTimeoutRef.current !== null) {
+        window.clearTimeout(aiJobEventReconnectTimeoutRef.current);
+        aiJobEventReconnectTimeoutRef.current = null;
+      }
+    };
+    const closeSubscription = () => {
+      aiJobEventSubscriptionRef.current?.close();
+      aiJobEventSubscriptionRef.current = null;
+    };
+
+    if (!shouldEnableAiJobRealtime) {
+      clearReconnectTimer();
+      closeSubscription();
+      aiJobEventReconnectAttemptsRef.current = 0;
+      aiJobEventHasConnectedRef.current = false;
+      setAiJobRealtimeMode("inactive");
+      return;
+    }
+
     if (typeof EventSource === "undefined") {
+      clearReconnectTimer();
+      closeSubscription();
       setAiJobRealtimeMode("fallback");
       return;
     }
@@ -806,7 +830,7 @@ export function App() {
         return;
       }
 
-      aiJobEventSubscriptionRef.current?.close();
+      closeSubscription();
       const subscription = apiClient.subscribeAiJobEvents({
         onEvent: (event) => {
           void handleAiJobEvent(event);
@@ -831,18 +855,13 @@ export function App() {
             return;
           }
 
-          aiJobEventSubscriptionRef.current?.close();
-          aiJobEventSubscriptionRef.current = null;
+          closeSubscription();
           setAiJobRealtimeMode("fallback");
           const reconnectDelay = getAiJobRealtimeReconnectDelay(
             aiJobEventReconnectAttemptsRef.current,
           );
           aiJobEventReconnectAttemptsRef.current += 1;
-
-          if (aiJobEventReconnectTimeoutRef.current !== null) {
-            window.clearTimeout(aiJobEventReconnectTimeoutRef.current);
-          }
-
+          clearReconnectTimer();
           aiJobEventReconnectTimeoutRef.current = window.setTimeout(() => {
             aiJobEventReconnectTimeoutRef.current = null;
             connect();
@@ -862,15 +881,10 @@ export function App() {
 
     return () => {
       disposed = true;
-      aiJobEventSubscriptionRef.current?.close();
-      aiJobEventSubscriptionRef.current = null;
-
-      if (aiJobEventReconnectTimeoutRef.current !== null) {
-        window.clearTimeout(aiJobEventReconnectTimeoutRef.current);
-        aiJobEventReconnectTimeoutRef.current = null;
-      }
+      clearReconnectTimer();
+      closeSubscription();
     };
-  }, []);
+  }, [shouldEnableAiJobRealtime]);
 
   useEffect(() => {
     if (
@@ -1105,7 +1119,6 @@ export function App() {
     selectedHistory?.title ??
     formatCompactTripId(selectedHistoryId) ??
     "없음";
-  const isUserLearningPending = isPendingUserLearningStatus(userLearningStatus.status);
   const currentUserLearningStatusLabel =
     USER_LEARNING_STATUS_LABELS[userLearningStatus.status] ?? userLearningStatus.status;
   const selectedHistoryRetrospectives = useMemo(

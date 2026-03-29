@@ -1363,12 +1363,6 @@ describe("App", () => {
 
   it("updates planning status and output immediately from SSE analysis events", async () => {
     vi.stubGlobal("EventSource", MockEventSource as unknown as typeof EventSource);
-
-    render(<App />);
-
-    await openPageTab("캠핑 계획", "원본 입력");
-    MockEventSource.latest().open();
-
     const runningResponse = createAnalysisResponse("2026-04-18-gapyeong", {
       status: "running",
       requested_at: "2026-03-24T10:00:00.000Z",
@@ -1385,6 +1379,17 @@ describe("App", () => {
             : category,
       ),
     });
+    state.analysisStatuses["2026-04-18-gapyeong"] = {
+      body: runningResponse,
+    };
+
+    render(<App />);
+
+    await openPageTab("캠핑 계획", "원본 입력");
+    await waitFor(() => {
+      expect(MockEventSource.instances).toHaveLength(1);
+    });
+    MockEventSource.latest().open();
 
     MockEventSource.latest().emit("analysis-status", {
       type: "analysis-status",
@@ -1425,6 +1430,9 @@ describe("App", () => {
     await userEvent.click(screen.getByRole("tab", { name: "AI·결과" }));
     expect(await screen.findByText("실시간으로 갱신됨")).toBeInTheDocument();
     expect(await screen.findByText("분석 완료")).toBeInTheDocument();
+    await waitFor(() => {
+      expect(MockEventSource.latest().readyState).toBe(2);
+    });
   });
 
   it("refreshes history learning and user profile from SSE user-learning events", async () => {
@@ -1458,6 +1466,9 @@ describe("App", () => {
     render(<App />);
 
     await openPageTab("캠핑 히스토리", "상세 보기");
+    await waitFor(() => {
+      expect(MockEventSource.instances).toHaveLength(1);
+    });
     MockEventSource.latest().open();
 
     state.historyLearning["2026-03-08-yangpyeong"] = {
@@ -2729,6 +2740,9 @@ describe("App", () => {
     render(<App />);
 
     await userEvent.click(await screen.findByRole("button", { name: "장비 관리" }));
+    await waitFor(() => {
+      expect(MockEventSource.instances).toHaveLength(1);
+    });
     MockEventSource.latest().open();
     await userEvent.click(screen.getByRole("button", { name: "쉘터/텐트 카테고리 펼치기" }));
     await userEvent.click(screen.getByRole("button", { name: "패밀리 텐트 상세 펼치기" }));
@@ -2781,6 +2795,15 @@ describe("App", () => {
     expect(await screen.findByText("수집 완료")).toBeInTheDocument();
     expect(await screen.findByText("포장 크기와 설치 시간을 확인했습니다.")).toBeInTheDocument();
     expect(await screen.findByText("68 x 34 x 30 cm")).toBeInTheDocument();
+  });
+
+  it("does not create the ai job stream while every background job is idle", async () => {
+    vi.stubGlobal("EventSource", MockEventSource as unknown as typeof EventSource);
+
+    render(<App />);
+
+    expect(await screen.findByRole("button", { name: "대시보드" })).toBeInTheDocument();
+    expect(MockEventSource.instances).toHaveLength(0);
   });
 
   it("moves a consumable into the new category only after saving", async () => {

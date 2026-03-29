@@ -118,7 +118,9 @@
 - `durable-metadata-status` 는 전체 `DurableMetadataJobStatusResponse` payload를 보낸다
 - `durable-metadata-completed` 는 `{ item_id, completed_at }` payload를 보낸다
 - `user-learning-status` 는 전체 `UserLearningJobStatusResponse` payload를 보낸다
-- 클라이언트는 SSE를 기본 실시간 채널로 사용하고, 재연결 직후에는 기존 상태 조회 API로 재동기화한다
+- 클라이언트는 pending 분석, 메타데이터 수집, 개인화 학습 작업이 있을 때만 SSE 연결을 유지한다
+- pending 작업이 모두 사라지면 클라이언트는 SSE 연결을 닫고, 이후 페이지 재진입이나 새 작업 시작 시 상태 조회 API로 현재 상태를 다시 맞춘다
+- SSE 재연결 직후에는 기존 상태 조회 API로 재동기화한다
 
 ### 캠핑 히스토리
 

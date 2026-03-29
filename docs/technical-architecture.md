@@ -164,7 +164,7 @@
 - 분석 상태는 `cache/analysis-jobs/<trip-id>.json` 에 저장한다
 - 섹션별 결과는 `cache/analysis-results/<trip-id>.json` 에 누적 저장한다
 - 전역 개인화 학습 프로필은 `loadTripBundle()` 단계에서 함께 읽어 분석 프롬프트와 AI 보조에 자동 포함한다
-- UI는 `GET /api/ai-jobs/events` SSE를 기본 실시간 채널로 사용하고, 재진입/재연결 시 상태 조회 API로 다시 맞춘다
+- UI는 `GET /api/ai-jobs/events` SSE를 pending 작업이 있을 때만 실시간 채널로 열고, 재진입/재연결 시 상태 조회 API로 다시 맞춘다
 - 같은 `trip_id` 안에서는 섹션 job 을 순차 실행하고, 이미 `queued` 또는 `running` 인 섹션은 중복 실행하지 않는다
 - 분석 중에는 계획 삭제와 히스토리 아카이브를 막는다
 - API 서버가 재시작되면 남아 있던 `queued` 또는 `running` 상태는 `interrupted` 로 전환한다
