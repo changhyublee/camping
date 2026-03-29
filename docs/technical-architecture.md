@@ -72,6 +72,17 @@
 - `.camping-backups`
   - 운영 데이터 백업 스냅샷 저장
 
+## 4.1 웹 프런트엔드 계층 규칙
+
+- 웹 UI 상위 구조는 `App.tsx -> app/AppShell.tsx -> pages/*Page.tsx` 순서로 유지한다.
+- `App.tsx` 는 앱 셸 진입점만 담당하고, 도메인 상태/비동기 호출/폼 상세 렌더링을 직접 넣지 않는다.
+- `app/AppShell.tsx` 는 메뉴, 경로 동기화, 전역 배너와 레이어 같은 셸 조합만 담당한다.
+- `pages/*Page.tsx` 는 각 메뉴의 route entry 역할을 맡고, 필요하면 `PageHost` 나 page-local component로 세부 조합을 위임한다.
+- 페이지 안에서 `목록`, `편집`, `결과`, `보조 작업` 처럼 목적이 다른 major section 이 3개 이상 생기면 별도 컴포넌트나 훅으로 분리한다.
+- 비동기 호출은 앱 셸이 아니라 해당 도메인 주변 모듈에서 격리하고, `App.tsx` 와 `AppShell.tsx` 에서 직접 `apiClient` 를 호출하지 않는다.
+- `useAppViewModel.tsx` 는 현재 전환 단계의 adapter로만 두고, 새 도메인 섹션을 여기에 추가하지 않는다.
+- 구조 가드는 테스트로 유지한다. `App.tsx` 는 얇은 진입점 크기를 넘기지 않고, page 엔트리도 직접 API 호출을 하지 않도록 검증한다.
+
 ## 5. 로컬 저장 구조
 
 ```text

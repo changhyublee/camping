@@ -181,6 +181,7 @@ beforeEach(() => {
   state = createMockState();
   fetchMock.mockImplementation(mockFetch);
   vi.spyOn(window, "confirm").mockReturnValue(true);
+  window.history.replaceState(null, "", "/");
   window.sessionStorage.clear();
   MockEventSource.reset();
 
@@ -1245,6 +1246,62 @@ describe("App", () => {
     ).toBeGreaterThan(0);
   });
 
+  it("uses the current URL as the initial page when opening a direct route", async () => {
+    window.history.replaceState(null, "", "/planning");
+
+    render(<App />);
+
+    expect(await screen.findByRole("heading", { name: "캠핑 계획" })).toBeInTheDocument();
+    expect(screen.getByRole("button", { name: "캠핑 계획" })).toHaveAttribute(
+      "aria-current",
+      "page",
+    );
+    expect(screen.getByRole("tab", { name: "계획 목록" })).toBeInTheDocument();
+  });
+
+  it("opens the dashboard at the root path even when session storage remembers another page", async () => {
+    window.sessionStorage.setItem(
+      "camping.ui-state",
+      JSON.stringify({
+        activePage: "planning",
+        selectedTripId: "2026-04-18-gapyeong",
+        selectedHistoryId: null,
+        equipmentSection: "durable",
+      }),
+    );
+
+    render(<App />);
+
+    expect(await screen.findByRole("heading", { name: "대시보드" })).toBeInTheDocument();
+    expect(screen.getByRole("button", { name: "대시보드" })).toHaveAttribute(
+      "aria-current",
+      "page",
+    );
+    expect(window.location.pathname).toBe("/dashboard");
+  });
+
+  it("pushes page navigation into browser history so back restores the previous page", async () => {
+    render(<App />);
+
+    expect(window.location.pathname).toBe("/dashboard");
+
+    await openPage("캠핑 계획");
+    expect(window.location.pathname).toBe("/planning");
+    expect(await screen.findByRole("heading", { name: "캠핑 계획" })).toBeInTheDocument();
+
+    await openPage("장비 관리");
+    expect(window.location.pathname).toBe("/equipment");
+    expect(
+      await screen.findByRole("heading", { name: "장비 점검과 재고 관리" }),
+    ).toBeInTheDocument();
+
+    window.history.back();
+    fireEvent.popState(window);
+
+    expect(await screen.findByRole("heading", { name: "캠핑 계획" })).toBeInTheDocument();
+    expect(window.location.pathname).toBe("/planning");
+  });
+
   it("opens the planning analysis markdown in a wide layer and closes it with Escape", async () => {
     render(<App />);
 
@@ -1309,6 +1366,7 @@ describe("App", () => {
   });
 
   it("restores the analyzing button state after remount when background analysis is still running", async () => {
+    window.history.replaceState(null, "", "/planning");
     window.sessionStorage.setItem(
       "camping.ui-state",
       JSON.stringify({
@@ -1554,6 +1612,7 @@ describe("App", () => {
   });
 
   it("does not show saved output when the trip detail request fails", async () => {
+    window.history.replaceState(null, "", "/planning");
     window.sessionStorage.setItem(
       "camping.ui-state",
       JSON.stringify({
@@ -1966,6 +2025,7 @@ describe("App", () => {
         finished_at: null,
       },
     };
+    window.history.replaceState(null, "", "/planning");
     window.sessionStorage.setItem(
       "camping.ui-state",
       JSON.stringify({
@@ -3273,6 +3333,7 @@ describe("App", () => {
   });
 
   it("restores the last opened planning page tab from session storage", async () => {
+    window.history.replaceState(null, "", "/planning");
     window.sessionStorage.setItem(
       "camping.ui-state",
       JSON.stringify({

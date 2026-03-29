@@ -37,6 +37,7 @@
 
 - [`technical-architecture.md`](technical-architecture.md)
   - 로컬 웹 UI, 로컬 API, 로컬 파일 저장 구조
+  - `App.tsx -> AppShell -> pages/*Page` 프런트엔드 계층 규칙
 - [`local-ui-transition-plan.md`](local-ui-transition-plan.md)
   - 기존 trip 중심 UI에서 현재 메뉴형 UI로 확장한 기준
 - [`design-spec.md`](design-spec.md)
@@ -90,6 +91,8 @@
 현재 저장소에는 아래 로컬 운영형 구현이 포함되어 있다.
 
 - `apps/web/` 메뉴형 로컬 UI
+  - `src/app/` 앱 셸과 경로 동기화
+  - `src/pages/` 페이지 진입 컴포넌트
 - `apps/api/` 로컬 API
 - `shared/` 공통 타입과 검증 스키마
 - `prompts/` 분석/학습 프롬프트

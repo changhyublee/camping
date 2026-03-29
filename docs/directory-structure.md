@@ -105,3 +105,38 @@
 - `links.yaml`: 사용자 북마크 링크
 - `equipment/categories.yaml`: 장비 섹션별 카테고리 코드와 표시 이름
 - `.camping-backups/<timestamp>/`: 특정 시점의 로컬 운영 데이터 백업 스냅샷
+
+## 7. `apps/web/src/` 구조
+
+```text
+apps/web/src/
+├── App.tsx
+├── main.tsx
+├── app/
+│   ├── AppShell.tsx
+│   ├── navigation.ts
+│   └── useAppViewModel.tsx
+├── pages/
+│   ├── DashboardPage.tsx
+│   ├── PlanningPage.tsx
+│   ├── HistoryPage.tsx
+│   ├── CompanionsPage.tsx
+│   ├── VehiclesPage.tsx
+│   ├── EquipmentPage.tsx
+│   ├── LinksPage.tsx
+│   ├── CategoriesPage.tsx
+│   ├── HelpPage.tsx
+│   └── PageHost.tsx
+├── components/
+├── api/
+└── styles/
+```
+
+- `App.tsx`: 앱 진입점
+- `app/AppShell.tsx`: 메뉴, 경로 동기화, 전역 배너와 오버레이 조합
+- `app/navigation.ts`: 페이지 키, 라벨, 경로, 네비게이션 그룹 메타데이터
+- `app/useAppViewModel.tsx`: 현재 웹 상태 조합과 페이지 렌더용 view model
+- `pages/*Page.tsx`: 메뉴별 page entry
+- `pages/PageHost.tsx`: 현재 page entry가 공통 조합을 위임하는 host
+- `components/`: 재사용 표시 컴포넌트
+- `api/`: 로컬 API 클라이언트

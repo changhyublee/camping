@@ -58,6 +58,7 @@
   - 히스토리 후기/회고 입력, 회고 누적 목록, 캠핑별 학습 요약, 전역 개인화 학습 요약
   - 외부 링크 카테고리 그룹 관리
   - 카테고리 설정 / 보조 설명
+  - `App.tsx` 는 `AppShell` 진입점만 담당하고, 메뉴/경로 동기화는 `src/app/`, 화면 엔트리는 `src/pages/` 로 분리
 - `shared/`
   - 공통 타입
   - Zod 기반 요청/응답 스키마
@@ -157,6 +158,13 @@ pnpm build
 - 현재 범위: [`docs/mvp-scope.md`](docs/mvp-scope.md)
 - 예시 파일: [`docs/example-files.md`](docs/example-files.md)
 - 로컬 스킬: [`docs/local-skills.md`](docs/local-skills.md)
+
+## 웹 구조 규칙
+
+- `apps/web/src/App.tsx` 는 앱 셸 진입점만 담당하고, 도메인 UI나 API 호출을 직접 넣지 않습니다.
+- 상위 구조는 `App.tsx -> app/AppShell.tsx -> pages/*Page.tsx` 순서로 유지합니다.
+- 새 화면 로직은 페이지 엔트리 또는 별도 컴포넌트/훅으로 추가하고, `App.tsx` 로 다시 되돌리지 않습니다.
+- 페이지 안에서 major section 이 3개 이상 생기면 별도 컴포넌트로 분리하고, 비동기 호출은 상위 셸이 아니라 해당 페이지 주변의 훅이나 모듈로 격리합니다.
 
 ## 참고 메모
 
