@@ -245,13 +245,14 @@
 ## 5.5 프런트엔드 구현 분리 규칙
 
 - `apps/web/src/App.tsx` 는 디자인이나 도메인 UI를 직접 그리는 위치가 아니라 `AppShell` 진입점으로만 사용한다.
-- 페이지 레이아웃 책임은 `apps/web/src/pages/*Page.tsx` 계층에서 시작하고, 필요하면 `PageHost` 나 별도 page-local component로 위임할 수 있다.
+- 페이지 레이아웃 책임은 `apps/web/src/pages/*Page.tsx` route entry에서 시작하고, 실제 조합은 `features/*/*PageContent.tsx` 와 하위 panel component로 위임한다.
 - 새 기능이 `목록 + 편집 + 결과 + 보조 설명` 처럼 목적이 다른 영역을 한 파일에 동시에 늘리기 시작하면, 해당 영역을 별도 컴포넌트로 분리한다.
 - 페이지 엔트리에서 직접 API 호출과 무거운 상태 조합을 늘리지 않는다. 입력 draft, 저장 상태, 실시간 상태 구독은 페이지 주변 훅이나 보조 모듈로 격리한다.
-- 같은 페이지 안에서 major section 이 3개 이상이고 각각 독립 액션을 가지면, page 엔트리나 host 파일 하나에 누적하지 말고 별도 파일로 옮긴다.
+- 같은 페이지 안에서 major section 이 3개 이상이고 각각 독립 액션을 가지면, page entry 나 `*PageContent.tsx` 하나에 누적하지 말고 별도 panel 파일로 옮긴다.
 - 페이지 탭 정의, 탭 라벨, `sessionStorage` 기반 UI 복원 규칙은 `apps/web/src/app/ui-state.ts` 에 모으고, view model 안에 다시 정의하지 않는다.
 - 상위 파일에서 시각 규칙과 도메인 로직이 다시 뒤섞이지 않도록, `App.tsx` 와 `AppShell.tsx` 는 `apiClient` 직접 호출 금지 위치로 본다.
 - 전환 단계의 `useAppViewModel.tsx` 같은 adapter 파일은 새 화면 책임을 더 모으는 위치가 아니라, 분리 작업이 끝날 때까지 줄여 나가는 예외 파일로 취급한다.
+- 공통 변환 로직은 `app/common-formatters.ts`, draft 기본값과 저장 변환은 `app/view-model-drafts.ts`, 도메인 선택/상태 helper 는 `app/*-helpers.ts` 로 먼저 분리한다.
 
 ## 6. 컴포넌트 스펙
 

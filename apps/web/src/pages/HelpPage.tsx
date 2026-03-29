@@ -1,6 +1,6 @@
 import type { AppViewModel } from "../app/useAppViewModel";
-import { PageHost } from "./PageHost";
+import { HelpPageContent } from "../features/help/HelpPageContent";
 
 export function HelpPage(props: { view: AppViewModel }) {
-  return <PageHost view={props.view} />;
+  return <HelpPageContent view={props.view} />;
 }

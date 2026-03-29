@@ -1,6 +1,6 @@
 import type { AppViewModel } from "../app/useAppViewModel";
-import { PageHost } from "./PageHost";
+import { EquipmentPageContent } from "../features/equipment/EquipmentPageContent";
 
 export function EquipmentPage(props: { view: AppViewModel }) {
-  return <PageHost view={props.view} />;
+  return <EquipmentPageContent view={props.view} />;
 }

@@ -1,6 +1,7 @@
 import { useEffect } from "react";
 import { InfoTooltip } from "../components/InfoTooltip";
 import { MarkdownLayer } from "../components/MarkdownLayer";
+import { SidebarNavButton } from "../components/SidebarNavButton";
 import { StatusBanner } from "../components/StatusBanner";
 import { CategoriesPage } from "../pages/CategoriesPage";
 import { CompanionsPage } from "../pages/CompanionsPage";
@@ -115,78 +116,114 @@ export function AppShell() {
                 </div>
                 <div className="nav-list">
                   {group.items.includes("dashboard")
-                    ? view.renderNavButton(
-                        "dashboard",
-                        "예정 계획, 최근 기록, 점검 경고를 먼저 확인합니다.",
-                        `예정 ${view.dashboardMetrics.trips}건 · 경고 ${view.dashboardMetrics.alerts}건`,
+                    ? (
+                        <SidebarNavButton
+                          active={view.activePage === "dashboard"}
+                          description="예정 계획, 최근 기록, 점검 경고를 먼저 확인합니다."
+                          meta={`예정 ${view.dashboardMetrics.trips}건 · 경고 ${view.dashboardMetrics.alerts}건`}
+                          onClick={() => view.handleSidebarPageChange("dashboard")}
+                          page="dashboard"
+                        />
                       )
                     : null}
                   {group.items.includes("planning")
-                    ? view.renderNavButton(
-                        "planning",
-                        "trip 원본 입력, AI 보조, 분석을 한 흐름으로 진행합니다.",
-                        `선택 ${view.currentTripLabel} · 검증 ${view.validationWarnings.length}건`,
+                    ? (
+                        <SidebarNavButton
+                          active={view.activePage === "planning"}
+                          description="trip 원본 입력, AI 보조, 분석을 한 흐름으로 진행합니다."
+                          meta={`선택 ${view.currentTripLabel} · 검증 ${view.validationWarnings.length}건`}
+                          onClick={() => view.handleSidebarPageChange("planning")}
+                          page="planning"
+                        />
                       )
                     : null}
                   {group.items.includes("history")
-                    ? view.renderNavButton(
-                        "history",
-                        "완료된 계획과 저장된 결과를 다시 열어봅니다.",
-                        `기록 ${view.dashboardMetrics.history}건 · 현재 ${view.currentHistoryLabel}`,
+                    ? (
+                        <SidebarNavButton
+                          active={view.activePage === "history"}
+                          description="완료된 계획과 저장된 결과를 다시 열어봅니다."
+                          meta={`기록 ${view.dashboardMetrics.history}건 · 현재 ${view.currentHistoryLabel}`}
+                          onClick={() => view.handleSidebarPageChange("history")}
+                          page="history"
+                        />
                       )
                     : null}
                   {group.items.includes("companions")
-                    ? view.renderNavButton(
-                        "companions",
-                        "캠핑 인원 프로필을 미리 등록하고 계획에서는 선택만 합니다.",
-                        `등록 ${view.dashboardMetrics.companions}명`,
+                    ? (
+                        <SidebarNavButton
+                          active={view.activePage === "companions"}
+                          description="캠핑 인원 프로필을 미리 등록하고 계획에서는 선택만 합니다."
+                          meta={`등록 ${view.dashboardMetrics.companions}명`}
+                          onClick={() => view.handleSidebarPageChange("companions")}
+                          page="companions"
+                        />
                       )
                     : null}
                   {group.items.includes("vehicles")
-                    ? view.renderNavButton(
-                        "vehicles",
-                        "차량 정보를 미리 저장하고 계획에서는 차량만 선택합니다.",
-                        `등록 ${view.dashboardMetrics.vehicles}대`,
+                    ? (
+                        <SidebarNavButton
+                          active={view.activePage === "vehicles"}
+                          description="차량 정보를 미리 저장하고 계획에서는 차량만 선택합니다."
+                          meta={`등록 ${view.dashboardMetrics.vehicles}대`}
+                          onClick={() => view.handleSidebarPageChange("vehicles")}
+                          page="vehicles"
+                        />
                       )
                     : null}
                   {group.items.includes("equipment")
-                    ? view.renderNavButton(
-                        "equipment",
-                        "보유 장비, 소모품, 출발 전 점검을 같은 구조로 관리합니다.",
-                        `항목 ${
-                          view.equipmentMetrics.durable +
-                          view.equipmentMetrics.consumables +
-                          view.equipmentMetrics.precheck
-                        }개 · 경고 ${view.dashboardMetrics.alerts}건`,
+                    ? (
+                        <SidebarNavButton
+                          active={view.activePage === "equipment"}
+                          description="보유 장비, 소모품, 출발 전 점검을 같은 구조로 관리합니다."
+                          meta={`항목 ${
+                            view.equipmentMetrics.durable +
+                            view.equipmentMetrics.consumables +
+                            view.equipmentMetrics.precheck
+                          }개 · 경고 ${view.dashboardMetrics.alerts}건`}
+                          onClick={() => view.handleSidebarPageChange("equipment")}
+                          page="equipment"
+                        />
                       )
                     : null}
                   {group.items.includes("links")
-                    ? view.renderNavButton(
-                        "links",
-                        "날씨, 장소, 맛집 같은 참고 링크를 카테고리별로 정리합니다.",
-                        `링크 ${view.dashboardMetrics.links}건 · 그룹 ${view.linkGroups.length}개`,
+                    ? (
+                        <SidebarNavButton
+                          active={view.activePage === "links"}
+                          description="날씨, 장소, 맛집 같은 참고 링크를 카테고리별로 정리합니다."
+                          meta={`링크 ${view.dashboardMetrics.links}건 · 그룹 ${view.linkGroups.length}개`}
+                          onClick={() => view.handleSidebarPageChange("links")}
+                          page="links"
+                        />
                       )
                     : null}
                   {group.items.includes("categories")
-                    ? view.renderNavButton(
-                        "categories",
-                        "장비 카테고리 기준과 로컬 백업을 관리합니다.",
-                        `카테고리 ${view.equipmentMetrics.categories}개`,
+                    ? (
+                        <SidebarNavButton
+                          active={view.activePage === "categories"}
+                          description="장비 카테고리 기준과 로컬 백업을 관리합니다."
+                          meta={`카테고리 ${view.equipmentMetrics.categories}개`}
+                          onClick={() => view.handleSidebarPageChange("categories")}
+                          page="categories"
+                        />
                       )
                     : null}
                   {group.items.includes("help")
-                    ? view.renderNavButton(
-                        "help",
-                        "주 작업 파일, 결과 파일, 보조 설명을 따로 모아 봅니다.",
-                        `trip ${view.selectedTripId ? "선택됨" : "없음"} · 결과 ${
-                          view.currentAnalysisOutputPath
-                            ? view.isAnalysisPending
-                              ? "분석 중"
-                              : "연결됨"
-                            : view.isAnalysisPending
-                              ? "분석 중"
-                              : "대기"
-                        }`,
+                    ? (
+                        <SidebarNavButton
+                          active={view.activePage === "help"}
+                          description="주 작업 파일, 결과 파일, 보조 설명을 따로 모아 봅니다."
+                          meta={`trip ${view.selectedTripId ? "선택됨" : "없음"} · 결과 ${
+                            view.currentAnalysisOutputPath
+                              ? view.isAnalysisPending
+                                ? "분석 중"
+                                : "연결됨"
+                              : view.isAnalysisPending
+                                ? "분석 중"
+                                : "대기"
+                          }`}
+                          onClick={() => view.handleSidebarPageChange("help")}
+                          page="help"
+                        />
                       )
                     : null}
                 </div>
@@ -215,7 +252,15 @@ export function AppShell() {
           </div>
         </aside>
 
-        <main className="content-panel">{renderActivePage(view.activePage, view)}</main>
+        <main className="content-panel">
+          {view.appLoading
+            ? (
+                <section className="panel empty-state">
+                  초기 데이터를 불러오는 중입니다.
+                </section>
+              )
+            : renderActivePage(view.activePage, view)}
+        </main>
       </div>
     </div>
   );

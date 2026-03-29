@@ -1,6 +1,6 @@
 import type { AppViewModel } from "../app/useAppViewModel";
-import { PageHost } from "./PageHost";
+import { DashboardPageContent } from "../features/dashboard/DashboardPageContent";
 
 export function DashboardPage(props: { view: AppViewModel }) {
-  return <PageHost view={props.view} />;
+  return <DashboardPageContent view={props.view} />;
 }

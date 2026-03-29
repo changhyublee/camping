@@ -114,9 +114,29 @@ apps/web/src/
 ├── main.tsx
 ├── app/
 │   ├── AppShell.tsx
+│   ├── browser-helpers.ts
+│   ├── common-formatters.ts
+│   ├── equipment-category-helpers.ts
+│   ├── equipment-metadata-helpers.ts
+│   ├── equipment-view-helpers.ts
 │   ├── navigation.ts
+│   ├── planning-history-helpers.ts
+│   ├── tab-helpers.tsx
 │   ├── ui-state.ts
+│   ├── view-model-drafts.ts
+│   ├── view-model-types.ts
 │   └── useAppViewModel.tsx
+├── features/
+│   ├── categories/
+│   ├── companions/
+│   ├── dashboard/
+│   ├── equipment/
+│   ├── help/
+│   ├── history/
+│   ├── links/
+│   ├── planning/
+│   ├── shared/
+│   └── vehicles/
 ├── pages/
 │   ├── DashboardPage.tsx
 │   ├── PlanningPage.tsx
@@ -126,8 +146,7 @@ apps/web/src/
 │   ├── EquipmentPage.tsx
 │   ├── LinksPage.tsx
 │   ├── CategoriesPage.tsx
-│   ├── HelpPage.tsx
-│   └── PageHost.tsx
+│   └── HelpPage.tsx
 ├── components/
 ├── api/
 └── styles/
@@ -135,10 +154,19 @@ apps/web/src/
 
 - `App.tsx`: 앱 진입점
 - `app/AppShell.tsx`: 메뉴, 경로 동기화, 전역 배너와 오버레이 조합
+- `app/browser-helpers.ts`: 브라우저 상호작용처럼 `window` 의존이 있는 작은 helper
+- `app/common-formatters.ts`: 문자열/날짜/에러 메시지 같은 공통 변환 helper
+- `app/equipment-*.ts`: 장비 카테고리/메타데이터 관련 순수 helper
 - `app/navigation.ts`: 페이지 키, 라벨, 경로, 네비게이션 그룹 메타데이터
+- `app/planning-history-helpers.ts`: 계획/히스토리 선택, 차량/분석 상태 helper
+- `app/tab-helpers.tsx`: 탭/세그먼트 접근성 helper와 focus 이동 규칙
 - `app/ui-state.ts`: 페이지 탭 메타데이터와 `sessionStorage` 기반 UI 복원 규칙
+- `app/view-model-drafts.ts`: draft 기본값과 저장용 변환 helper
+- `app/view-model-types.ts`: view model 과 feature 사이에서 공유하는 드래프트/맵 타입
 - `app/useAppViewModel.tsx`: 현재 웹 상태 조합과 페이지 렌더용 view model adapter
-- `pages/*Page.tsx`: 메뉴별 page entry
-- `pages/PageHost.tsx`: 현재 page entry가 공통 조합을 위임하는 host
+- `features/*/*PageContent.tsx`: page intro, page tab, 상세 panel 조합을 맡는 page-local content
+- `features/*/*Panel*.tsx`: 계획/히스토리/장비처럼 길어지는 detail panel 분리 파일
+- `features/`: 도메인별 화면 조각과 helper
+- `pages/*Page.tsx`: 메뉴별 route entry
 - `components/`: 재사용 표시 컴포넌트
 - `api/`: 로컬 API 클라이언트

@@ -135,22 +135,23 @@ export function readPersistedUiState(): PersistedUiState | null {
 
     const parsed = JSON.parse(raw) as Partial<PersistedUiState>;
 
-    if (
-      !parsed.activePage ||
-      !PAGE_KEYS.includes(parsed.activePage) ||
-      !parsed.equipmentSection ||
-      !isEquipmentSection(parsed.equipmentSection)
-    ) {
+    if (typeof parsed !== "object" || parsed === null || Array.isArray(parsed)) {
+      return null;
+    }
+
+    if (!hasKnownUiStateKey(parsed)) {
       return null;
     }
 
     return {
-      activePage: parsed.activePage,
+      activePage: isPageKey(parsed.activePage) ? parsed.activePage : "dashboard",
       selectedTripId:
         typeof parsed.selectedTripId === "string" ? parsed.selectedTripId : null,
       selectedHistoryId:
         typeof parsed.selectedHistoryId === "string" ? parsed.selectedHistoryId : null,
-      equipmentSection: parsed.equipmentSection,
+      equipmentSection: isEquipmentSection(parsed.equipmentSection)
+        ? parsed.equipmentSection
+        : "durable",
       dashboardPageTab: isDashboardPageTab(parsed.dashboardPageTab)
         ? parsed.dashboardPageTab
         : "overview",
@@ -204,8 +205,34 @@ export function writePersistedUiState(state: PersistedUiState) {
   }
 }
 
-function isEquipmentSection(value: string): value is EquipmentSection {
+function isEquipmentSection(value: unknown): value is EquipmentSection {
   return value === "durable" || value === "consumables" || value === "precheck";
+}
+
+function isPageKey(value: unknown): value is PageKey {
+  return typeof value === "string" && PAGE_KEYS.includes(value as PageKey);
+}
+
+function hasKnownUiStateKey(value: Partial<PersistedUiState>) {
+  return (
+    "activePage" in value ||
+    "selectedTripId" in value ||
+    "selectedHistoryId" in value ||
+    "equipmentSection" in value ||
+    "dashboardPageTab" in value ||
+    "companionPageTab" in value ||
+    "vehiclePageTab" in value ||
+    "equipmentPageTab" in value ||
+    "categoryPageTab" in value ||
+    "helpPageTab" in value ||
+    "planningPageTab" in value ||
+    "historyPageTab" in value ||
+    "linkPageTab" in value ||
+    "planningDetailTab" in value ||
+    "historyDetailTab" in value ||
+    "equipmentDetailTab" in value ||
+    "categoryDetailTab" in value
+  );
 }
 
 function isDashboardPageTab(value: unknown): value is DashboardPageTab {

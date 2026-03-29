@@ -163,7 +163,8 @@ pnpm build
 
 - `apps/web/src/App.tsx` 는 앱 셸 진입점만 담당하고, 도메인 UI나 API 호출을 직접 넣지 않습니다.
 - 상위 구조는 `App.tsx -> app/AppShell.tsx -> pages/*Page.tsx` 순서로 유지합니다.
-- 새 화면 로직은 페이지 엔트리 또는 별도 컴포넌트/훅으로 추가하고, `App.tsx` 로 다시 되돌리지 않습니다.
+- 실제 화면 조합은 `features/*/*PageContent.tsx` 와 하위 panel/component로 나누고, `pages/*Page.tsx` 는 route entry만 담당합니다.
+- 새 화면 로직은 feature component, page-local panel, helper 모듈로 추가하고, `App.tsx` 나 공통 host 파일로 다시 되돌리지 않습니다.
 - 페이지 안에서 major section 이 3개 이상 생기면 별도 컴포넌트로 분리하고, 비동기 호출은 상위 셸이 아니라 해당 페이지 주변의 훅이나 모듈로 격리합니다.
 
 ## 참고 메모

@@ -1,6 +1,6 @@
 import type { AppViewModel } from "../app/useAppViewModel";
-import { PageHost } from "./PageHost";
+import { CategoriesPageContent } from "../features/categories/CategoriesPageContent";
 
 export function CategoriesPage(props: { view: AppViewModel }) {
-  return <PageHost view={props.view} />;
+  return <CategoriesPageContent view={props.view} />;
 }

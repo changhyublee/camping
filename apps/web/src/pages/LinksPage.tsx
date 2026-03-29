@@ -1,6 +1,6 @@
 import type { AppViewModel } from "../app/useAppViewModel";
-import { PageHost } from "./PageHost";
+import { LinksPageContent } from "../features/links/LinksPageContent";
 
 export function LinksPage(props: { view: AppViewModel }) {
-  return <PageHost view={props.view} />;
+  return <LinksPageContent view={props.view} />;
 }

@@ -32,7 +32,7 @@ describe("ui-state", () => {
     expect(readPersistedUiState()).toEqual(VALID_UI_STATE);
   });
 
-  it("유효하지 않은 activePage가 들어오면 persisted ui state를 무시한다", () => {
+  it("유효하지 않은 activePage가 들어오면 기본 페이지로 되돌리면서 나머지 ui state를 유지한다", () => {
     window.sessionStorage.setItem(
       "camping.ui-state",
       JSON.stringify({
@@ -41,6 +41,32 @@ describe("ui-state", () => {
       }),
     );
 
+    expect(readPersistedUiState()).toEqual({
+      ...VALID_UI_STATE,
+      activePage: "dashboard",
+    });
+  });
+
+  it("유효하지 않은 equipmentSection이 들어와도 나머지 ui state는 복원하고 기본 섹션으로 되돌린다", () => {
+    window.sessionStorage.setItem(
+      "camping.ui-state",
+      JSON.stringify({
+        ...VALID_UI_STATE,
+        equipmentSection: "invalid-section",
+      }),
+    );
+
+    expect(readPersistedUiState()).toEqual({
+      ...VALID_UI_STATE,
+      equipmentSection: "durable",
+    });
+  });
+
+  it("쓰레기 객체나 배열이 들어오면 persisted ui state를 복원하지 않는다", () => {
+    window.sessionStorage.setItem("camping.ui-state", JSON.stringify(["invalid-state"]));
+    expect(readPersistedUiState()).toBeNull();
+
+    window.sessionStorage.setItem("camping.ui-state", JSON.stringify({ foo: "bar" }));
     expect(readPersistedUiState()).toBeNull();
   });
 });

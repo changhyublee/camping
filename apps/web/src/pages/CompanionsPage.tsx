@@ -1,6 +1,6 @@
 import type { AppViewModel } from "../app/useAppViewModel";
-import { PageHost } from "./PageHost";
+import { CompanionsPageContent } from "../features/companions/CompanionsPageContent";
 
 export function CompanionsPage(props: { view: AppViewModel }) {
-  return <PageHost view={props.view} />;
+  return <CompanionsPageContent view={props.view} />;
 }

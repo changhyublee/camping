@@ -1,6 +1,6 @@
 import type { AppViewModel } from "../app/useAppViewModel";
-import { PageHost } from "./PageHost";
+import { PlanningPageContent } from "../features/planning/PlanningPageContent";
 
 export function PlanningPage(props: { view: AppViewModel }) {
-  return <PageHost view={props.view} />;
+  return <PlanningPageContent view={props.view} />;
 }
