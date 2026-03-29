@@ -36,7 +36,15 @@
 - 메타데이터 결과는 `cache/equipment-metadata/durable/*.json` 으로 저장한다
 - 메타데이터 작업 상태는 `cache/equipment-metadata/jobs/durable/*.json` 으로 저장한다
 
-### 원칙 6. 운영 데이터 백업은 별도 경로로 분리한다
+### 원칙 6. 히스토리 회고 원문과 AI 학습 결과를 분리한다
+
+- 사용자가 직접 남긴 후기와 구조화 회고 원문은 `history/*.yaml` 의 `retrospectives` 배열에 저장한다
+- AI가 파생한 캠핑별 학습 결과는 `cache/history-learning/*.json` 으로 저장한다
+- 모든 히스토리를 합산한 전역 개인화 학습 프로필은 `cache/user-learning/profile.json` 으로 저장한다
+- 전역 개인화 학습 작업 상태는 `cache/user-learning/jobs/profile.json` 으로 저장한다
+- 사람이 직접 관리하는 `profile.yaml`, `preferences/*.yaml` 는 AI가 덮어쓰지 않는다
+
+### 원칙 7. 운영 데이터 백업은 별도 경로로 분리한다
 
 - 시점별 백업은 `./.camping-backups/`
 - 운영 데이터와 다른 루트에 둬서 초기화 작업이 백업까지 지우지 않게 한다
@@ -64,12 +72,17 @@
     ├── analysis-jobs/
     ├── analysis-results/
     ├── campsite-tips/
+    ├── equipment-metadata/
+    │   ├── durable/
+    │   └── jobs/
+    │       └── durable/
+    ├── history-learning/
     ├── places/
-    ├── weather/
-    └── equipment-metadata/
-        ├── durable/
-        └── jobs/
-            └── durable/
+    ├── user-learning/
+    │   ├── jobs/
+    │   │   └── profile.json
+    │   └── profile.json
+    └── weather/
 
 ./.camping-backups/
 └── <timestamp>/
@@ -109,6 +122,8 @@
 - 분석 작업 상태
 - 섹션별 누적 분석 결과
 - 반복 장비 메타데이터 작업 상태
+- 히스토리별 AI 학습 결과
+- 전역 개인화 학습 프로필과 작업 상태
 - 날씨 캐시
 - 장소 캐시
 - 캠핑장 후기 tip 캐시
@@ -118,6 +133,9 @@
 - `cache/analysis-jobs/*.json`
 - `cache/analysis-results/*.json`
 - `cache/equipment-metadata/jobs/durable/*.json`
+- `cache/history-learning/*.json`
+- `cache/user-learning/profile.json`
+- `cache/user-learning/jobs/profile.json`
 - `cache/weather/*.json`
 - `cache/places/*.json`
 - `cache/campsite-tips/*.json`
@@ -140,6 +158,16 @@
 
 - `.camping-backups/<timestamp>/backup.json`
 - `.camping-backups/<timestamp>/data/**`
+
+### 4.6 사용자 회고 원문 데이터
+
+- 히스토리별 후기/회고 입력
+- 만족도, 실제 사용 장비, 부족했던 준비물, 식단/동선/사이트 회고
+- 자유 서술 후기
+
+저장 위치:
+
+- `history/*.yaml` 의 `retrospectives[]`
 
 ## 5. 파일별 역할
 
@@ -188,6 +216,25 @@
 - 완료된 캠핑 기록
 - 계획 스냅샷, 결과 문서 경로, 메모 보관
 - 아카이브 당시 `companion_snapshots`, `vehicle_snapshot` 저장
+- 사용자가 추가한 회고 엔트리를 `retrospectives` 배열에 append-only 로 누적 저장
+
+### `cache/history-learning/*.json`
+
+- 히스토리 1건에 대한 AI 회고 분석 결과
+- 해당 캠핑에서 실제로 배운 점, 행동 패턴, 장비/식단/동선 힌트, 다음 번 집중 포인트 저장
+- `history/*.yaml` 원문 회고와 분리해 저장하고 UI/API에서 함께 조회
+
+### `cache/user-learning/profile.json`
+
+- 모든 히스토리 회고를 합산한 전역 개인화 학습 프로필
+- 이후 계획 분석과 AI 보조에서 자동으로 참조하는 개인화 입력
+- 행동 패턴, 장비 힌트, 식단 힌트, 동선 힌트, 피해야 할 점, 다음 캠핑 집중 포인트 저장
+
+### `cache/user-learning/jobs/profile.json`
+
+- 전역 개인화 학습 갱신 상태 캐시
+- `status`, `trigger_history_id`, `source_history_ids`, `source_entry_count`, `requested_at`, `started_at`, `finished_at`, `error` 저장
+- UI는 SSE 이벤트로 즉시 반영하고 재진입/재연결 시 상태 조회 API로 복원한다
 
 ### `links.yaml`
 
@@ -238,6 +285,10 @@
 - 장비 카테고리 코드는 영어 기반 식별값으로 유지하고, 사용자가 보는 이름은 `categories.yaml` 에서 관리한다
 - 히스토리는 계획 완료 후 별도 파일로 생성하고, 아카이브가 끝나면 원래 계획 파일은 `trips/` 에서 제거한다
 - 히스토리의 사람/차량 스냅샷은 이후 기준 데이터가 바뀌어도 당시 기록으로 유지한다
+- 히스토리 회고는 append-only 로 누적하고, 잘못된 회고를 덮어쓰기보다 새 엔트리로 보정한다
+- 히스토리 회고를 저장하면 AI가 캠핑별 학습 결과와 전역 개인화 학습 프로필을 다시 합성한다
+- 전역 개인화 학습 프로필은 `profile.yaml`, `preferences/*.yaml` 를 덮어쓰지 않고 별도 cache 로만 관리한다
+- 이후 계획 분석과 AI 보조는 전역 개인화 학습 프로필을 자동으로 함께 사용한다
 - 링크는 외부 API 캐시가 아니라 사용자가 관리하는 북마크 데이터다
 - 반복 장비 메타데이터는 사용자가 직접 입력하는 원본 장비 목록이 아니라 AI가 웹 검색으로 수집한 보강 정보다
 - 반복 장비 메타데이터 작업 상태는 원본 장비 YAML에 저장하지 않고 별도 상태 파일로 분리한다

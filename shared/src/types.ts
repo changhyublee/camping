@@ -7,7 +7,9 @@ import type {
   aiJobEventSchema,
   aiJobHeartbeatEventSchema,
   aiJobReadyEventSchema,
+  aiJobUserLearningStatusEventSchema,
   analysisBackendSchema,
+  addHistoryRetrospectiveResponseSchema,
   analyzeTripRequestSchema,
   analyzeTripResponseSchema,
   apiErrorSchema,
@@ -47,9 +49,12 @@ import type {
   externalLinkSchema,
   externalLinksSchema,
   foodPreferencesSchema,
+  getHistoryLearningResponseSchema,
   getOutputResponseSchema,
   getTripAnalysisStatusResponseSchema,
+  getUserLearningResponseSchema,
   historyRecordSchema,
+  historyLearningInsightSchema,
   listDataBackupsResponseSchema,
   listDurableMetadataJobStatusesResponseSchema,
   planningAssistantActionSchema,
@@ -60,6 +65,8 @@ import type {
   precheckSchema,
   profileSchema,
   refreshDurableEquipmentMetadataResponseSchema,
+  retrospectiveEntryInputSchema,
+  retrospectiveEntrySchema,
   saveOutputRequestSchema,
   saveOutputResponseSchema,
   travelPreferencesSchema,
@@ -72,6 +79,8 @@ import type {
   tripAnalysisStatusSchema,
   tripSchema,
   tripSummarySchema,
+  userLearningJobStatusResponseSchema,
+  userLearningProfileSchema,
   validateTripRequestSchema,
   validateTripResponseSchema,
   vehicleIdSchema,
@@ -150,6 +159,10 @@ export type TripData = z.infer<typeof tripSchema>;
 export type TripDraft = z.infer<typeof tripDraftSchema>;
 export type TripSummary = z.infer<typeof tripSummarySchema>;
 export type HistoryRecord = z.infer<typeof historyRecordSchema>;
+export type RetrospectiveEntry = z.infer<typeof retrospectiveEntrySchema>;
+export type RetrospectiveEntryInput = z.infer<typeof retrospectiveEntryInputSchema>;
+export type HistoryLearningInsight = z.infer<typeof historyLearningInsightSchema>;
+export type UserLearningProfile = z.infer<typeof userLearningProfileSchema>;
 export type ExternalLinkCategory = z.infer<typeof externalLinkCategorySchema>;
 export type ExternalLink = z.infer<typeof externalLinkSchema>;
 export type ExternalLinkInput = z.infer<typeof externalLinkInputSchema>;
@@ -195,8 +208,18 @@ export type DurableMetadataJobStatus = z.infer<
 export type DurableMetadataJobStatusResponse = z.infer<
   typeof durableMetadataJobStatusResponseSchema
 >;
+export type UserLearningJobStatusResponse = z.infer<
+  typeof userLearningJobStatusResponseSchema
+>;
 export type ListDurableMetadataJobStatusesResponse = z.infer<
   typeof listDurableMetadataJobStatusesResponseSchema
+>;
+export type GetHistoryLearningResponse = z.infer<
+  typeof getHistoryLearningResponseSchema
+>;
+export type GetUserLearningResponse = z.infer<typeof getUserLearningResponseSchema>;
+export type AddHistoryRetrospectiveResponse = z.infer<
+  typeof addHistoryRetrospectiveResponseSchema
 >;
 export type AiJobReadyEvent = z.infer<typeof aiJobReadyEventSchema>;
 export type AiJobHeartbeatEvent = z.infer<typeof aiJobHeartbeatEventSchema>;
@@ -208,6 +231,9 @@ export type AiJobDurableMetadataStatusEvent = z.infer<
 >;
 export type AiJobDurableMetadataCompletedEvent = z.infer<
   typeof aiJobDurableMetadataCompletedEventSchema
+>;
+export type AiJobUserLearningStatusEvent = z.infer<
+  typeof aiJobUserLearningStatusEventSchema
 >;
 export type AiJobEvent = z.infer<typeof aiJobEventSchema>;
 export type ApiError = z.infer<typeof apiErrorSchema>;
@@ -230,6 +256,7 @@ export type TripBundle = {
   foodPreferences: FoodPreferencesData;
   links: ExternalLinksData;
   trip: TripData;
+  userLearningProfile: UserLearningProfile | null;
   caches: {
     weather: Array<{ name: string; content: unknown }>;
     places: Array<{ name: string; content: unknown }>;

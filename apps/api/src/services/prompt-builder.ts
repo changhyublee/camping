@@ -47,6 +47,12 @@ export function buildAnalysisPrompt({
     .join("\n\n");
 
   const cacheSections = [
+    bundle.userLearningProfile
+      ? serializeJsonSection(
+          "cache/user-learning/profile.json",
+          bundle.userLearningProfile,
+        )
+      : null,
     ...bundle.caches.weather.map((cache) =>
       serializeJsonSection(`cache/weather/${cache.name}`, cache.content),
     ),
@@ -116,7 +122,9 @@ export function buildAnalysisPrompt({
     ),
     "",
     "# 선택적 캐시",
-    cacheSections.length > 0 ? cacheSections.join("\n\n") : "없음",
+    cacheSections.filter(Boolean).length > 0
+      ? cacheSections.filter(Boolean).join("\n\n")
+      : "없음",
   ]
     .filter(Boolean)
     .join("\n\n");

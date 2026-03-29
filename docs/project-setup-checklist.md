@@ -49,13 +49,20 @@
 - [x] 장비 카테고리 CRUD
 - [x] 반복 장비 메타데이터 수집과 상태 실시간 반영
 - [x] 히스토리 조회/수정/삭제와 아카이브
+- [x] 히스토리 후기/회고 append 저장
+- [x] 히스토리별 학습 결과와 전역 개인화 학습 조회
+- [x] 전역 개인화 학습 상태 실시간 반영
 - [x] 외부 링크 CRUD
 
 ### 공통 자산과 보조 파일
 
 - [x] `prompts/system.md`
 - [x] `prompts/trip-analysis.md`
+- [x] `prompts/history-retrospective-learning.md`
+- [x] `prompts/user-learning-profile.md`
 - [x] `schemas/codex-trip-analysis-output.schema.json`
+- [x] `schemas/codex-history-retrospective-learning-output.schema.json`
+- [x] `schemas/codex-user-learning-profile-output.schema.json`
 - [x] `scripts/seed-local-data.ts`
 - [x] `docs/examples/` 예시 데이터 세트
 - [x] `skills/repeat-review-fix/`
@@ -91,7 +98,8 @@
 8. `pnpm dev:web`
 9. `GET /api/health` 확인
 10. 웹 UI에서 trip 1건 저장 후 `분석 중...` 상태, 완료 후 결과 자동 갱신, 삭제/히스토리 이동 제어를 확인
-11. 필요하면 `pnpm typecheck`, `pnpm test`, `pnpm build`
+11. 히스토리 상세에서 후기 1건 저장 후 개인화 학습 상태와 요약 카드 갱신을 확인
+12. 필요하면 `pnpm typecheck`, `pnpm test`, `pnpm build`
 
 ## 5. 환경별 검증이 필요한 항목
 
@@ -110,6 +118,7 @@
 - `pnpm seed` 는 새 환경 초기화용이며, 기존 `.camping-data/` 가 있으면 중단한다.
 - `pnpm seed -- --replace` 는 기존 `.camping-data/` 를 `.camping-backups/<timestamp>/` 에 백업한 뒤 `docs/examples/` 를 다시 복사한다.
 - `cache/analysis-jobs/` 는 예시 시드 파일이 아니라 분석 실행 시 런타임에 생성되는 상태 디렉토리다.
+- `cache/history-learning/` 와 `cache/user-learning/` 도 회고 저장 후 런타임에 생성되는 학습 캐시 디렉토리다.
 - `.camping-data/` 는 운영 데이터 경로이며 Git 커밋 대상이 아니다.
 - `.camping-backups/` 는 운영 데이터 백업 경로이며 Git 커밋 대상이 아니다.
 - 개인 준비물은 저장소에서 직접 관리하는 인벤토리가 아니라 분석 결과다.

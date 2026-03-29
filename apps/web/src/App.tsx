@@ -25,15 +25,19 @@ import type {
   ExternalLinkCategory,
   ExternalLinkInput,
   GetOutputResponse,
+  HistoryLearningInsight,
   HistoryRecord,
   PlanningAssistantAction,
   PlanningAssistantResponse,
   PrecheckItem,
   PrecheckItemInput,
+  RetrospectiveEntryInput,
   TripDraft,
   TripAnalysisCategory,
   TripAnalysisCategoryStatusResponse,
   TripSummary,
+  UserLearningJobStatusResponse,
+  UserLearningProfile,
   Vehicle,
   VehicleInput,
 } from "@camping/shared";
@@ -49,6 +53,7 @@ import {
   PRECHECK_STATUS_LABELS,
   TRIP_ANALYSIS_CATEGORY_METADATA,
   TRIP_ANALYSIS_STATUS_LABELS,
+  USER_LEARNING_STATUS_LABELS,
   getConsumableStatus,
 } from "@camping/shared";
 import { cloneEquipmentCategories } from "@camping/shared";
@@ -126,6 +131,19 @@ type OperationState = {
 type CommaSeparatedInputs = {
   requestedDishes: string;
   requestedStops: string;
+};
+
+type RetrospectiveDraft = {
+  overallSatisfaction: string;
+  usedDurableItemIds: string[];
+  unusedItems: string;
+  missingOrNeededItems: string;
+  mealFeedback: string;
+  routeFeedback: string;
+  siteFeedback: string;
+  issues: string;
+  nextTimeRequests: string;
+  freeformNote: string;
 };
 
 type PersistedUiState = {
@@ -211,6 +229,17 @@ export function App() {
   const [selectedHistoryId, setSelectedHistoryId] = useState<string | null>(
     persistedUiState?.selectedHistoryId ?? null,
   );
+  const [retrospectiveDraft, setRetrospectiveDraft] =
+    useState<RetrospectiveDraft>(createEmptyRetrospectiveDraft());
+  const [savingRetrospective, setSavingRetrospective] = useState(false);
+  const [historyLearningInsight, setHistoryLearningInsight] =
+    useState<HistoryLearningInsight | null>(null);
+  const [historyLearningLoading, setHistoryLearningLoading] = useState(false);
+  const [historyLearningError, setHistoryLearningError] = useState<string | null>(null);
+  const [userLearningProfile, setUserLearningProfile] =
+    useState<UserLearningProfile | null>(null);
+  const [userLearningStatus, setUserLearningStatus] =
+    useState<UserLearningJobStatusResponse>(createIdleUserLearningStatus());
   const [historyOutput, setHistoryOutput] = useState<GetOutputResponse | null>(null);
   const [historyOutputLoading, setHistoryOutputLoading] = useState(false);
   const [historyOutputError, setHistoryOutputError] = useState<string | null>(null);
@@ -241,11 +270,15 @@ export function App() {
   );
   const selectedTripIdRef = useRef<string | null>(persistedUiState?.selectedTripId ?? null);
   const selectedHistoryIdRef = useRef<string | null>(null);
+  const historyLearningRequestIdRef = useRef(0);
   const historyOutputRequestIdRef = useRef(0);
   const planningLoadRequestIdRef = useRef(0);
   const durableSearchFingerprintRef = useRef<Record<string, string>>({});
   const durableMetadataJobStatusesRef = useRef<DurableMetadataJobStatusMap>({});
   const analysisStatusRef = useRef<AnalyzeTripResponse | null>(null);
+  const userLearningStatusRef = useRef<UserLearningJobStatusResponse>(
+    createIdleUserLearningStatus(),
+  );
   const isCreatingTripRef = useRef(false);
   const aiJobEventSubscriptionRef = useRef<AiJobEventSubscription | null>(null);
   const aiJobEventReconnectTimeoutRef = useRef<number | null>(null);
@@ -305,6 +338,10 @@ export function App() {
   useEffect(() => {
     analysisStatusRef.current = analysisStatus;
   }, [analysisStatus]);
+
+  useEffect(() => {
+    userLearningStatusRef.current = userLearningStatus;
+  }, [userLearningStatus]);
 
   useEffect(() => {
     if (isCreatingTrip || !selectedTripId) {
@@ -463,7 +500,60 @@ export function App() {
   );
 
   useEffect(() => {
+    if (!selectedHistoryId || !selectedHistory || selectedHistory.retrospectives.length === 0) {
+      setHistoryLearningInsight(null);
+      setHistoryLearningError(null);
+      setHistoryLearningLoading(false);
+      return;
+    }
+
+    const requestId = historyLearningRequestIdRef.current + 1;
+    historyLearningRequestIdRef.current = requestId;
+    setHistoryLearningLoading(true);
+    setHistoryLearningError(null);
+
+    void apiClient
+      .getHistoryLearning(selectedHistoryId)
+      .then((response) => {
+        if (
+          selectedHistoryIdRef.current !== selectedHistoryId ||
+          historyLearningRequestIdRef.current !== requestId
+        ) {
+          return;
+        }
+
+        setHistoryLearningInsight(response.item);
+      })
+      .catch((error) => {
+        if (
+          selectedHistoryIdRef.current !== selectedHistoryId ||
+          historyLearningRequestIdRef.current !== requestId
+        ) {
+          return;
+        }
+
+        setHistoryLearningInsight(null);
+        setHistoryLearningError(getErrorMessage(error));
+      })
+      .finally(() => {
+        if (
+          selectedHistoryIdRef.current !== selectedHistoryId ||
+          historyLearningRequestIdRef.current !== requestId
+        ) {
+          return;
+        }
+
+        setHistoryLearningLoading(false);
+      });
+  }, [selectedHistory, selectedHistoryId]);
+
+  useEffect(() => {
     selectedHistoryIdRef.current = selectedHistoryId;
+    historyLearningRequestIdRef.current += 1;
+    setRetrospectiveDraft(createEmptyRetrospectiveDraft());
+    setHistoryLearningInsight(null);
+    setHistoryLearningError(null);
+    setHistoryLearningLoading(false);
     setHistoryOutput(null);
     setHistoryOutputError(null);
     setHistoryOutputLoading(false);
@@ -639,6 +729,32 @@ export function App() {
   }, [activePage, aiJobRealtimeMode, hasPendingDurableMetadataJobs]);
 
   useEffect(() => {
+    if (
+      aiJobRealtimeMode !== "fallback" ||
+      !isPendingUserLearningStatus(userLearningStatus.status)
+    ) {
+      return;
+    }
+
+    const timeoutId = window.setTimeout(() => {
+      void syncUserLearningState({
+        notifyTransition: true,
+        syncSelectedHistoryLearning: true,
+      }).catch((error) => {
+        setOperationState({
+          title: "개인화 학습 상태 확인 실패",
+          tone: "warning",
+          description: getErrorMessage(error),
+        });
+      });
+    }, 2000);
+
+    return () => {
+      window.clearTimeout(timeoutId);
+    };
+  }, [aiJobRealtimeMode, userLearningStatus.status]);
+
+  useEffect(() => {
     setDurableDraft((current) => ({
       ...current,
       category: resolveCategorySelection(
@@ -784,6 +900,18 @@ export function App() {
     selectedHistory?.title ??
     formatCompactTripId(selectedHistoryId) ??
     "없음";
+  const isUserLearningPending = isPendingUserLearningStatus(userLearningStatus.status);
+  const currentUserLearningStatusLabel =
+    USER_LEARNING_STATUS_LABELS[userLearningStatus.status] ?? userLearningStatus.status;
+  const selectedHistoryRetrospectives = useMemo(
+    () =>
+      selectedHistory
+        ? [...selectedHistory.retrospectives].sort((left, right) =>
+            right.created_at.localeCompare(left.created_at),
+          )
+        : [],
+    [selectedHistory],
+  );
 
   async function loadInitialData() {
     setAppLoading(true);
@@ -798,6 +926,7 @@ export function App() {
         equipmentCategoryResponse,
         metadataStatusResponse,
         historyResponse,
+        userLearningResponse,
         linkResponse,
       ] = await Promise.allSettled([
         apiClient.getCompanions(),
@@ -807,6 +936,7 @@ export function App() {
         apiClient.getEquipmentCategories(),
         apiClient.getDurableMetadataJobStatuses(),
         apiClient.getHistory(),
+        apiClient.getUserLearning(),
         apiClient.getLinks(),
       ]);
       const startupWarnings: string[] = [];
@@ -844,6 +974,20 @@ export function App() {
       );
       setCategoryLabelDrafts(createEmptyCategoryLabelDrafts());
       setHistory(historyResponse.value.items);
+      if (userLearningResponse.status === "fulfilled") {
+        setUserLearningProfile(userLearningResponse.value.profile);
+        setUserLearningStatus(userLearningResponse.value.status);
+        userLearningStatusRef.current = userLearningResponse.value.status;
+      } else {
+        setUserLearningProfile(null);
+        setUserLearningStatus(createIdleUserLearningStatus());
+        userLearningStatusRef.current = createIdleUserLearningStatus();
+        startupWarnings.push(
+          `누적 사용자 학습을 불러오지 못했습니다. ${getErrorMessage(
+            userLearningResponse.reason,
+          )}`,
+        );
+      }
       setLinks(linkResponse.value.items);
       setSelectedTripId(
         (current) =>
@@ -915,6 +1059,11 @@ export function App() {
   function applyAnalysisStatus(status: AnalyzeTripResponse | null) {
     analysisStatusRef.current = status;
     setAnalysisStatus(status);
+  }
+
+  function applyUserLearningStatus(status: UserLearningJobStatusResponse) {
+    userLearningStatusRef.current = status;
+    setUserLearningStatus(status);
   }
 
   function applyDurableMetadataJobStatuses(
@@ -1011,6 +1160,46 @@ export function App() {
     });
   }
 
+  function notifyUserLearningTransition(
+    previousStatus: UserLearningJobStatusResponse,
+    nextStatus: UserLearningJobStatusResponse,
+  ) {
+    if (
+      !isPendingUserLearningStatus(previousStatus.status) ||
+      previousStatus.status === nextStatus.status
+    ) {
+      return;
+    }
+
+    if (nextStatus.status === "completed") {
+      setOperationState({
+        title: "개인화 학습 업데이트 완료",
+        tone: "success",
+        description: "최신 회고를 누적 프로필에 반영했습니다.",
+      });
+      return;
+    }
+
+    if (nextStatus.status === "failed") {
+      setOperationState({
+        title: "개인화 학습 실패",
+        tone: "error",
+        description:
+          nextStatus.error?.message ?? "회고 기반 개인화 학습 업데이트에 실패했습니다.",
+      });
+      return;
+    }
+
+    if (nextStatus.status === "interrupted") {
+      setOperationState({
+        title: "개인화 학습 중단",
+        tone: "warning",
+        description:
+          nextStatus.error?.message ?? "진행 중이던 개인화 학습이 중단되었습니다.",
+      });
+    }
+  }
+
   async function syncAiJobStateAfterRealtimeReconnect() {
     const syncWarnings: string[] = [];
 
@@ -1036,6 +1225,15 @@ export function App() {
       });
     } catch (error) {
       syncWarnings.push(`메타데이터 상태 동기화 실패: ${getErrorMessage(error)}`);
+    }
+
+    try {
+      await syncUserLearningState({
+        notifyTransition: true,
+        syncSelectedHistoryLearning: true,
+      });
+    } catch (error) {
+      syncWarnings.push(`개인화 학습 상태 동기화 실패: ${getErrorMessage(error)}`);
     }
 
     if (syncWarnings.length > 0) {
@@ -1121,6 +1319,34 @@ export function App() {
         });
       }
     }
+
+    if (event.type === "user-learning-status") {
+      const previousStatus = userLearningStatusRef.current;
+
+      applyUserLearningStatus(event.status);
+
+      if (event.status.status === "completed" || event.status.status === "idle") {
+        notifyUserLearningTransition(previousStatus, event.status);
+
+        try {
+          await syncUserLearningState({
+            notifyTransition: false,
+            syncSelectedHistoryLearning:
+              event.status.trigger_history_id === selectedHistoryIdRef.current ||
+              selectedHistoryIdRef.current !== null,
+          });
+        } catch (error) {
+          setOperationState({
+            title: "개인화 학습 동기화 경고",
+            tone: "warning",
+            description: getErrorMessage(error),
+          });
+        }
+        return;
+      }
+
+      notifyUserLearningTransition(previousStatus, event.status);
+    }
   }
 
   async function loadPlanningOutput(
@@ -1186,6 +1412,60 @@ export function App() {
 
     if (options.notifyTransition) {
       notifyAnalysisStatusTransition(previousStatus, response);
+    }
+
+    return response;
+  }
+
+  async function syncUserLearningState(
+    options: {
+      notifyTransition?: boolean;
+      syncSelectedHistoryLearning?: boolean;
+    } = {},
+  ) {
+    const previousStatus = userLearningStatusRef.current;
+    const response = await apiClient.getUserLearning();
+
+    setUserLearningProfile(response.profile);
+    applyUserLearningStatus(response.status);
+
+    if (options.syncSelectedHistoryLearning && selectedHistoryIdRef.current) {
+      const historyId = selectedHistoryIdRef.current;
+      const requestId = historyLearningRequestIdRef.current + 1;
+
+      historyLearningRequestIdRef.current = requestId;
+      setHistoryLearningLoading(true);
+      setHistoryLearningError(null);
+
+      try {
+        const learningResponse = await apiClient.getHistoryLearning(historyId);
+
+        if (
+          selectedHistoryIdRef.current === historyId &&
+          historyLearningRequestIdRef.current === requestId
+        ) {
+          setHistoryLearningInsight(learningResponse.item);
+        }
+      } catch (error) {
+        if (
+          selectedHistoryIdRef.current === historyId &&
+          historyLearningRequestIdRef.current === requestId
+        ) {
+          setHistoryLearningInsight(null);
+          setHistoryLearningError(getErrorMessage(error));
+        }
+      } finally {
+        if (
+          selectedHistoryIdRef.current === historyId &&
+          historyLearningRequestIdRef.current === requestId
+        ) {
+          setHistoryLearningLoading(false);
+        }
+      }
+    }
+
+    if (options.notifyTransition) {
+      notifyUserLearningTransition(previousStatus, response.status);
     }
 
     return response;
@@ -2346,6 +2626,43 @@ export function App() {
         tone: "error",
         description: getErrorMessage(error),
       });
+    }
+  }
+
+  async function handleAddRetrospective() {
+    if (!selectedHistory) {
+      return;
+    }
+
+    setSavingRetrospective(true);
+
+    try {
+      const response = await apiClient.addHistoryRetrospective(
+        selectedHistory.history_id,
+        buildRetrospectiveInput(retrospectiveDraft),
+      );
+
+      setHistory((current) =>
+        current.map((item) =>
+          item.history_id === response.item.history_id ? response.item : item,
+        ),
+      );
+      applyUserLearningStatus(response.learning_status);
+      setRetrospectiveDraft(createEmptyRetrospectiveDraft());
+      setHistoryLearningError(null);
+      setOperationState({
+        title: "후기 저장 완료",
+        tone: "success",
+        description: "회고를 저장했고 개인화 학습 업데이트를 시작했습니다.",
+      });
+    } catch (error) {
+      setOperationState({
+        title: "후기 저장 실패",
+        tone: "error",
+        description: getErrorMessage(error),
+      });
+    } finally {
+      setSavingRetrospective(false);
     }
   }
 
@@ -4770,6 +5087,78 @@ export function App() {
 
                 <div className="panel-stack planning-side-stack">
                   <section className="panel">
+                    <div className="panel__eyebrow">누적 학습</div>
+                    <div className="panel__header">
+                      <h2>개인화 학습 요약</h2>
+                    </div>
+                    <div className="summary-grid summary-grid--compact">
+                      <article className="summary-card">
+                        <span>상태</span>
+                        <strong>{currentUserLearningStatusLabel}</strong>
+                        <p className="panel__copy">
+                          {userLearningProfile
+                            ? `히스토리 ${userLearningProfile.source_history_ids.length}건 / 회고 ${userLearningProfile.source_entry_count}건 반영`
+                            : "아직 누적 회고 학습 프로필이 없습니다."}
+                        </p>
+                      </article>
+                      <article className="summary-card">
+                        <span>자동 반영</span>
+                        <strong>항상 켜짐</strong>
+                        <p className="panel__copy">
+                          회고가 누적될수록 다음 분석과 AI 보조에 자동 반영됩니다.
+                        </p>
+                      </article>
+                    </div>
+                    {isUserLearningPending ? (
+                      <StatusBanner
+                        tone="info"
+                        title="개인화 학습 업데이트 중"
+                        description="최신 회고를 반영해 다음 계획 힌트를 다시 합성하고 있습니다."
+                      />
+                    ) : null}
+                    {userLearningStatus.status === "failed" ? (
+                      <StatusBanner
+                        tone="error"
+                        title="개인화 학습 실패"
+                        description={
+                          userLearningStatus.error?.message ??
+                          "회고 학습 결과를 다시 만들지 못했습니다."
+                        }
+                      />
+                    ) : null}
+                    {userLearningProfile ? (
+                      <div className="stack-list">
+                        <div className="action-card">
+                          <strong>요약</strong>
+                          <p>{userLearningProfile.summary}</p>
+                        </div>
+                        {userLearningProfile.behavior_patterns[0] ? (
+                          <div className="action-card">
+                            <strong>행동 패턴</strong>
+                            <p>{userLearningProfile.behavior_patterns.join(" / ")}</p>
+                          </div>
+                        ) : null}
+                        {userLearningProfile.equipment_hints[0] ? (
+                          <div className="action-card">
+                            <strong>장비 힌트</strong>
+                            <p>{userLearningProfile.equipment_hints.join(" / ")}</p>
+                          </div>
+                        ) : null}
+                        {userLearningProfile.next_trip_focus[0] ? (
+                          <div className="action-card">
+                            <strong>다음 계획 포커스</strong>
+                            <p>{userLearningProfile.next_trip_focus.join(" / ")}</p>
+                          </div>
+                        ) : null}
+                      </div>
+                    ) : (
+                      <div className="empty-state empty-state--compact">
+                        히스토리 상세에서 실제 후기와 회고를 쌓으면 여기에 개인화 학습 요약이 표시됩니다.
+                      </div>
+                    )}
+                  </section>
+
+                  <section className="panel">
                     <div className="panel__eyebrow">AI 보조</div>
                     <div className="panel__header">
                       <h2>AI 보조</h2>
@@ -5081,6 +5470,14 @@ export function App() {
                     <span>차량 기록</span>
                     <strong>{selectedHistoryVehicle?.name ?? "없음"}</strong>
                   </div>
+                  <div className="meta-chip">
+                    <span>회고 엔트리</span>
+                    <strong>{selectedHistory?.retrospectives.length ?? 0}건</strong>
+                  </div>
+                  <div className="meta-chip">
+                    <span>학습 상태</span>
+                    <strong>{currentUserLearningStatusLabel}</strong>
+                  </div>
                 </div>
               </section>
 
@@ -5195,6 +5592,345 @@ export function App() {
                             : "당시 사용 차량 정보가 기록되지 않았습니다."}
                         </p>
                       </article>
+                      <article className="summary-card">
+                        <span>회고 누적</span>
+                        <strong>{selectedHistory.retrospectives.length}건</strong>
+                        <p className="panel__copy">
+                          사용 후기와 실제 행동을 누적 저장해 다음 계획에 자동 반영합니다.
+                        </p>
+                      </article>
+                      <article className="summary-card">
+                        <span>개인화 학습</span>
+                        <strong>{currentUserLearningStatusLabel}</strong>
+                        <p className="panel__copy">
+                          {userLearningProfile
+                            ? `전역 프로필 ${userLearningProfile.source_history_ids.length}건 / 회고 ${userLearningProfile.source_entry_count}건 반영`
+                            : "아직 전역 개인화 프로필이 없습니다."}
+                        </p>
+                      </article>
+                    </div>
+                    {isUserLearningPending ? (
+                      <div className="form-grid__full">
+                        <StatusBanner
+                          tone="info"
+                          title="학습 업데이트 중"
+                          description="회고를 바탕으로 이번 캠핑 학습과 전역 개인화 프로필을 다시 합성하고 있습니다."
+                        />
+                      </div>
+                    ) : null}
+                    {userLearningStatus.status === "failed" ? (
+                      <div className="form-grid__full">
+                        <StatusBanner
+                          tone="error"
+                          title="개인화 학습 실패"
+                          description={
+                            userLearningStatus.error?.message ??
+                            "회고 기반 학습 결과를 다시 만들지 못했습니다."
+                          }
+                        />
+                      </div>
+                    ) : null}
+                    <div className="form-grid__full summary-grid summary-grid--compact">
+                      <article className="summary-card">
+                        <span>이번 캠핑에서 AI가 배운 점</span>
+                        <strong>
+                          {historyLearningInsight ? "최신 반영됨" : "아직 없음"}
+                        </strong>
+                        <p className="panel__copy">
+                          {historyLearningInsight
+                            ? historyLearningInsight.summary
+                            : "회고를 남기면 실제 현장 사용 패턴과 다음 준비 힌트를 요약합니다."}
+                        </p>
+                      </article>
+                      <article className="summary-card">
+                        <span>전역 개인화 학습 요약</span>
+                        <strong>
+                          {userLearningProfile ? "누적 반영됨" : "아직 없음"}
+                        </strong>
+                        <p className="panel__copy">
+                          {userLearningProfile
+                            ? userLearningProfile.summary
+                            : "여러 히스토리 회고가 쌓일수록 다음 계획 분석에 자동 반영됩니다."}
+                        </p>
+                      </article>
+                    </div>
+                    <div className="form-grid__full summary-grid summary-grid--compact">
+                      <article className="summary-card">
+                        <span>후기 / 회고 추가</span>
+                        <strong>실제 사용 기록</strong>
+                        <p className="panel__copy">
+                          현장에서 어떻게 사용했고 무엇이 부족했는지 남기면 다음 계획 힌트가 계속 보정됩니다.
+                        </p>
+                      </article>
+                    </div>
+                    <FormField label="만족도">
+                      <select
+                        aria-label="만족도"
+                        value={retrospectiveDraft.overallSatisfaction}
+                        onChange={(event) =>
+                          setRetrospectiveDraft((current) => ({
+                            ...current,
+                            overallSatisfaction: event.target.value,
+                          }))
+                        }
+                      >
+                        <option value="">선택 안 함</option>
+                        <option value="5">5점 매우 만족</option>
+                        <option value="4">4점 만족</option>
+                        <option value="3">3점 보통</option>
+                        <option value="2">2점 아쉬움</option>
+                        <option value="1">1점 매우 아쉬움</option>
+                      </select>
+                    </FormField>
+                    <FormField label="사용한 반복 장비">
+                      {equipment?.durable.items.length ? (
+                        <div className="choice-list">
+                          {equipment.durable.items.map((item) => {
+                            const checked = retrospectiveDraft.usedDurableItemIds.includes(
+                              item.id,
+                            );
+
+                            return (
+                              <label
+                                className={`choice-card${
+                                  checked ? " choice-card--active" : ""
+                                }`}
+                                key={item.id}
+                              >
+                                <input
+                                  checked={checked}
+                                  onChange={() =>
+                                    setRetrospectiveDraft((current) => ({
+                                      ...current,
+                                      usedDurableItemIds: toggleSelectionId(
+                                        current.usedDurableItemIds,
+                                        item.id,
+                                      ),
+                                    }))
+                                  }
+                                  type="checkbox"
+                                />
+                                <div className="choice-card__body">
+                                  <strong>{item.name}</strong>
+                                  <span>{item.id}</span>
+                                </div>
+                              </label>
+                            );
+                          })}
+                        </div>
+                      ) : (
+                        <div className="empty-state empty-state--compact">
+                          현재 등록된 반복 장비가 없습니다.
+                        </div>
+                      )}
+                    </FormField>
+                    <FormField full label="잘 안 쓴 것 / 과했던 것">
+                      <textarea
+                        className="form-grid__full"
+                        placeholder="줄 단위로 적어 주세요. 예: 대형 랜턴 2개는 과했다"
+                        value={retrospectiveDraft.unusedItems}
+                        onChange={(event) =>
+                          setRetrospectiveDraft((current) => ({
+                            ...current,
+                            unusedItems: event.target.value,
+                          }))
+                        }
+                      />
+                    </FormField>
+                    <FormField full label="부족했거나 다음에 더 필요한 것">
+                      <textarea
+                        className="form-grid__full"
+                        placeholder="줄 단위로 적어 주세요. 예: 아이 여벌 옷, 바람막이 타프"
+                        value={retrospectiveDraft.missingOrNeededItems}
+                        onChange={(event) =>
+                          setRetrospectiveDraft((current) => ({
+                            ...current,
+                            missingOrNeededItems: event.target.value,
+                          }))
+                        }
+                      />
+                    </FormField>
+                    <FormField full label="식단 / 요리 회고">
+                      <textarea
+                        className="form-grid__full"
+                        placeholder="줄 단위로 적어 주세요."
+                        value={retrospectiveDraft.mealFeedback}
+                        onChange={(event) =>
+                          setRetrospectiveDraft((current) => ({
+                            ...current,
+                            mealFeedback: event.target.value,
+                          }))
+                        }
+                      />
+                    </FormField>
+                    <FormField full label="이동 / 동선 회고">
+                      <textarea
+                        className="form-grid__full"
+                        placeholder="줄 단위로 적어 주세요."
+                        value={retrospectiveDraft.routeFeedback}
+                        onChange={(event) =>
+                          setRetrospectiveDraft((current) => ({
+                            ...current,
+                            routeFeedback: event.target.value,
+                          }))
+                        }
+                      />
+                    </FormField>
+                    <FormField full label="사이트 / 현장 회고">
+                      <textarea
+                        className="form-grid__full"
+                        placeholder="줄 단위로 적어 주세요."
+                        value={retrospectiveDraft.siteFeedback}
+                        onChange={(event) =>
+                          setRetrospectiveDraft((current) => ({
+                            ...current,
+                            siteFeedback: event.target.value,
+                          }))
+                        }
+                      />
+                    </FormField>
+                    <FormField full label="문제 / 이슈">
+                      <textarea
+                        className="form-grid__full"
+                        placeholder="줄 단위로 적어 주세요."
+                        value={retrospectiveDraft.issues}
+                        onChange={(event) =>
+                          setRetrospectiveDraft((current) => ({
+                            ...current,
+                            issues: event.target.value,
+                          }))
+                        }
+                      />
+                    </FormField>
+                    <FormField full label="다음엔 이렇게 하고 싶음">
+                      <textarea
+                        className="form-grid__full"
+                        placeholder="줄 단위로 적어 주세요."
+                        value={retrospectiveDraft.nextTimeRequests}
+                        onChange={(event) =>
+                          setRetrospectiveDraft((current) => ({
+                            ...current,
+                            nextTimeRequests: event.target.value,
+                          }))
+                        }
+                      />
+                    </FormField>
+                    <FormField full label="자유 후기">
+                      <textarea
+                        className="form-grid__full"
+                        placeholder="현장에서 어떻게 캠핑했는지 자유롭게 남겨 주세요."
+                        value={retrospectiveDraft.freeformNote}
+                        onChange={(event) =>
+                          setRetrospectiveDraft((current) => ({
+                            ...current,
+                            freeformNote: event.target.value,
+                          }))
+                        }
+                      />
+                    </FormField>
+                    <div className="form-grid__full button-row">
+                      <button
+                        className="button button--primary"
+                        disabled={savingRetrospective}
+                        onClick={handleAddRetrospective}
+                        type="button"
+                      >
+                        {savingRetrospective ? "후기 저장 중..." : "후기 저장 후 학습 업데이트"}
+                      </button>
+                    </div>
+                    <div className="form-grid__full">
+                      <div className="panel__eyebrow">회고 학습 결과</div>
+                      {historyLearningLoading ? (
+                        <div className="empty-state empty-state--compact">
+                          학습 결과를 불러오는 중입니다.
+                        </div>
+                      ) : historyLearningError ? (
+                        <StatusBanner
+                          tone="warning"
+                          title="이번 캠핑 학습 결과를 다시 읽지 못했습니다."
+                          description={historyLearningError}
+                        />
+                      ) : historyLearningInsight ? (
+                        <div className="stack-list">
+                          {historyLearningInsight.behavior_patterns[0] ? (
+                            <div className="action-card">
+                              <strong>행동 패턴</strong>
+                              <p>{historyLearningInsight.behavior_patterns.join(" / ")}</p>
+                            </div>
+                          ) : null}
+                          {historyLearningInsight.equipment_hints[0] ? (
+                            <div className="action-card">
+                              <strong>장비 힌트</strong>
+                              <p>{historyLearningInsight.equipment_hints.join(" / ")}</p>
+                            </div>
+                          ) : null}
+                          {historyLearningInsight.meal_hints[0] ? (
+                            <div className="action-card">
+                              <strong>식단 힌트</strong>
+                              <p>{historyLearningInsight.meal_hints.join(" / ")}</p>
+                            </div>
+                          ) : null}
+                          {historyLearningInsight.route_hints[0] ? (
+                            <div className="action-card">
+                              <strong>이동 힌트</strong>
+                              <p>{historyLearningInsight.route_hints.join(" / ")}</p>
+                            </div>
+                          ) : null}
+                          {historyLearningInsight.campsite_hints[0] ? (
+                            <div className="action-card">
+                              <strong>현장 힌트</strong>
+                              <p>{historyLearningInsight.campsite_hints.join(" / ")}</p>
+                            </div>
+                          ) : null}
+                          {historyLearningInsight.next_trip_focus[0] ? (
+                            <div className="action-card">
+                              <strong>다음 계획 포커스</strong>
+                              <p>{historyLearningInsight.next_trip_focus.join(" / ")}</p>
+                            </div>
+                          ) : null}
+                        </div>
+                      ) : (
+                        <div className="empty-state empty-state--compact">
+                          아직 이번 캠핑 학습 결과가 없습니다.
+                        </div>
+                      )}
+                    </div>
+                    <div className="form-grid__full">
+                      <div className="panel__eyebrow">회고 엔트리 목록</div>
+                      {selectedHistoryRetrospectives.length > 0 ? (
+                        <div className="stack-list">
+                          {selectedHistoryRetrospectives.map((entry) => (
+                            <article className="action-card" key={entry.entry_id}>
+                              <strong>
+                                {formatRelativeDate(entry.created_at)}
+                                {typeof entry.overall_satisfaction === "number"
+                                  ? ` / 만족도 ${entry.overall_satisfaction}점`
+                                  : ""}
+                              </strong>
+                              <p>
+                                사용 장비:{" "}
+                                {entry.used_durable_item_ids.length > 0
+                                  ? entry.used_durable_item_ids.join(", ")
+                                  : "기록 없음"}
+                              </p>
+                              {entry.missing_or_needed_items[0] ? (
+                                <p>부족/필요: {entry.missing_or_needed_items.join(" / ")}</p>
+                              ) : null}
+                              {entry.issues[0] ? (
+                                <p>이슈: {entry.issues.join(" / ")}</p>
+                              ) : null}
+                              {entry.next_time_requests[0] ? (
+                                <p>다음 요청: {entry.next_time_requests.join(" / ")}</p>
+                              ) : null}
+                              {entry.freeform_note ? <p>{entry.freeform_note}</p> : null}
+                            </article>
+                          ))}
+                        </div>
+                      ) : (
+                        <div className="empty-state empty-state--compact">
+                          아직 남겨진 회고 엔트리가 없습니다.
+                        </div>
+                      )}
                     </div>
                     <div className="form-grid__full history-output-card">
                       <div className="history-output-card__header">
@@ -5794,6 +6530,53 @@ function createCommaSeparatedInputs(draft?: TripDraft | null): CommaSeparatedInp
   return {
     requestedDishes: joinCommaList(draft?.meal_plan?.requested_dishes),
     requestedStops: joinCommaList(draft?.travel_plan?.requested_stops),
+  };
+}
+
+function createEmptyRetrospectiveDraft(): RetrospectiveDraft {
+  return {
+    overallSatisfaction: "",
+    usedDurableItemIds: [],
+    unusedItems: "",
+    missingOrNeededItems: "",
+    mealFeedback: "",
+    routeFeedback: "",
+    siteFeedback: "",
+    issues: "",
+    nextTimeRequests: "",
+    freeformNote: "",
+  };
+}
+
+function buildRetrospectiveInput(
+  draft: RetrospectiveDraft,
+): RetrospectiveEntryInput {
+  const overallSatisfaction = parseInteger(draft.overallSatisfaction);
+
+  return {
+    overall_satisfaction:
+      typeof overallSatisfaction === "number" ? overallSatisfaction : undefined,
+    used_durable_item_ids: draft.usedDurableItemIds,
+    unused_items: splitLineList(draft.unusedItems),
+    missing_or_needed_items: splitLineList(draft.missingOrNeededItems),
+    meal_feedback: splitLineList(draft.mealFeedback),
+    route_feedback: splitLineList(draft.routeFeedback),
+    site_feedback: splitLineList(draft.siteFeedback),
+    issues: splitLineList(draft.issues),
+    next_time_requests: splitLineList(draft.nextTimeRequests),
+    freeform_note: draft.freeformNote.trim() || undefined,
+  };
+}
+
+function createIdleUserLearningStatus(): UserLearningJobStatusResponse {
+  return {
+    status: "idle",
+    trigger_history_id: null,
+    source_history_ids: [],
+    source_entry_count: 0,
+    requested_at: null,
+    started_at: null,
+    finished_at: null,
   };
 }
 
@@ -7141,6 +7924,12 @@ function createIdleAnalysisStatus(tripId: string): AnalyzeTripResponse {
 }
 
 function isPendingAnalysisStatus(status?: AnalyzeTripResponse["status"] | null) {
+  return status === "queued" || status === "running";
+}
+
+function isPendingUserLearningStatus(
+  status?: UserLearningJobStatusResponse["status"] | null,
+) {
   return status === "queued" || status === "running";
 }
 

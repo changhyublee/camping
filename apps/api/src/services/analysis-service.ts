@@ -2,6 +2,7 @@ import type {
   AiJobEvent,
   AnalyzeTripRequest,
   AnalyzeTripResponse,
+  AddHistoryRetrospectiveResponse,
   CampsiteTipsResearch,
   CancelAllAiJobsResponse,
   CreateDataBackupResponse,
@@ -19,10 +20,13 @@ import type {
   EquipmentCategoryUpdateInput,
   ExternalLink,
   ExternalLinkInput,
+  GetHistoryLearningResponse,
   GetOutputResponse,
+  GetUserLearningResponse,
   HistoryRecord,
   PlanningAssistantResponse,
   PrecheckItemInput,
+  RetrospectiveEntryInput,
   SaveOutputRequest,
   SaveOutputResponse,
   TripDraft,
@@ -42,6 +46,8 @@ import { EquipmentMetadataJobManager } from "./equipment-metadata-job-manager";
 import type { CampsiteTipSearchClient } from "./campsite-tip-service";
 import type { EquipmentMetadataSearchClient } from "./equipment-metadata-service";
 import type { AnalysisModelClient } from "./openai-client";
+import { UserLearningJobManager } from "./user-learning-job-manager";
+import type { UserLearningClient } from "./user-learning-service";
 import { runPlanningAssistant } from "./planning-assistant";
 import { buildAnalysisPrompt } from "./prompt-builder";
 import {
@@ -60,6 +66,7 @@ type EquipmentItemInput =
 export class AnalysisService {
   private readonly analysisJobManager: AnalysisJobManager;
   private readonly metadataJobManager: EquipmentMetadataJobManager;
+  private readonly userLearningJobManager: UserLearningJobManager;
   private readonly aiJobEventBroker = new AiJobEventBroker();
 
   constructor(
@@ -67,6 +74,7 @@ export class AnalysisService {
     private readonly modelClient: AnalysisModelClient,
     private readonly equipmentMetadataClient: EquipmentMetadataSearchClient,
     private readonly campsiteTipClient: CampsiteTipSearchClient,
+    private readonly userLearningClient: UserLearningClient,
   ) {
     this.analysisJobManager = new AnalysisJobManager(
       repository,
@@ -79,11 +87,18 @@ export class AnalysisService {
       this.aiJobEventBroker,
       3,
     );
+    this.userLearningJobManager = new UserLearningJobManager(
+      repository,
+      async (jobInput) =>
+        this.executeUserLearning(jobInput.triggerHistoryId, jobInput.signal),
+      this.aiJobEventBroker,
+    );
   }
 
   async initialize() {
     await this.analysisJobManager.recoverInterruptedJobs();
     await this.metadataJobManager.recoverInterruptedJobs();
+    await this.userLearningJobManager.recoverInterruptedJobs();
   }
 
   async listTrips() {
@@ -183,11 +198,59 @@ export class AnalysisService {
   }
 
   async updateHistory(historyId: string, history: HistoryRecord) {
-    return this.repository.updateHistory(historyId, history);
+    const currentHistory = await this.repository.readHistory(historyId);
+
+    return this.repository.updateHistory(historyId, {
+      ...history,
+      retrospectives: currentHistory.retrospectives,
+    });
+  }
+
+  async addHistoryRetrospective(
+    historyId: string,
+    input: RetrospectiveEntryInput,
+  ): Promise<AddHistoryRetrospectiveResponse> {
+    await this.repository.readHistory(historyId);
+    const item = await this.repository.appendHistoryRetrospective(historyId, input);
+    const learningStatus =
+      await this.userLearningJobManager.enqueueRetrospectiveLearning(historyId);
+
+    return {
+      item,
+      learning_status: learningStatus,
+    };
+  }
+
+  async getHistoryLearning(
+    historyId: string,
+  ): Promise<GetHistoryLearningResponse> {
+    await this.repository.readHistory(historyId);
+
+    return {
+      item: await this.repository.readHistoryLearningInsight(historyId),
+    };
+  }
+
+  async getUserLearning(): Promise<GetUserLearningResponse> {
+    const [profile, status] = await Promise.all([
+      this.repository.readUserLearningProfile(),
+      this.userLearningJobManager.getUserLearningStatus(),
+    ]);
+
+    return {
+      profile,
+      status,
+    };
   }
 
   async deleteHistory(historyId: string) {
+    const history = await this.repository.readHistory(historyId);
     await this.repository.deleteHistory(historyId);
+
+    if (history.retrospectives.length > 0) {
+      await this.userLearningJobManager.enqueueUserLearningRebuild(null);
+    }
+
     return { status: "deleted" as const };
   }
 
@@ -311,9 +374,10 @@ export class AnalysisService {
   }
 
   async cancelAllAiJobs(): Promise<CancelAllAiJobsResponse> {
-    const [analysisSummary, metadataSummary] = await Promise.all([
+    const [analysisSummary, metadataSummary, userLearningSummary] = await Promise.all([
       this.analysisJobManager.cancelAllTripAnalyses(),
       this.metadataJobManager.cancelAllDurableMetadataRefreshes(),
+      this.userLearningJobManager.cancelAllUserLearning(),
     ]);
 
     return {
@@ -321,6 +385,7 @@ export class AnalysisService {
       cancelled_analysis_trip_count: analysisSummary.cancelledTripCount,
       cancelled_analysis_category_count: analysisSummary.cancelledCategoryCount,
       cancelled_metadata_item_count: metadataSummary.cancelledItemCount,
+      cancelled_user_learning_job_count: userLearningSummary.cancelledJobCount,
     };
   }
 
@@ -486,6 +551,94 @@ export class AnalysisService {
       await this.repository.saveCampsiteTipResearch(bundle.trip.trip_id, fallback);
       return fallback;
     }
+  }
+
+  private async executeUserLearning(
+    triggerHistoryId: string | null,
+    signal?: AbortSignal,
+  ): Promise<{
+    profileExists: boolean;
+    sourceHistoryIds: string[];
+    sourceEntryCount: number;
+  }> {
+    const [prompts, histories] = await Promise.all([
+      this.repository.loadUserLearningPromptFiles(),
+      this.repository.listHistory(),
+    ]);
+    const historiesWithRetrospectives = histories.filter(
+      (history) => history.retrospectives.length > 0,
+    );
+
+    if (historiesWithRetrospectives.length === 0) {
+      await this.repository.deleteUserLearningProfile();
+
+      return {
+        profileExists: false,
+        sourceHistoryIds: [],
+        sourceEntryCount: 0,
+      };
+    }
+
+    const existingInsightMap = new Map(
+      (await this.repository.listHistoryLearningInsights()).map((insight) => [
+        insight.history_id,
+        insight,
+      ]),
+    );
+    const targetHistories = historiesWithRetrospectives.filter(
+      (history) =>
+        history.history_id === triggerHistoryId ||
+        !existingInsightMap.has(history.history_id),
+    );
+
+    for (const history of targetHistories) {
+      throwIfAborted(signal);
+      const outputMarkdown = await this.repository.loadHistoryOutputMarkdown(history);
+      const insight = await this.userLearningClient.analyzeHistoryRetrospective({
+        history,
+        outputMarkdown,
+        promptTemplate: prompts.historyRetrospectiveLearning,
+        signal,
+      });
+
+      throwIfAborted(signal);
+      await this.repository.saveHistoryLearningInsight(insight);
+    }
+
+    const historyInsightMap = new Map(
+      (await this.repository.listHistoryLearningInsights()).map((insight) => [
+        insight.history_id,
+        insight,
+      ]),
+    );
+    const validInsights = historiesWithRetrospectives
+      .map((history) => historyInsightMap.get(history.history_id) ?? null)
+      .filter((insight): insight is NonNullable<typeof insight> => insight !== null);
+
+    if (validInsights.length === 0) {
+      await this.repository.deleteUserLearningProfile();
+      return {
+        profileExists: false,
+        sourceHistoryIds: [],
+        sourceEntryCount: 0,
+      };
+    }
+
+    throwIfAborted(signal);
+    const profile = await this.userLearningClient.synthesizeUserLearningProfile({
+      insights: validInsights,
+      promptTemplate: prompts.userLearningProfile,
+      signal,
+    });
+
+    throwIfAborted(signal);
+    await this.repository.saveUserLearningProfile(profile);
+
+    return {
+      profileExists: true,
+      sourceHistoryIds: profile.source_history_ids,
+      sourceEntryCount: profile.source_entry_count,
+    };
   }
 
   private async ensureTripNotAnalyzing(tripId: TripId, actionLabel: string) {

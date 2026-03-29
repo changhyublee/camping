@@ -68,7 +68,7 @@
 - 분석이 진행 중이면 `DELETE /api/trips/:tripId` 와 `POST /api/trips/:tripId/archive` 는 `CONFLICT` 로 거절한다
 - API 서버 재시작 시 남아 있던 `queued` 또는 `running` 상태는 `interrupted` 로 복구된다
 - `POST /api/ai-jobs/cancel-all` 는 실행 중인 분석 요청을 중단하고 남아 있던 섹션 queue 를 비운다
-- 전역 중단 응답은 `cancelled_analysis_trip_count`, `cancelled_analysis_category_count`, `cancelled_metadata_item_count` 를 함께 반환한다
+- 전역 중단 응답은 `cancelled_analysis_trip_count`, `cancelled_analysis_category_count`, `cancelled_metadata_item_count`, `cancelled_user_learning_job_count` 를 함께 반환한다
 
 ### 장비 관리
 
@@ -113,23 +113,44 @@
 실시간 이벤트 규칙:
 
 - `GET /api/ai-jobs/events` 는 `text/event-stream` SSE 연결을 유지한다
-- 이벤트 타입은 `ready`, `heartbeat`, `analysis-status`, `durable-metadata-status`, `durable-metadata-completed` 를 사용한다
+- 이벤트 타입은 `ready`, `heartbeat`, `analysis-status`, `durable-metadata-status`, `durable-metadata-completed`, `user-learning-status` 를 사용한다
 - `analysis-status` 는 전체 `AnalyzeTripResponse` payload를 보낸다
 - `durable-metadata-status` 는 전체 `DurableMetadataJobStatusResponse` payload를 보낸다
 - `durable-metadata-completed` 는 `{ item_id, completed_at }` payload를 보낸다
+- `user-learning-status` 는 전체 `UserLearningJobStatusResponse` payload를 보낸다
 - 클라이언트는 SSE를 기본 실시간 채널로 사용하고, 재연결 직후에는 기존 상태 조회 API로 재동기화한다
 
 ### 캠핑 히스토리
 
 - `GET /api/history`
 - `GET /api/history/:historyId`
+- `GET /api/history/:historyId/learning`
+- `POST /api/history/:historyId/retrospectives`
 - `PUT /api/history/:historyId`
 - `DELETE /api/history/:historyId`
+
+### 개인화 학습
+
+- `GET /api/user-learning`
 
 히스토리 아카이브 규칙:
 
 - `POST /api/trips/:tripId/archive` 시 당시 계획의 `companion_snapshots`, `vehicle_snapshot` 이 함께 저장된다
 - 히스토리 상세는 이후 기준 데이터가 바뀌어도 스냅샷을 우선 보여준다
+- `GET /api/history/:historyId` 는 `retrospectives` 배열까지 포함한 전체 히스토리를 반환한다
+- `POST /api/history/:historyId/retrospectives` 는 회고 엔트리를 append 저장하고 `202 Accepted` 로 현재 `learning_status` 를 함께 반환한다
+- `PUT /api/history/:historyId` 는 메모 같은 일반 히스토리 필드 수정용으로 유지하고, `retrospectives` 변경은 무시한다
+- 회고 저장은 항상 원문 저장이 우선이고, 이후 개인화 학습은 별도 백그라운드 작업으로 갱신한다
+- `GET /api/history/:historyId/learning` 은 해당 히스토리의 AI 회고 분석 결과를 반환한다
+- `DELETE /api/history/:historyId` 시 회고가 있던 히스토리를 삭제하면 전역 개인화 학습 프로필을 다시 합성한다
+
+개인화 학습 규칙:
+
+- `GET /api/user-learning` 은 `{ profile, status }` 를 반환한다
+- `profile` 이 없으면 `null` 을 반환하고 `status` 는 `idle` 또는 현재 진행 상태를 유지한다
+- 상태 값은 `idle`, `queued`, `running`, `completed`, `failed`, `interrupted` 를 사용한다
+- 회고 저장 직후에는 전역 개인화 학습 작업을 `queued` 로 올리고, 실행 중 새 회고가 들어오면 현재 작업이 끝난 뒤 최신 입력 기준으로 한 번 더 재합성한다
+- `POST /api/ai-jobs/cancel-all` 은 실행 중인 개인화 학습도 함께 중단한다
 
 ### 외부 링크
 
@@ -375,6 +396,105 @@
       }
     }
   ]
+}
+```
+
+### `POST /api/history/:historyId/retrospectives`
+
+```json
+{
+  "item": {
+    "history_id": "2026-03-08-yangpyeong",
+    "title": "3월 양평 주말 캠핑",
+    "retrospectives": [
+      {
+        "entry_id": "retro-2026-03-09T09-10-00-000Z",
+        "created_at": "2026-03-09T09:10:00.000Z",
+        "overall_satisfaction": 4,
+        "used_durable_item_ids": ["family-tent"],
+        "unused_items": ["여벌 랜턴 1개는 과했다"],
+        "missing_or_needed_items": ["방수 수납백을 더 챙기면 좋다"],
+        "meal_feedback": ["아침 국물 메뉴가 더 잘 맞았다"],
+        "route_feedback": ["출발 시간을 더 당기면 체크인이 편하다"],
+        "site_feedback": ["그늘이 부족해서 타프 체감이 컸다"],
+        "issues": ["새벽 바람이 강했다"],
+        "next_time_requests": ["차광막을 먼저 설치하고 싶다"],
+        "freeform_note": "아이 낮잠 시간 전에는 세팅을 끝내는 편이 훨씬 수월했다."
+      }
+    ]
+  },
+  "learning_status": {
+    "status": "queued",
+    "trigger_history_id": "2026-03-08-yangpyeong",
+    "source_history_ids": [],
+    "source_entry_count": 0,
+    "requested_at": "2026-03-09T09:10:00.000Z",
+    "started_at": null,
+    "finished_at": null
+  }
+}
+```
+
+### `GET /api/history/:historyId/learning`
+
+```json
+{
+  "item": {
+    "history_id": "2026-03-08-yangpyeong",
+    "updated_at": "2026-03-09T09:10:08.000Z",
+    "source_entry_count": 2,
+    "summary": "차광과 빠른 세팅, 아침 국물 메뉴 선호가 반복적으로 드러났다.",
+    "behavior_patterns": ["도착 직후 핵심 세팅을 먼저 끝내는 편이 만족도가 높다."],
+    "equipment_hints": ["차광막과 방수 수납 준비를 우선순위로 둔다."],
+    "meal_hints": ["아침에는 따뜻한 국물 메뉴 만족도가 높다."],
+    "route_hints": ["체크인 혼잡 전에 도착하는 일정을 선호한다."],
+    "campsite_hints": ["그늘 부족과 바람 노출을 먼저 본다."],
+    "avoidances": ["과한 조명 장비 중복 적재를 줄인다."],
+    "issues": ["새벽 강풍 대응이 필요했다."],
+    "next_time_requests": ["세팅 동선을 더 단순화하고 싶다."],
+    "next_trip_focus": ["차광과 방풍, 빠른 세팅 순서 최적화"]
+  }
+}
+```
+
+### `GET /api/user-learning`
+
+```json
+{
+  "profile": {
+    "updated_at": "2026-03-09T09:10:10.000Z",
+    "source_history_ids": ["2026-03-08-yangpyeong"],
+    "source_entry_count": 2,
+    "summary": "빠른 세팅, 차광/방풍 우선, 아침 국물 메뉴 선호가 누적됐다.",
+    "behavior_patterns": ["현장 도착 후 핵심 거주 환경부터 먼저 안정화하는 편이다."],
+    "equipment_hints": ["차광막, 방수 수납, 바람 대응 장비 우선 확인"],
+    "meal_hints": ["아침은 따뜻한 메뉴, 저녁은 준비가 단순한 메뉴 선호"],
+    "route_hints": ["체크인 혼잡 전 도착 일정 선호"],
+    "campsite_hints": ["그늘과 바람 노출 여부를 먼저 본다."],
+    "avoidances": ["중복 조명 장비 과적을 피한다."],
+    "next_trip_focus": ["차광과 방풍, 세팅 동선 단순화"]
+  },
+  "status": {
+    "status": "completed",
+    "trigger_history_id": "2026-03-08-yangpyeong",
+    "source_history_ids": ["2026-03-08-yangpyeong"],
+    "source_entry_count": 2,
+    "requested_at": "2026-03-09T09:10:00.000Z",
+    "started_at": "2026-03-09T09:10:01.000Z",
+    "finished_at": "2026-03-09T09:10:10.000Z"
+  }
+}
+```
+
+### `POST /api/ai-jobs/cancel-all`
+
+```json
+{
+  "status": "cancelled",
+  "cancelled_analysis_trip_count": 1,
+  "cancelled_analysis_category_count": 3,
+  "cancelled_metadata_item_count": 1,
+  "cancelled_user_learning_job_count": 1
 }
 ```
 

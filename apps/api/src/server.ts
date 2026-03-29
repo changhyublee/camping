@@ -26,12 +26,19 @@ import {
   type AnalysisModelClient,
 } from "./services/openai-client";
 import { isAppError, toApiError } from "./services/app-error";
+import {
+  CodexCliUserLearningClient,
+  MissingUserLearningClient,
+  OpenAIUserLearningClient,
+  type UserLearningClient,
+} from "./services/user-learning-service";
 
 export type BuildServerOptions = ConfigOverrides & {
   logger?: boolean;
   modelClient?: AnalysisModelClient;
   equipmentMetadataClient?: EquipmentMetadataSearchClient;
   campsiteTipClient?: CampsiteTipSearchClient;
+  userLearningClient?: UserLearningClient;
 };
 
 export async function buildServer(
@@ -44,11 +51,14 @@ export async function buildServer(
     options.equipmentMetadataClient ?? createEquipmentMetadataClient(config);
   const campsiteTipClient =
     options.campsiteTipClient ?? createCampsiteTipClient(config);
+  const userLearningClient =
+    options.userLearningClient ?? createUserLearningClient(config);
   const analysisService = new AnalysisService(
     repository,
     modelClient,
     equipmentMetadataClient,
     campsiteTipClient,
+    userLearningClient,
   );
   await analysisService.initialize();
 
@@ -173,6 +183,38 @@ function createCampsiteTipClient(
     ? new OpenAICampsiteTipClient(config.openaiApiKey, config.openaiMetadataModel)
     : new MissingCampsiteTipClient(
         "OPENAI_API_KEY 가 없어 캠핑장 후기 tip을 수집할 수 없습니다.",
+      );
+}
+
+function createUserLearningClient(
+  config: ReturnType<typeof resolveConfig>,
+): UserLearningClient {
+  if (config.aiBackend === "codex-cli") {
+    return new CodexCliUserLearningClient({
+      binary: config.codexBin,
+      model: config.codexMetadataModel,
+      reasoningEffort: config.codexMetadataReasoningEffort,
+      projectRoot: config.projectRoot,
+      historyOutputSchemaPath: path.join(
+        config.projectRoot,
+        "schemas",
+        "codex-history-retrospective-learning-output.schema.json",
+      ),
+      profileOutputSchemaPath: path.join(
+        config.projectRoot,
+        "schemas",
+        "codex-user-learning-profile-output.schema.json",
+      ),
+    });
+  }
+
+  return config.openaiApiKey
+    ? new OpenAIUserLearningClient(
+        config.openaiApiKey,
+        config.openaiMetadataModel,
+      )
+    : new MissingUserLearningClient(
+        "OPENAI_API_KEY 가 없어 사용자 회고 학습을 갱신할 수 없습니다.",
       );
 }
 

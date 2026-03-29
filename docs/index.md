@@ -42,18 +42,18 @@
 - [`design-spec.md`](design-spec.md)
   - 최신 트렌드를 반영한 화면 디자인 기준과 에이전트 구현 규칙
 - [`local-api-contract.md`](local-api-contract.md)
-  - CRUD, 백그라운드 분석, SSE 실시간 이벤트, fallback 상태 조회 API 계약
+  - CRUD, 백그라운드 분석, 회고 기반 개인화 학습, SSE 실시간 이벤트, fallback 상태 조회 API 계약
 - [`ui-flow.md`](ui-flow.md)
-  - 화면 흐름과 분석 상태 기반 사용자 액션
+  - 화면 흐름, 회고 입력, 개인화 학습 상태 기반 사용자 액션
 - [`data-model.md`](data-model.md)
-  - `.camping-data/` 구조와 결과/상태 파일 책임
+  - `.camping-data/` 구조, 회고 원문, AI 학습 캐시, 결과/상태 파일 책임
 - [`directory-structure.md`](directory-structure.md)
   - 저장소와 로컬 데이터 경로 책임
 
 ### 실행 흐름
 
 - [`trip-analysis-workflow.md`](trip-analysis-workflow.md)
-  - 계획 작성부터 백그라운드 분석, 히스토리 아카이브까지의 흐름
+  - 계획 작성부터 백그라운드 분석, 히스토리 회고, 개인화 학습 반영까지의 흐름
 
 ### 범위와 착수
 
@@ -92,7 +92,7 @@
 - `apps/web/` 메뉴형 로컬 UI
 - `apps/api/` 로컬 API
 - `shared/` 공통 타입과 검증 스키마
-- `prompts/` 분석 프롬프트
+- `prompts/` 분석/학습 프롬프트
 - `schemas/` Codex CLI 출력 스키마
 - `scripts/seed-local-data.ts` 시드 스크립트
 - `skills/` 저장소 로컬 Codex skill 패키지

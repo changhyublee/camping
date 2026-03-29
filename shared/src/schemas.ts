@@ -398,6 +398,21 @@ export const tripSummarySchema = z.object({
   companion_count: z.number().int().nonnegative().optional(),
 });
 
+export const retrospectiveEntrySchema = z.object({
+  entry_id: baseIdSchema,
+  created_at: z.string().datetime(),
+  overall_satisfaction: z.number().int().min(1).max(5).optional(),
+  used_durable_item_ids: z.array(z.string().min(1)).default([]),
+  unused_items: z.array(z.string().min(1)).default([]),
+  missing_or_needed_items: z.array(z.string().min(1)).default([]),
+  meal_feedback: z.array(z.string().min(1)).default([]),
+  route_feedback: z.array(z.string().min(1)).default([]),
+  site_feedback: z.array(z.string().min(1)).default([]),
+  issues: z.array(z.string().min(1)).default([]),
+  next_time_requests: z.array(z.string().min(1)).default([]),
+  freeform_note: z.string().min(1).optional(),
+});
+
 export const historyRecordSchema = z.object({
   version: z.number().int().positive(),
   history_id: historyIdSchema,
@@ -420,12 +435,48 @@ export const historyRecordSchema = z.object({
   attendee_count: z.number().int().nonnegative().optional(),
   vehicle_snapshot: vehicleSchema.nullable().optional(),
   notes: z.array(z.string()).default([]),
+  retrospectives: z.array(retrospectiveEntrySchema).default([]),
   archived_at: z.string().min(1),
   output_path: z.string().nullable().optional(),
   trip_snapshot: tripSchema,
 });
 
 export const historyUpdateSchema = historyRecordSchema;
+
+export const retrospectiveEntryInputSchema = retrospectiveEntrySchema.omit({
+  entry_id: true,
+  created_at: true,
+});
+
+export const historyLearningInsightSchema = z.object({
+  history_id: historyIdSchema,
+  updated_at: z.string().datetime(),
+  source_entry_count: z.number().int().nonnegative(),
+  summary: z.string().min(1),
+  behavior_patterns: z.array(z.string().min(1)).default([]),
+  equipment_hints: z.array(z.string().min(1)).default([]),
+  meal_hints: z.array(z.string().min(1)).default([]),
+  route_hints: z.array(z.string().min(1)).default([]),
+  campsite_hints: z.array(z.string().min(1)).default([]),
+  avoidances: z.array(z.string().min(1)).default([]),
+  issues: z.array(z.string().min(1)).default([]),
+  next_time_requests: z.array(z.string().min(1)).default([]),
+  next_trip_focus: z.array(z.string().min(1)).default([]),
+});
+
+export const userLearningProfileSchema = z.object({
+  updated_at: z.string().datetime(),
+  source_history_ids: z.array(historyIdSchema).default([]),
+  source_entry_count: z.number().int().nonnegative(),
+  summary: z.string().min(1),
+  behavior_patterns: z.array(z.string().min(1)).default([]),
+  equipment_hints: z.array(z.string().min(1)).default([]),
+  meal_hints: z.array(z.string().min(1)).default([]),
+  route_hints: z.array(z.string().min(1)).default([]),
+  campsite_hints: z.array(z.string().min(1)).default([]),
+  avoidances: z.array(z.string().min(1)).default([]),
+  next_trip_focus: z.array(z.string().min(1)).default([]),
+});
 
 export const externalLinkSchema = z.object({
   id: externalLinkIdSchema,
@@ -544,6 +595,7 @@ export const cancelAllAiJobsResponseSchema = z.object({
   cancelled_analysis_trip_count: z.number().int().nonnegative(),
   cancelled_analysis_category_count: z.number().int().nonnegative(),
   cancelled_metadata_item_count: z.number().int().nonnegative(),
+  cancelled_user_learning_job_count: z.number().int().nonnegative(),
 });
 
 export const tripAnalysisStatusSchema = z.enum([
@@ -619,6 +671,31 @@ export const durableMetadataJobStatusResponseSchema = z.object({
   error: apiErrorSchema.optional(),
 });
 
+export const userLearningJobStatusResponseSchema = z.object({
+  status: tripAnalysisStatusSchema,
+  trigger_history_id: historyIdSchema.nullable().optional(),
+  source_history_ids: z.array(historyIdSchema).default([]),
+  source_entry_count: z.number().int().nonnegative().default(0),
+  requested_at: z.string().datetime().nullable().optional(),
+  started_at: z.string().datetime().nullable().optional(),
+  finished_at: z.string().datetime().nullable().optional(),
+  error: apiErrorSchema.optional(),
+});
+
+export const getHistoryLearningResponseSchema = z.object({
+  item: historyLearningInsightSchema.nullable(),
+});
+
+export const getUserLearningResponseSchema = z.object({
+  profile: userLearningProfileSchema.nullable(),
+  status: userLearningJobStatusResponseSchema,
+});
+
+export const addHistoryRetrospectiveResponseSchema = z.object({
+  item: historyRecordSchema,
+  learning_status: userLearningJobStatusResponseSchema,
+});
+
 export const listDurableMetadataJobStatusesResponseSchema = z.object({
   items: z.array(durableMetadataJobStatusResponseSchema).default([]),
 });
@@ -649,12 +726,18 @@ export const aiJobDurableMetadataCompletedEventSchema = z.object({
   completed_at: z.string().datetime(),
 });
 
+export const aiJobUserLearningStatusEventSchema = z.object({
+  type: z.literal("user-learning-status"),
+  status: userLearningJobStatusResponseSchema,
+});
+
 export const aiJobEventSchema = z.discriminatedUnion("type", [
   aiJobReadyEventSchema,
   aiJobHeartbeatEventSchema,
   aiJobAnalysisStatusEventSchema,
   aiJobDurableMetadataStatusEventSchema,
   aiJobDurableMetadataCompletedEventSchema,
+  aiJobUserLearningStatusEventSchema,
 ]);
 
 export const validateTripResponseSchema = z.object({

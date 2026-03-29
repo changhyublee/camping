@@ -1,4 +1,5 @@
 import type {
+  AddHistoryRetrospectiveResponse,
   AiJobEvent,
   AnalyzeTripRequest,
   AnalyzeTripResponse,
@@ -17,13 +18,16 @@ import type {
   EquipmentCategoryUpdateInput,
   ExternalLink,
   ExternalLinkInput,
+  GetHistoryLearningResponse,
   GetOutputResponse,
   GetTripAnalysisStatusResponse,
+  GetUserLearningResponse,
   HistoryRecord,
   ListDurableMetadataJobStatusesResponse,
   PlanningAssistantResponse,
   PrecheckItemInput,
   RefreshDurableEquipmentMetadataResponse,
+  RetrospectiveEntryInput,
   SaveOutputRequest,
   SaveOutputResponse,
   TripData,
@@ -219,6 +223,7 @@ export const apiClient = {
       "analysis-status",
       "durable-metadata-status",
       "durable-metadata-completed",
+      "user-learning-status",
     ];
     const eventListeners = eventTypes.map((eventType) => {
       const listener = (messageEvent: MessageEvent<string>) => {
@@ -347,6 +352,18 @@ export const apiClient = {
   async getHistory(): Promise<{ items: HistoryRecord[] }> {
     return request("/api/history");
   },
+  async addHistoryRetrospective(
+    historyId: string,
+    input: RetrospectiveEntryInput,
+  ): Promise<AddHistoryRetrospectiveResponse> {
+    return request(`/api/history/${historyId}/retrospectives`, {
+      method: "POST",
+      body: JSON.stringify(input),
+    });
+  },
+  async getHistoryLearning(historyId: string): Promise<GetHistoryLearningResponse> {
+    return request(`/api/history/${historyId}/learning`);
+  },
   async updateHistory(
     historyId: string,
     input: HistoryRecord,
@@ -360,6 +377,9 @@ export const apiClient = {
     return request(`/api/history/${historyId}`, {
       method: "DELETE",
     });
+  },
+  async getUserLearning(): Promise<GetUserLearningResponse> {
+    return request("/api/user-learning");
   },
   async getLinks(): Promise<{ items: ExternalLink[] }> {
     return request("/api/links");

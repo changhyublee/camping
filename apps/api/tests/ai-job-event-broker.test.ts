@@ -44,6 +44,15 @@ describe("AiJobEventBroker", () => {
       "family-tent",
       "2026-03-24T10:05:00.000Z",
     );
+    broker.publishUserLearningStatus({
+      status: "completed",
+      trigger_history_id: "2026-04-18-gapyeong",
+      source_history_ids: ["2026-04-18-gapyeong"],
+      source_entry_count: 2,
+      requested_at: "2026-03-24T10:00:00.000Z",
+      started_at: "2026-03-24T10:00:01.000Z",
+      finished_at: "2026-03-24T10:05:30.000Z",
+    });
 
     expect(receivedEventTypes).toEqual([
       "ready",
@@ -51,11 +60,12 @@ describe("AiJobEventBroker", () => {
       "analysis-status",
       "durable-metadata-status",
       "durable-metadata-completed",
+      "user-learning-status",
     ]);
 
     unsubscribe();
     broker.publish(broker.createHeartbeatEvent());
-    expect(receivedEventTypes).toHaveLength(5);
+    expect(receivedEventTypes).toHaveLength(6);
   });
 
   it("isolates failing subscribers so job events keep publishing", () => {

@@ -11,6 +11,7 @@ import type {
   TripAnalysisCategory,
   TripAnalysisSection,
   TripAnalysisStatus,
+  UserLearningJobStatusResponse,
 } from "./types";
 
 type DurableStatus = Extract<
@@ -96,6 +97,18 @@ export const TRIP_ANALYSIS_STATUS_LABELS: Record<TripAnalysisStatus, string> = {
   completed: "수집 완료",
   failed: "실패",
   interrupted: "중단",
+};
+
+export const USER_LEARNING_STATUS_LABELS: Record<
+  UserLearningJobStatusResponse["status"],
+  string
+> = {
+  idle: "학습 없음",
+  queued: "학습 대기 중",
+  running: "학습 업데이트 중",
+  completed: "학습 반영 완료",
+  failed: "학습 실패",
+  interrupted: "학습 중단",
 };
 
 export const TRIP_ANALYSIS_CATEGORY_METADATA: Record<

@@ -4,6 +4,8 @@
 
 이 프로젝트는 사용자가 저장한 장비, 동행자, 취향, 캠핑 계획을 바탕으로 이번 캠핑에 필요한 장비와 개인 준비물을 분석하고, 계획이 끝난 뒤에는 히스토리로 아카이브하며, 날씨/장소/맛집 링크까지 한곳에서 관리하는 것을 목표로 합니다.
 
+캠핑이 끝난 뒤에는 히스토리 상세에 후기와 회고를 누적해서 남길 수 있고, AI가 해당 회고를 분석해 `이번 캠핑에서 배운 점` 과 전역 `개인화 학습 프로필` 을 계속 갱신합니다. 이렇게 누적된 학습 결과는 이후 계획 분석과 AI 보조에 자동으로 반영되어, 후기를 많이 남길수록 사용자에게 더 맞는 추천이 나오도록 설계합니다.
+
 초기 구조는 계속 `로컬 우선` 을 유지합니다. 브라우저 UI는 로컬 API를 호출하고, 로컬 API가 `.camping-data/` 의 YAML 데이터와 문서/프롬프트를 조합해 기본적으로 로컬 `codex CLI` 에 분석을 요청합니다. 필요하면 OpenAI Responses API를 fallback 백엔드로 사용할 수 있습니다.
 
 ## 핵심 방향
@@ -18,8 +20,8 @@
 
 - `운영 허브`
   - `대시보드`: 예정 계획, 최근 히스토리, 재고/점검 경고, 외부 링크 현황
-  - `캠핑 계획`: 날짜/장소/동행자/차량/조건 편집, 등록된 사람/차량 선택, AI 보조, 백그라운드 분석 실행, 상태 표시, 결과 자동 저장
-  - `캠핑 히스토리`: 완료된 계획 아카이브, 저장된 결과 Markdown 다시 열기, 당시 동행자/차량 스냅샷과 메모 확인, 히스토리 삭제
+  - `캠핑 계획`: 날짜/장소/동행자/차량/조건 편집, 등록된 사람/차량 선택, AI 보조, 백그라운드 분석 실행, 누적 학습 요약 확인, 상태 표시, 결과 자동 저장
+  - `캠핑 히스토리`: 완료된 계획 아카이브, 저장된 결과 Markdown 다시 열기, 당시 동행자/차량 스냅샷과 메모 확인, 후기/회고 추가, 이번 캠핑 학습 요약과 전역 개인화 학습 확인, 히스토리 삭제
 - `준비 데이터`
   - `사람 관리`: 캠핑 인원 프로필, 건강 특이사항, 복용약, 민감도 관리
   - `차량 관리`: 자주 쓰는 차량, 탑승 인원, 적재량, 메모 관리
@@ -42,6 +44,8 @@
   - equipment CRUD + 반복 장비 메타데이터 백그라운드 수집/재수집 + SSE 실시간 상태 반영
   - equipment category CRUD
   - history 조회/수정/삭제 + trip 아카이브 + 동행자/차량 스냅샷 저장
+  - history 회고 append 저장 + history learning 조회 + user learning 조회
+  - 회고 기반 개인화 학습 백그라운드 갱신 + SSE 실시간 상태 반영
   - links CRUD
   - planning assistant 응답
 - `apps/web/`
@@ -51,6 +55,7 @@
   - 장비 관리
   - 캠핑 계획 편집/분석 + 등록된 사람/차량 선택
   - 히스토리 관리 + 결과 다시 열기 + 당시 동행자/차량 요약 확인
+  - 히스토리 후기/회고 입력, 회고 누적 목록, 캠핑별 학습 요약, 전역 개인화 학습 요약
   - 외부 링크 카테고리 그룹 관리
   - 카테고리 설정 / 보조 설명
 - `shared/`
@@ -60,8 +65,12 @@
 - `prompts/`
   - `system.md`
   - `trip-analysis.md`
+  - `history-retrospective-learning.md`
+  - `user-learning-profile.md`
 - `schemas/`
   - `codex-trip-analysis-output.schema.json`
+  - `codex-history-retrospective-learning-output.schema.json`
+  - `codex-user-learning-profile-output.schema.json`
 - `scripts/seed-local-data.ts`
   - 새 환경에서만 `docs/examples/` 를 `.camping-data/` 로 복사
   - `--replace` 사용 시 현재 `.camping-data/` 를 `.camping-backups/` 에 먼저 백업
@@ -159,6 +168,9 @@ pnpm build
 - 반복 장비는 선택적으로 `purchase_link` 를 저장할 수 있고, 로컬 API의 AI 메타데이터 수집 시 참고 자료로 사용합니다.
 - 반복 장비 메타데이터 상태는 `.camping-data/cache/equipment-metadata/jobs/durable/*.json` 에 저장하고, 실제 수집 결과는 `.camping-data/cache/equipment-metadata/durable/*.json` 에 저장합니다.
 - 반복 장비 메타데이터 수집은 같은 장비 중복 실행을 막고 최대 3건까지 병렬로 실행합니다.
+- 히스토리 회고 원문은 `history/*.yaml` 안의 `retrospectives` 배열에 append-only 로 저장합니다.
+- 캠핑별 학습 결과는 `.camping-data/cache/history-learning/*.json` 에 저장하고, 전역 개인화 학습 프로필은 `.camping-data/cache/user-learning/profile.json` 에 저장합니다.
+- 전역 개인화 학습 작업 상태는 `.camping-data/cache/user-learning/jobs/profile.json` 에 저장하고, 계획 분석/AI 보조는 이 프로필을 자동으로 함께 읽습니다.
 - 브라우저에서 OpenAI API를 직접 호출하지 않습니다.
 - `pnpm seed` 는 새 환경 초기화용 명령이며, 기존 데이터가 있으면 중단됩니다.
 - `pnpm seed -- --replace` 는 기존 `.camping-data/` 를 `.camping-backups/<timestamp>/` 에 백업한 뒤 `docs/examples/` 기준으로 다시 생성합니다.

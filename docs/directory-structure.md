@@ -29,9 +29,9 @@
 - `apps/api/`
   - 로컬 API 서버
 - `prompts/`
-  - 분석 실행에 사용하는 프롬프트 파일
+  - 분석 실행과 회고 기반 학습에 사용하는 프롬프트 파일
 - `schemas/`
-  - Codex CLI 분석 출력 JSON 스키마
+  - Codex CLI 분석/학습 출력 JSON 스키마
 - `scripts/`
   - 시드와 보조 자동화 스크립트
 - `shared/`
@@ -77,8 +77,19 @@
 ├── links.yaml
 └── cache/
     ├── analysis-jobs/
-    └── equipment-metadata/
-        └── durable/
+    ├── analysis-results/
+    ├── equipment-metadata/
+    │   ├── durable/
+    │   └── jobs/
+    │       └── durable/
+    ├── history-learning/
+    ├── user-learning/
+    │   ├── jobs/
+    │   │   └── profile.json
+    │   └── profile.json
+    ├── weather/
+    ├── places/
+    └── campsite-tips/
 ```
 
 ## 6. 경로별 책임
@@ -87,6 +98,10 @@
 - `history/`: 완료된 캠핑 히스토리
 - `outputs/`: 분석 결과 Markdown
 - `cache/analysis-jobs/`: 계획별 백그라운드 분석 상태 JSON
+- `cache/analysis-results/`: 계획별 섹션 누적 결과 JSON
+- `cache/history-learning/`: 히스토리별 AI 회고 분석 결과 JSON
+- `cache/user-learning/profile.json`: 전역 개인화 학습 프로필 JSON
+- `cache/user-learning/jobs/profile.json`: 전역 개인화 학습 작업 상태 JSON
 - `links.yaml`: 사용자 북마크 링크
 - `equipment/categories.yaml`: 장비 섹션별 카테고리 코드와 표시 이름
 - `.camping-backups/<timestamp>/`: 특정 시점의 로컬 운영 데이터 백업 스냅샷

@@ -97,6 +97,7 @@ function createBundle(overrides: Partial<TripBundle["trip"]> = {}): TripBundle {
         },
       ],
     },
+    userLearningProfile: null,
     trip: {
       version: 1,
       trip_id: "2026-04-18-gapyeong",

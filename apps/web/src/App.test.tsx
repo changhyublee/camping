@@ -7,6 +7,7 @@ import {
   TRIP_ANALYSIS_CATEGORY_METADATA,
 } from "@camping/shared";
 import type {
+  AddHistoryRetrospectiveResponse,
   AnalyzeTripResponse,
   Companion,
   ConsumableEquipmentItem,
@@ -16,12 +17,16 @@ import type {
   EquipmentCatalog,
   EquipmentCategoriesData,
   GetOutputResponse,
+  HistoryLearningInsight,
   HistoryRecord,
   PrecheckItem,
   RefreshDurableEquipmentMetadataResponse,
+  RetrospectiveEntryInput,
   TripDraft,
   TripData,
   TripSummary,
+  UserLearningJobStatusResponse,
+  UserLearningProfile,
   ValidateTripResponse,
   Vehicle,
 } from "@camping/shared";
@@ -147,6 +152,9 @@ type MockState = {
   equipment: EquipmentCatalog;
   equipmentCategories: EquipmentCategoriesData;
   history: HistoryRecord[];
+  historyLearning: Record<string, HistoryLearningInsight | null>;
+  userLearningProfile: UserLearningProfile | null;
+  userLearningStatus: UserLearningJobStatusResponse;
   links: Array<{
     id: string;
     category: "weather" | "place" | "food" | "shopping" | "general";
@@ -294,6 +302,21 @@ function readTripAnalysisStatusTripId(pathname: string) {
   return match?.[1] ?? null;
 }
 
+function readHistoryIdFromPath(pathname: string) {
+  const match = pathname.match(/^\/api\/history\/([^/]+)$/u);
+  return match?.[1] ?? null;
+}
+
+function readHistoryLearningIdFromPath(pathname: string) {
+  const match = pathname.match(/^\/api\/history\/([^/]+)\/learning$/u);
+  return match?.[1] ?? null;
+}
+
+function readHistoryRetrospectiveIdFromPath(pathname: string) {
+  const match = pathname.match(/^\/api\/history\/([^/]+)\/retrospectives$/u);
+  return match?.[1] ?? null;
+}
+
 function readEquipmentItemParams(pathname: string) {
   const match = pathname.match(/^\/api\/equipment\/([^/]+)\/items(?:\/([^/]+))?$/u);
 
@@ -358,6 +381,71 @@ function createAnalysisResponse(
     categories,
     completed_category_count: 0,
     total_category_count: ALL_TRIP_ANALYSIS_CATEGORIES.length,
+    ...overrides,
+  };
+}
+
+function createUserLearningStatus(
+  overrides: Partial<UserLearningJobStatusResponse> = {},
+): UserLearningJobStatusResponse {
+  return {
+    status: "idle",
+    trigger_history_id: null,
+    source_history_ids: [],
+    source_entry_count: 0,
+    requested_at: null,
+    started_at: null,
+    finished_at: null,
+    ...overrides,
+  };
+}
+
+function createHistoryRecord(
+  overrides: Partial<HistoryRecord> = {},
+): HistoryRecord {
+  return {
+    version: 1,
+    history_id: "2026-03-08-yangpyeong",
+    source_trip_id: "2026-03-08-yangpyeong",
+    title: "3월 양평 주말 캠핑",
+    date: {
+      start: "2026-03-08",
+      end: "2026-03-09",
+    },
+    location: {
+      region: "yangpyeong",
+    },
+    companion_ids: ["self", "child-1"],
+    companion_snapshots: [state.companions[0], state.companions[1]],
+    attendee_count: 2,
+    vehicle_snapshot: state.vehicles[0],
+    notes: [],
+    retrospectives: [],
+    archived_at: "2026-03-10T09:00:00.000Z",
+    output_path: ".camping-data/outputs/2026-03-08-yangpyeong-plan.md",
+    trip_snapshot: {
+      version: 1,
+      trip_id: "2026-03-08-yangpyeong",
+      title: "3월 양평 주말 캠핑",
+      date: {
+        start: "2026-03-08",
+        end: "2026-03-09",
+      },
+      location: {
+        region: "yangpyeong",
+      },
+      party: {
+        companion_ids: ["self", "child-1"],
+      },
+      vehicle: {
+        id: "family-suv",
+        name: "패밀리 SUV",
+        passenger_capacity: 5,
+        load_capacity_kg: 400,
+        notes: [],
+      },
+      notes: [],
+    },
     ...overrides,
   };
 }
@@ -816,6 +904,104 @@ function mockFetch(input: RequestInfo | URL, init?: RequestInit) {
     return jsonResponse({ items: state.history });
   }
 
+  if (pathname === "/api/user-learning" && method === "GET") {
+    return jsonResponse({
+      profile: state.userLearningProfile,
+      status: state.userLearningStatus,
+    });
+  }
+
+  const historyLearningId = readHistoryLearningIdFromPath(pathname);
+
+  if (historyLearningId && method === "GET") {
+    return jsonResponse({
+      item: state.historyLearning[historyLearningId] ?? null,
+    });
+  }
+
+  const historyRetrospectiveId = readHistoryRetrospectiveIdFromPath(pathname);
+
+  if (historyRetrospectiveId && method === "POST") {
+    const history = state.history.find((item) => item.history_id === historyRetrospectiveId);
+
+    if (!history) {
+      return jsonResponse(
+        {
+          status: "failed",
+          error: {
+            code: "RESOURCE_NOT_FOUND",
+            message: `history 파일을 찾을 수 없습니다: ${historyRetrospectiveId}`,
+          },
+        },
+        404,
+      );
+    }
+
+    const body = parseBody(init) as RetrospectiveEntryInput;
+    const nextHistory = {
+      ...history,
+      retrospectives: [
+        ...history.retrospectives,
+        {
+          entry_id: `retro-${history.retrospectives.length + 1}`,
+          created_at: "2026-03-29T12:00:00.000Z",
+          overall_satisfaction: body.overall_satisfaction,
+          used_durable_item_ids: body.used_durable_item_ids ?? [],
+          unused_items: body.unused_items ?? [],
+          missing_or_needed_items: body.missing_or_needed_items ?? [],
+          meal_feedback: body.meal_feedback ?? [],
+          route_feedback: body.route_feedback ?? [],
+          site_feedback: body.site_feedback ?? [],
+          issues: body.issues ?? [],
+          next_time_requests: body.next_time_requests ?? [],
+          freeform_note: body.freeform_note,
+        },
+      ],
+    } satisfies HistoryRecord;
+
+    state.history = state.history.map((item) =>
+      item.history_id === historyRetrospectiveId ? nextHistory : item,
+    );
+    state.userLearningStatus = {
+      status: "queued",
+      trigger_history_id: historyRetrospectiveId,
+      source_history_ids: state.userLearningProfile?.source_history_ids ?? [],
+      source_entry_count: state.userLearningProfile?.source_entry_count ?? 0,
+      requested_at: "2026-03-29T12:00:00.000Z",
+      started_at: null,
+      finished_at: null,
+    };
+
+    return jsonResponse(
+      {
+        item: nextHistory,
+        learning_status: state.userLearningStatus,
+      } satisfies AddHistoryRetrospectiveResponse,
+      202,
+    );
+  }
+
+  const historyIdFromPath = readHistoryIdFromPath(pathname);
+
+  if (historyIdFromPath && method === "PUT") {
+    const body = parseBody(init) as HistoryRecord;
+    const nextHistory = {
+      ...body,
+      history_id: historyIdFromPath,
+    } satisfies HistoryRecord;
+    state.history = state.history.map((item) =>
+      item.history_id === historyIdFromPath ? nextHistory : item,
+    );
+
+    return jsonResponse({ item: nextHistory });
+  }
+
+  if (historyIdFromPath && method === "DELETE") {
+    state.history = state.history.filter((item) => item.history_id !== historyIdFromPath);
+    delete state.historyLearning[historyIdFromPath];
+    return emptyResponse();
+  }
+
   if (pathname === "/api/links" && method === "GET") {
     return jsonResponse({ items: state.links });
   }
@@ -1151,6 +1337,91 @@ describe("App", () => {
 
     expect(await screen.findByText("실시간으로 갱신됨")).toBeInTheDocument();
     expect(await screen.findByText("분석 완료")).toBeInTheDocument();
+  });
+
+  it("refreshes history learning and user profile from SSE user-learning events", async () => {
+    vi.stubGlobal("EventSource", MockEventSource as unknown as typeof EventSource);
+    state.history = [
+      createHistoryRecord({
+        retrospectives: [
+          {
+            entry_id: "retro-1",
+            created_at: "2026-03-29T12:00:00.000Z",
+            overall_satisfaction: 4,
+            used_durable_item_ids: ["family-tent-4p"],
+            unused_items: [],
+            missing_or_needed_items: ["아이 여벌 옷"],
+            meal_feedback: [],
+            route_feedback: [],
+            site_feedback: [],
+            issues: ["야간 보온 준비 부족"],
+            next_time_requests: ["보온 장비 보강"],
+            freeform_note: "아이와 함께라 저녁 이후에는 보온이 중요했다.",
+          },
+        ],
+      }),
+    ];
+    state.userLearningStatus = createUserLearningStatus({
+      status: "queued",
+      trigger_history_id: "2026-03-08-yangpyeong",
+      requested_at: "2026-03-29T12:00:00.000Z",
+    });
+
+    render(<App />);
+
+    await userEvent.click(await screen.findByRole("button", { name: "캠핑 히스토리" }));
+    MockEventSource.latest().open();
+
+    state.historyLearning["2026-03-08-yangpyeong"] = {
+      history_id: "2026-03-08-yangpyeong",
+      updated_at: "2026-03-29T12:05:00.000Z",
+      source_entry_count: 1,
+      summary: "보온과 차광을 함께 점검해야 하는 패턴이 보였다.",
+      behavior_patterns: ["아이 장비를 여유 있게 챙김"],
+      equipment_hints: ["타프와 방풍 장비를 먼저 확인"],
+      meal_hints: [],
+      route_hints: [],
+      campsite_hints: [],
+      avoidances: [],
+      issues: ["야간 보온 준비 부족"],
+      next_time_requests: ["아이 여벌 옷 추가"],
+      next_trip_focus: ["보온과 차광 장비 우선 확인"],
+    };
+    state.userLearningProfile = {
+      updated_at: "2026-03-29T12:05:00.000Z",
+      source_history_ids: ["2026-03-08-yangpyeong"],
+      source_entry_count: 1,
+      summary: "아이 동반 기준으로 보온, 차광, 이동 여유를 중시하는 패턴이 누적됐다.",
+      behavior_patterns: ["아이 장비를 여유 있게 챙김"],
+      equipment_hints: ["보온 장비와 타프를 먼저 점검"],
+      meal_hints: [],
+      route_hints: [],
+      campsite_hints: [],
+      avoidances: ["강풍 노출 사이트 회피"],
+      next_trip_focus: ["보온과 차광 장비 우선 확인"],
+    };
+
+    MockEventSource.latest().emit("user-learning-status", {
+      type: "user-learning-status",
+      status: createUserLearningStatus({
+        status: "completed",
+        trigger_history_id: "2026-03-08-yangpyeong",
+        source_history_ids: ["2026-03-08-yangpyeong"],
+        source_entry_count: 1,
+        requested_at: "2026-03-29T12:00:00.000Z",
+        started_at: "2026-03-29T12:00:01.000Z",
+        finished_at: "2026-03-29T12:05:00.000Z",
+      }),
+    });
+
+    expect(
+      await screen.findByText("보온과 차광을 함께 점검해야 하는 패턴이 보였다."),
+    ).toBeInTheDocument();
+    expect(
+      screen.getByText(
+        "아이 동반 기준으로 보온, 차광, 이동 여유를 중시하는 패턴이 누적됐다.",
+      ),
+    ).toBeInTheDocument();
   });
 
   it("does not block planning details while saved output is still loading", async () => {
@@ -2666,6 +2937,26 @@ describe("App", () => {
     expect(screen.getByDisplayValue("침낭")).toBeInTheDocument();
   });
 
+  it("appends retrospective entries from history detail and shows queued learning state", async () => {
+    state.history = [createHistoryRecord()];
+
+    render(<App />);
+
+    await userEvent.click(await screen.findByRole("button", { name: "캠핑 히스토리" }));
+    await userEvent.type(
+      screen.getByRole("textbox", { name: "자유 후기" }),
+      "강풍 때문에 방풍 장비가 더 필요했다.",
+    );
+    await userEvent.click(
+      screen.getByRole("button", { name: "후기 저장 후 학습 업데이트" }),
+    );
+
+    expect(await screen.findByText("후기 저장 완료")).toBeInTheDocument();
+    expect(screen.getByText("학습 업데이트 중")).toBeInTheDocument();
+    expect(state.history[0].retrospectives).toHaveLength(1);
+    expect(state.userLearningStatus.status).toBe("queued");
+  });
+
   it("opens archived output markdown from history detail", async () => {
     state.history = [
       {
@@ -2688,6 +2979,7 @@ describe("App", () => {
         attendee_count: 2,
         vehicle_snapshot: state.vehicles[0],
         notes: ["비 예보가 있어 타프를 추가함"],
+        retrospectives: [],
         archived_at: "2026-03-10T09:00:00.000Z",
         output_path: ".camping-data/outputs/2026-03-08-yangpyeong-plan.md",
         trip_snapshot: {
@@ -2755,6 +3047,7 @@ describe("App", () => {
         attendee_count: 2,
         vehicle_snapshot: state.vehicles[0],
         notes: ["비 예보가 있어 타프를 추가함"],
+        retrospectives: [],
         archived_at: "2026-03-10T09:00:00.000Z",
         output_path: ".camping-data/outputs/2026-03-08-yangpyeong-plan.md",
         trip_snapshot: {
@@ -2843,6 +3136,7 @@ describe("App", () => {
         attendee_count: 2,
         vehicle_snapshot: state.vehicles[0],
         notes: [],
+        retrospectives: [],
         archived_at: "2026-03-10T09:00:00.000Z",
         output_path: ".camping-data/outputs/2026-03-08-yangpyeong-plan.md",
         trip_snapshot: {
@@ -2886,6 +3180,7 @@ describe("App", () => {
         attendee_count: 1,
         vehicle_snapshot: state.vehicles[0],
         notes: [],
+        retrospectives: [],
         archived_at: "2026-04-15T09:00:00.000Z",
         output_path: ".camping-data/outputs/2026-04-12-sokcho-plan.md",
         trip_snapshot: {
@@ -3132,6 +3427,9 @@ function createMockState(): MockState {
       ],
     },
     history: [],
+    historyLearning: {},
+    userLearningProfile: null,
+    userLearningStatus: createUserLearningStatus(),
     links: [],
     outputs: {
       [trip.trip_id]: {

@@ -1,0 +1,74 @@
+{
+  "$schema": "https://json-schema.org/draft/2020-12/schema",
+  "type": "object",
+  "additionalProperties": false,
+  "required": [
+    "history_id",
+    "updated_at",
+    "source_entry_count",
+    "summary",
+    "behavior_patterns",
+    "equipment_hints",
+    "meal_hints",
+    "route_hints",
+    "campsite_hints",
+    "avoidances",
+    "issues",
+    "next_time_requests",
+    "next_trip_focus"
+  ],
+  "properties": {
+    "history_id": {
+      "type": "string",
+      "minLength": 1
+    },
+    "updated_at": {
+      "type": "string",
+      "minLength": 1
+    },
+    "source_entry_count": {
+      "type": "integer",
+      "minimum": 0
+    },
+    "summary": {
+      "type": "string",
+      "minLength": 1
+    },
+    "behavior_patterns": {
+      "type": "array",
+      "items": { "type": "string", "minLength": 1 }
+    },
+    "equipment_hints": {
+      "type": "array",
+      "items": { "type": "string", "minLength": 1 }
+    },
+    "meal_hints": {
+      "type": "array",
+      "items": { "type": "string", "minLength": 1 }
+    },
+    "route_hints": {
+      "type": "array",
+      "items": { "type": "string", "minLength": 1 }
+    },
+    "campsite_hints": {
+      "type": "array",
+      "items": { "type": "string", "minLength": 1 }
+    },
+    "avoidances": {
+      "type": "array",
+      "items": { "type": "string", "minLength": 1 }
+    },
+    "issues": {
+      "type": "array",
+      "items": { "type": "string", "minLength": 1 }
+    },
+    "next_time_requests": {
+      "type": "array",
+      "items": { "type": "string", "minLength": 1 }
+    },
+    "next_trip_focus": {
+      "type": "array",
+      "items": { "type": "string", "minLength": 1 }
+    }
+  }
+}

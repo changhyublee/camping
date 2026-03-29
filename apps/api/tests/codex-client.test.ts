@@ -58,6 +58,7 @@ function createCampsiteTipTestBundle(): TripBundle {
       version: 1,
       items: [],
     },
+    userLearningProfile: null,
     trip: {
       version: 1,
       trip_id: "2026-04-18-gapyeong",

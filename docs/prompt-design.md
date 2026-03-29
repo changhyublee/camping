@@ -69,8 +69,10 @@ AI 응답은 단순한 요약기가 아니라 캠핑 준비 플래너 역할을 
 
 1. System Prompt
 2. Analysis Rules
-3. Input Data Bundle
-4. Output Format Rules
+3. History Retrospective Learning Rules
+4. User Learning Profile Rules
+5. Input Data Bundle
+6. Output Format Rules
 
 ## 4. 현재 시스템 프롬프트 기준
 
@@ -188,6 +190,7 @@ AI 응답은 단순한 요약기가 아니라 캠핑 준비 플래너 역할을 
 - `equipment/*.yaml`
 - `preferences/*.yaml`
 - `links.yaml`
+- `cache/user-learning/profile.json`
 
 ### 캠핑 요청 데이터
 
@@ -206,6 +209,7 @@ AI 응답은 단순한 요약기가 아니라 캠핑 준비 플래너 역할을 
 - 날씨 캐시
 - 장소 캐시
 - 캠핑장 후기 tip 캐시
+- 히스토리별 학습 캐시
 
 ## 7. 출력 형식 규칙
 
@@ -242,7 +246,7 @@ AI 응답은 단순한 요약기가 아니라 캠핑 준비 플래너 역할을 
 
 ## 9. 프롬프트 로딩 전략
 
-현재 구현은 프롬프트를 2개 파일로 나눈다.
+현재 구현은 프롬프트를 4개 파일로 나눈다.
 
 ### `prompts/system.md`
 
@@ -260,6 +264,21 @@ AI 응답은 단순한 요약기가 아니라 캠핑 준비 플래너 역할을 
 - 출력 포맷 지시
 - 누락 정보 처리 규칙
 
+### `prompts/history-retrospective-learning.md`
+
+역할:
+
+- 단일 히스토리 회고 분석 지시
+- 캠핑별 학습 JSON 출력 규칙
+- 회고 원문과 당시 결과 Markdown을 바탕으로 배운 점 정리
+
+### `prompts/user-learning-profile.md`
+
+역할:
+
+- 여러 히스토리 학습 결과를 합산한 전역 개인화 학습 프로필 지시
+- 이후 계획 분석과 AI 보조에서 재사용할 요약 JSON 출력 규칙
+
 추후 아래를 추가할 수 있다.
 
 - `prompts/retry-refinement.md`
@@ -269,15 +288,17 @@ AI 응답은 단순한 요약기가 아니라 캠핑 준비 플래너 역할을 
 로컬 API는 아래 순서로 프롬프트를 조합하는 것을 권장한다.
 
 1. 시스템 프롬프트 로드
-2. trip 분석 프롬프트 로드
+2. 목적에 맞는 프롬프트 로드
 3. 관련 문서 규칙 요약 결합
-4. 사용자 데이터와 trip 데이터 직렬화
+4. 사용자 데이터와 trip 또는 history 데이터를 직렬화
 5. 저장 여부, 재분석 지시, 특정 강조 조건을 추가
 
 원칙:
 
 - 프롬프트 파일을 코드에 하드코딩하지 않는다
 - 프롬프트 수정만으로 분석 방향을 보정할 수 있어야 한다
+- 전역 개인화 학습 프로필이 있으면 계획 분석과 AI 보조 입력에 항상 포함한다
+- 히스토리 회고 학습은 원문 전체를 매번 다시 합성하기보다 `history-learning/*.json` 요약본을 재사용해 전역 프로필 크기를 제어한다
 
 ## 11. 예시 요청 문맥
 

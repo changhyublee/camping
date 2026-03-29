@@ -6,16 +6,19 @@ import { afterEach, describe, expect, it } from "vitest";
 import { parse, stringify } from "yaml";
 import type {
   BackendHealth,
+  HistoryLearningInsight,
   DurableMetadataJobStatusResponse,
   CampsiteTipsResearch,
   DurableEquipmentMetadata,
   TripBundle,
+  UserLearningProfile,
 } from "@camping/shared";
 import { buildAiJobEventStreamHeaders } from "../src/routes/api-routes";
 import { buildServer } from "../src/server";
 import type { CampsiteTipSearchClient } from "../src/services/campsite-tip-service";
 import type { EquipmentMetadataSearchClient } from "../src/services/equipment-metadata-service";
 import type { AnalysisModelClient } from "../src/services/openai-client";
+import type { UserLearningClient } from "../src/services/user-learning-service";
 
 const __dirname = path.dirname(fileURLToPath(import.meta.url));
 const projectRoot = path.resolve(__dirname, "../../..");
@@ -344,6 +347,137 @@ class MockCampsiteTipClient implements CampsiteTipSearchClient {
   }
 }
 
+class MockUserLearningClient implements UserLearningClient {
+  public retrospectiveCalls: string[] = [];
+  public profileCalls = 0;
+
+  async analyzeHistoryRetrospective(input: {
+    history: { history_id: string; retrospectives: unknown[] };
+    outputMarkdown: string | null;
+    promptTemplate: string;
+    signal?: AbortSignal;
+  }): Promise<HistoryLearningInsight> {
+    this.retrospectiveCalls.push(input.history.history_id);
+
+    return {
+      history_id: input.history.history_id,
+      updated_at: "2026-03-29T10:00:00.000Z",
+      source_entry_count: input.history.retrospectives.length,
+      summary: "실제 회고를 반영해 다음 준비 힌트를 정리함.",
+      behavior_patterns: ["아이 장비를 여유 있게 챙기는 편"],
+      equipment_hints: ["타프와 방풍 장비를 우선 점검"],
+      meal_hints: ["따뜻한 국물 메뉴 선호"],
+      route_hints: ["정체 구간을 피하려고 이른 출발 선호"],
+      campsite_hints: ["그늘과 화장실 접근성을 중요하게 봄"],
+      avoidances: ["강풍 노출 사이트 회피"],
+      issues: ["야간 보온 준비가 부족했음"],
+      next_time_requests: ["아이 여벌 옷 추가"],
+      next_trip_focus: ["보온과 차광을 함께 준비"],
+    };
+  }
+
+  async synthesizeUserLearningProfile(input: {
+    insights: HistoryLearningInsight[];
+    promptTemplate: string;
+    signal?: AbortSignal;
+  }): Promise<UserLearningProfile> {
+    this.profileCalls += 1;
+
+    return {
+      updated_at: "2026-03-29T10:05:00.000Z",
+      source_history_ids: input.insights.map((insight) => insight.history_id),
+      source_entry_count: input.insights.reduce(
+        (total, insight) => total + insight.source_entry_count,
+        0,
+      ),
+      summary: "아이 동반 기준으로 보온, 차광, 동선 여유를 중시하는 사용자 패턴이 누적됨.",
+      behavior_patterns: ["아이 동반 장비를 여유 있게 챙김"],
+      equipment_hints: ["보온 장비와 타프를 먼저 점검"],
+      meal_hints: ["간단하지만 따뜻한 메뉴 선호"],
+      route_hints: ["정체 전 출발과 짧은 휴게소 정차 선호"],
+      campsite_hints: ["아이 편의시설과 그늘을 우선 확인"],
+      avoidances: ["강풍 노출 사이트 회피"],
+      next_trip_focus: ["보온과 차광 장비 우선 확인"],
+    };
+  }
+}
+
+class DeferredUserLearningClient implements UserLearningClient {
+  public retrospectiveCalls: string[] = [];
+  public profileCalls = 0;
+  public aborts = 0;
+  private retrospectiveResolvers: Array<(value: HistoryLearningInsight) => void> = [];
+  private profileResolvers: Array<(value: UserLearningProfile) => void> = [];
+
+  async analyzeHistoryRetrospective(input: {
+    history: { history_id: string; retrospectives: unknown[] };
+    outputMarkdown: string | null;
+    promptTemplate: string;
+    signal?: AbortSignal;
+  }): Promise<HistoryLearningInsight> {
+    this.retrospectiveCalls.push(input.history.history_id);
+
+    if (input.signal?.aborted) {
+      this.aborts += 1;
+      throw createAbortError();
+    }
+
+    return new Promise<HistoryLearningInsight>((resolve, reject) => {
+      this.retrospectiveResolvers.push(resolve);
+      input.signal?.addEventListener(
+        "abort",
+        () => {
+          this.aborts += 1;
+          reject(createAbortError());
+        },
+        { once: true },
+      );
+    });
+  }
+
+  async synthesizeUserLearningProfile(): Promise<UserLearningProfile> {
+    this.profileCalls += 1;
+
+    return new Promise<UserLearningProfile>((resolve) => {
+      this.profileResolvers.push(resolve);
+    });
+  }
+
+  completeRetrospective(historyId: string, sourceEntryCount: number) {
+    this.retrospectiveResolvers.shift()?.({
+      history_id: historyId,
+      updated_at: "2026-03-29T10:00:00.000Z",
+      source_entry_count: sourceEntryCount,
+      summary: "실제 회고를 반영해 다음 준비 힌트를 정리함.",
+      behavior_patterns: ["아이 장비를 여유 있게 챙기는 편"],
+      equipment_hints: ["타프와 방풍 장비를 우선 점검"],
+      meal_hints: ["따뜻한 국물 메뉴 선호"],
+      route_hints: ["정체 구간을 피하려고 이른 출발 선호"],
+      campsite_hints: ["그늘과 화장실 접근성을 중요하게 봄"],
+      avoidances: ["강풍 노출 사이트 회피"],
+      issues: ["야간 보온 준비가 부족했음"],
+      next_time_requests: ["아이 여벌 옷 추가"],
+      next_trip_focus: ["보온과 차광을 함께 준비"],
+    });
+  }
+
+  completeProfile(historyIds: string[], sourceEntryCount: number) {
+    this.profileResolvers.shift()?.({
+      updated_at: "2026-03-29T10:05:00.000Z",
+      source_history_ids: historyIds,
+      source_entry_count: sourceEntryCount,
+      summary: "아이 동반 기준으로 보온, 차광, 동선 여유를 중시하는 사용자 패턴이 누적됨.",
+      behavior_patterns: ["아이 동반 장비를 여유 있게 챙김"],
+      equipment_hints: ["보온 장비와 타프를 먼저 점검"],
+      meal_hints: ["간단하지만 따뜻한 메뉴 선호"],
+      route_hints: ["정체 전 출발과 짧은 휴게소 정차 선호"],
+      campsite_hints: ["아이 편의시설과 그늘을 우선 확인"],
+      avoidances: ["강풍 노출 사이트 회피"],
+      next_trip_focus: ["보온과 차광 장비 우선 확인"],
+    });
+  }
+}
+
 function createAbortError() {
   const error = new Error("사용자 요청으로 AI 작업이 중단되었습니다.");
   error.name = "AbortError";
@@ -427,6 +561,27 @@ async function waitForDurableMetadataJobStatuses(
   }
 
   throw new Error("Timed out waiting for metadata statuses");
+}
+
+async function waitForUserLearningStatus(
+  app: Awaited<ReturnType<typeof buildServer>>,
+  expectedStatus: string,
+) {
+  for (let attempt = 0; attempt < 60; attempt += 1) {
+    const response = await app.inject({
+      method: "GET",
+      url: "/api/user-learning",
+    });
+    const body = response.json();
+
+    if (body.status?.status === expectedStatus) {
+      return body;
+    }
+
+    await new Promise((resolve) => setTimeout(resolve, 10));
+  }
+
+  throw new Error(`Timed out waiting for user learning status: ${expectedStatus}`);
 }
 
 function createDurableMetadataPayload(itemId: string): DurableEquipmentMetadata {
@@ -1270,6 +1425,7 @@ describe("API server", () => {
       cancelled_analysis_trip_count: 1,
       cancelled_analysis_category_count: 2,
       cancelled_metadata_item_count: 1,
+      cancelled_user_learning_job_count: 0,
     });
 
     const cancelledStatus = await waitForTripAnalysisStatus(
@@ -1643,6 +1799,185 @@ describe("API server", () => {
     });
 
     expect(tripResponse.statusCode).toBe(404);
+
+    await app.close();
+  });
+
+  it("stores retrospective entries and rebuilds user learning", async () => {
+    const dataDir = await createSeededDataDir();
+    const userLearningClient = new MockUserLearningClient();
+    const app = await buildServer({
+      dataDir,
+      projectRoot,
+      modelClient: new MockAnalysisClient("# sample"),
+      userLearningClient,
+    });
+
+    await app.inject({
+      method: "POST",
+      url: "/api/trips/2026-04-18-gapyeong/archive",
+    });
+
+    const addResponse = await app.inject({
+      method: "POST",
+      url: "/api/history/2026-04-18-gapyeong/retrospectives",
+      payload: {
+        overall_satisfaction: 4,
+        used_durable_item_ids: ["family-tent-4p"],
+        missing_or_needed_items: ["아이 여벌 옷"],
+        issues: ["야간 보온 준비 부족"],
+        next_time_requests: ["보온 장비 보강"],
+        freeform_note: "아이와 함께라 저녁 이후에는 보온과 동선 여유가 중요했다.",
+      },
+    });
+
+    expect(addResponse.statusCode).toBe(202);
+    expect(addResponse.json()).toEqual(
+      expect.objectContaining({
+        item: expect.objectContaining({
+          history_id: "2026-04-18-gapyeong",
+          retrospectives: expect.arrayContaining([
+            expect.objectContaining({
+              overall_satisfaction: 4,
+              missing_or_needed_items: ["아이 여벌 옷"],
+            }),
+          ]),
+        }),
+        learning_status: expect.objectContaining({
+          status: "queued",
+          trigger_history_id: "2026-04-18-gapyeong",
+        }),
+      }),
+    );
+
+    const learningResponse = await waitForUserLearningStatus(app, "completed");
+    expect(learningResponse.profile).toEqual(
+      expect.objectContaining({
+        source_history_ids: ["2026-04-18-gapyeong"],
+        source_entry_count: 1,
+      }),
+    );
+
+    const historyLearningResponse = await app.inject({
+      method: "GET",
+      url: "/api/history/2026-04-18-gapyeong/learning",
+    });
+
+    expect(historyLearningResponse.statusCode).toBe(200);
+    expect(historyLearningResponse.json().item).toEqual(
+      expect.objectContaining({
+        history_id: "2026-04-18-gapyeong",
+        source_entry_count: 1,
+      }),
+    );
+    expect(userLearningClient.retrospectiveCalls).toEqual(["2026-04-18-gapyeong"]);
+    expect(userLearningClient.profileCalls).toBe(1);
+
+    await app.close();
+  });
+
+  it("ignores retrospective changes in general history updates", async () => {
+    const dataDir = await createSeededDataDir();
+    const userLearningClient = new MockUserLearningClient();
+    const app = await buildServer({
+      dataDir,
+      projectRoot,
+      modelClient: new MockAnalysisClient("# sample"),
+      userLearningClient,
+    });
+
+    await app.inject({
+      method: "POST",
+      url: "/api/trips/2026-04-18-gapyeong/archive",
+    });
+
+    await app.inject({
+      method: "POST",
+      url: "/api/history/2026-04-18-gapyeong/retrospectives",
+      payload: {
+        freeform_note: "첫 회고 엔트리",
+      },
+    });
+
+    await waitForUserLearningStatus(app, "completed");
+
+    const currentHistoryResponse = await app.inject({
+      method: "GET",
+      url: "/api/history/2026-04-18-gapyeong",
+    });
+    const currentHistory = currentHistoryResponse.json().item;
+
+    const updateResponse = await app.inject({
+      method: "PUT",
+      url: "/api/history/2026-04-18-gapyeong",
+      payload: {
+        ...currentHistory,
+        notes: [...currentHistory.notes, "메모만 수정"],
+        retrospectives: [],
+      },
+    });
+
+    expect(updateResponse.statusCode).toBe(200);
+    expect(updateResponse.json().item).toEqual(
+      expect.objectContaining({
+        notes: expect.arrayContaining(["메모만 수정"]),
+        retrospectives: expect.arrayContaining([
+          expect.objectContaining({
+            freeform_note: "첫 회고 엔트리",
+          }),
+        ]),
+      }),
+    );
+    expect(userLearningClient.profileCalls).toBe(1);
+
+    await app.close();
+  });
+
+  it("includes running user learning jobs in cancel-all", async () => {
+    const dataDir = await createSeededDataDir();
+    const userLearningClient = new DeferredUserLearningClient();
+    const app = await buildServer({
+      dataDir,
+      projectRoot,
+      modelClient: new MockAnalysisClient("# sample"),
+      userLearningClient,
+    });
+
+    await app.inject({
+      method: "POST",
+      url: "/api/trips/2026-04-18-gapyeong/archive",
+    });
+
+    const addResponse = await app.inject({
+      method: "POST",
+      url: "/api/history/2026-04-18-gapyeong/retrospectives",
+      payload: {
+        freeform_note: "바람이 강해서 타프와 방풍 장비가 더 필요했다.",
+      },
+    });
+
+    expect(addResponse.statusCode).toBe(202);
+    await waitForUserLearningStatus(app, "running");
+
+    const cancelResponse = await app.inject({
+      method: "POST",
+      url: "/api/ai-jobs/cancel-all",
+    });
+
+    expect(cancelResponse.statusCode).toBe(200);
+    expect(cancelResponse.json()).toEqual(
+      expect.objectContaining({
+        cancelled_user_learning_job_count: 1,
+      }),
+    );
+
+    const interruptedResponse = await waitForUserLearningStatus(app, "interrupted");
+    expect(interruptedResponse.status.error).toEqual(
+      expect.objectContaining({
+        code: "INTERNAL_ERROR",
+      }),
+    );
+    expect(userLearningClient.aborts).toBe(1);
 
     await app.close();
   });

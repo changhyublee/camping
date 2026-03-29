@@ -5,8 +5,10 @@ import type {
   AiJobEvent,
   AiJobHeartbeatEvent,
   AiJobReadyEvent,
+  AiJobUserLearningStatusEvent,
   AnalyzeTripResponse,
   DurableMetadataJobStatusResponse,
+  UserLearningJobStatusResponse,
 } from "@camping/shared";
 
 type AiJobEventListener = (event: AiJobEvent) => void;
@@ -86,6 +88,18 @@ export class AiJobEventBroker {
       item_id: itemId,
       completed_at: completedAt,
     } satisfies AiJobDurableMetadataCompletedEvent;
+
+    this.publish(event);
+    return event;
+  }
+
+  publishUserLearningStatus(
+    status: UserLearningJobStatusResponse,
+  ): AiJobUserLearningStatusEvent {
+    const event = {
+      type: "user-learning-status",
+      status,
+    } satisfies AiJobUserLearningStatusEvent;
 
     this.publish(event);
     return event;

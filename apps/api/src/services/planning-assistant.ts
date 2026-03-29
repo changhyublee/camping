@@ -213,6 +213,7 @@ function buildPlanningPrompt(
       ? actions.map((action) => `- ${action.title}: ${action.reason}`).join("\n")
       : "- 현재 자동 제안 액션 없음";
   const equipmentLines = buildEquipmentMetadataLines(bundle);
+  const learningLines = buildUserLearningLines(bundle);
 
   return [
     "## 사용자 메시지",
@@ -230,6 +231,9 @@ function buildPlanningPrompt(
     "",
     "## 자동 제안 액션",
     actionLines,
+    "",
+    "## 누적 사용자 학습",
+    learningLines,
     "",
     "## 장비 메타데이터 요약",
     equipmentLines,
@@ -318,6 +322,32 @@ function buildEquipmentMetadataLines(bundle: TripBundle) {
       }`;
     })
     .join("\n");
+}
+
+function buildUserLearningLines(bundle: TripBundle) {
+  if (!bundle.userLearningProfile) {
+    return "- 아직 누적 회고 학습 프로필 없음";
+  }
+
+  const profile = bundle.userLearningProfile;
+  const lines = [
+    `- 학습 요약: ${profile.summary}`,
+    `- 반영 기록 수: 히스토리 ${profile.source_history_ids.length}건 / 회고 ${profile.source_entry_count}건`,
+  ];
+
+  if (profile.behavior_patterns[0]) {
+    lines.push(`- 행동 패턴: ${profile.behavior_patterns.slice(0, 3).join(" / ")}`);
+  }
+
+  if (profile.equipment_hints[0]) {
+    lines.push(`- 장비 힌트: ${profile.equipment_hints.slice(0, 3).join(" / ")}`);
+  }
+
+  if (profile.next_trip_focus[0]) {
+    lines.push(`- 다음 계획 포커스: ${profile.next_trip_focus.slice(0, 3).join(" / ")}`);
+  }
+
+  return lines.join("\n");
 }
 
 function formatVehicleLine(bundle: TripBundle) {

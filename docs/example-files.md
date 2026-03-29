@@ -30,7 +30,8 @@
 3. 기존 `.camping-data/` 가 이미 있으면 `pnpm seed` 는 중단되며, 예시 데이터로 다시 채우려면 `pnpm seed -- --replace` 를 사용한다
 4. 복사 후 `cache/weather`, `cache/places`, `cache/campsite-tips` 디렉토리도 함께 만든다
 5. `cache/analysis-jobs/` 는 예시 복사 대상이 아니라 실제 분석 실행 중에 생성되는 런타임 상태 경로다
-6. UI에서 계획, 장비, 히스토리, 링크를 함께 확인한다
+6. `cache/history-learning/`, `cache/user-learning/` 도 예시 복사 대상이 아니라 회고 저장 후 런타임에 생성되는 경로다
+7. UI에서 계획, 장비, 히스토리, 링크를 함께 확인한다
 
 ## 4. 파일별 설명
 
@@ -40,10 +41,12 @@
 - `equipment/categories.yaml`: 장비 섹션별 카테고리 코드와 표시 이름
 - `trips/*.yaml`: 앞으로 갈 계획
 - `cache/campsite-tips/*.json`: 같은 캠핑장 후기 블로그에서 뽑은 이용 tip 예시
-- `history/*.yaml`: 완료된 캠핑 기록과 당시 사람/차량 스냅샷
+- `history/*.yaml`: 완료된 캠핑 기록, 당시 사람/차량 스냅샷, 회고 원문
 - `links.yaml`: 참고용 외부 링크 북마크
 - `outputs/*.md`: 분석 결과 형식 예시
 - `cache/analysis-jobs/*.json`: 예시 파일로 제공하지 않고 실제 분석 실행 중에 생성되는 상태 캐시
+- `cache/history-learning/*.json`: 예시 파일로 제공하지 않고 회고 저장 후 생성되는 캠핑별 학습 캐시
+- `cache/user-learning/*.json`: 예시 파일로 제공하지 않고 전체 회고 합성 후 생성되는 전역 개인화 학습 캐시
 
 출력 예시 해석 원칙:
 

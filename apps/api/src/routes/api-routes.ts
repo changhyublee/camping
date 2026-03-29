@@ -1,5 +1,6 @@
 import type { FastifyInstance } from "fastify";
 import {
+  addHistoryRetrospectiveResponseSchema,
   analyzeTripRequestSchema,
   companionIdSchema,
   companionInputSchema,
@@ -10,9 +11,12 @@ import {
   equipmentCategoryUpdateInputSchema,
   equipmentSectionSchema,
   externalLinkInputSchema,
+  getHistoryLearningResponseSchema,
+  getUserLearningResponseSchema,
   historyRecordSchema,
   planningAssistantRequestSchema,
   precheckItemInputSchema,
+  retrospectiveEntryInputSchema,
   saveOutputRequestSchema,
   tripDraftSchema,
   tripIdSchema,
@@ -629,6 +633,31 @@ export async function registerApiRoutes(
     };
   });
 
+  app.post("/api/history/:historyId/retrospectives", async (request, reply) => {
+    const historyId = readIdParam(
+      (request.params as { historyId?: unknown }).historyId,
+      "history_id",
+    );
+    const body = parseBodyOrThrow(
+      "history 회고 추가 요청",
+      retrospectiveEntryInputSchema,
+      request.body,
+    );
+
+    return reply
+      .status(202)
+      .send(await analysisService.addHistoryRetrospective(historyId, body));
+  });
+
+  app.get("/api/history/:historyId/learning", async (request) => {
+    const historyId = readIdParam(
+      (request.params as { historyId?: unknown }).historyId,
+      "history_id",
+    );
+
+    return analysisService.getHistoryLearning(historyId);
+  });
+
   app.put("/api/history/:historyId", async (request) => {
     const historyId = readIdParam(
       (request.params as { historyId?: unknown }).historyId,
@@ -649,6 +678,10 @@ export async function registerApiRoutes(
     );
 
     return analysisService.deleteHistory(historyId);
+  });
+
+  app.get("/api/user-learning", async () => {
+    return analysisService.getUserLearning();
   });
 
   app.get("/api/links", async () => ({

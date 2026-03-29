@@ -24,7 +24,9 @@ import {
   getHistoryFilename,
   getTripOutputFilename,
   getTripOutputRelativePath,
+  historyLearningInsightSchema,
   humanizeEquipmentCategoryId,
+  retrospectiveEntryInputSchema,
   EQUIPMENT_CATEGORY_CODE_REQUIRED_MESSAGE,
   TRIP_ANALYSIS_CATEGORY_METADATA,
   historyRecordSchema,
@@ -35,6 +37,8 @@ import {
   toTripSummary,
   travelPreferencesSchema,
   tripSchema,
+  userLearningJobStatusResponseSchema,
+  userLearningProfileSchema,
   vehicleSchema,
   vehiclesSchema,
   type ConsumableEquipmentData,
@@ -61,9 +65,11 @@ import {
   type GetTripAnalysisStatusResponse,
   type GetOutputResponse,
   type HistoryRecord,
+  type HistoryLearningInsight,
   type PrecheckData,
   type PrecheckItem,
   type PrecheckItemInput,
+  type RetrospectiveEntryInput,
   type TripBundle,
   type TripAnalysisCategoryResult,
   type TripAnalysisCategoryStatusResponse,
@@ -76,6 +82,8 @@ import {
   type Vehicle,
   type VehicleInput,
   type VehiclesData,
+  type UserLearningJobStatusResponse,
+  type UserLearningProfile,
 } from "@camping/shared";
 import { parse, stringify } from "yaml";
 import type { AppConfig } from "../config";
@@ -303,9 +311,170 @@ export class CampingRepository {
     return nextHistory;
   }
 
+  async appendHistoryRetrospective(
+    historyId: string,
+    input: RetrospectiveEntryInput,
+  ): Promise<HistoryRecord> {
+    const history = await this.readHistory(historyId);
+    const retrospectiveInput = retrospectiveEntryInputSchema.parse(input);
+    const nextHistory = historyRecordSchema.parse({
+      ...history,
+      retrospectives: [
+        ...history.retrospectives,
+        {
+          ...retrospectiveInput,
+          entry_id: `retro-${Date.now()}-${history.retrospectives.length + 1}`,
+          created_at: new Date().toISOString(),
+        },
+      ],
+    });
+
+    await this.writeYamlFile(this.getHistoryFilePath(historyId), nextHistory);
+    return nextHistory;
+  }
+
   async deleteHistory(historyId: string): Promise<void> {
     await this.readHistory(historyId);
     await rm(this.getHistoryFilePath(historyId), { force: true });
+    await this.deleteHistoryLearningInsight(historyId);
+  }
+
+  async readHistoryLearningInsight(
+    historyId: string,
+  ): Promise<HistoryLearningInsight | null> {
+    const insightPath = this.getHistoryLearningInsightPath(historyId);
+
+    if (!(await fileExists(insightPath))) {
+      return null;
+    }
+
+    return this.readJsonFile(
+      insightPath,
+      historyLearningInsightSchema,
+      "TRIP_INVALID",
+      `history 학습 결과 형식이 올바르지 않습니다: ${historyId}`,
+    ).catch(() => null);
+  }
+
+  async listHistoryLearningInsights(): Promise<HistoryLearningInsight[]> {
+    const files = await this.listJsonFiles(this.getHistoryLearningDir());
+    const items = await Promise.all(
+      files.map(async (fileName) => {
+        const historyId = fileName.replace(/\.json$/u, "");
+        return this.readHistoryLearningInsight(historyId);
+      }),
+    );
+
+    return items.filter(
+      (item): item is HistoryLearningInsight => item !== null,
+    );
+  }
+
+  async saveHistoryLearningInsight(
+    insight: HistoryLearningInsight,
+  ): Promise<HistoryLearningInsight> {
+    await this.writeJsonFile(
+      this.getHistoryLearningInsightPath(insight.history_id),
+      insight,
+    );
+    return insight;
+  }
+
+  async deleteHistoryLearningInsight(historyId: string): Promise<void> {
+    await rm(this.getHistoryLearningInsightPath(historyId), { force: true });
+  }
+
+  async readUserLearningProfile(): Promise<UserLearningProfile | null> {
+    const profilePath = this.getUserLearningProfilePath();
+
+    if (!(await fileExists(profilePath))) {
+      return null;
+    }
+
+    return this.readJsonFile(
+      profilePath,
+      userLearningProfileSchema,
+      "TRIP_INVALID",
+      "사용자 학습 프로필 형식이 올바르지 않습니다.",
+    ).catch(() => null);
+  }
+
+  async saveUserLearningProfile(
+    profile: UserLearningProfile,
+  ): Promise<UserLearningProfile> {
+    await this.writeJsonFile(this.getUserLearningProfilePath(), profile);
+    return profile;
+  }
+
+  async deleteUserLearningProfile(): Promise<void> {
+    await rm(this.getUserLearningProfilePath(), { force: true });
+  }
+
+  async readUserLearningJobStatus(): Promise<UserLearningJobStatusResponse | null> {
+    const statusPath = this.getUserLearningJobStatusPath();
+
+    if (!(await fileExists(statusPath))) {
+      return null;
+    }
+
+    return this.readJsonFile(
+      statusPath,
+      userLearningJobStatusResponseSchema,
+      "TRIP_INVALID",
+      "사용자 학습 상태 파일 형식이 올바르지 않습니다.",
+    ).catch(() => null);
+  }
+
+  async createIdleUserLearningJobStatus(): Promise<UserLearningJobStatusResponse> {
+    return {
+      status: "idle",
+      trigger_history_id: null,
+      source_history_ids: [],
+      source_entry_count: 0,
+      requested_at: null,
+      started_at: null,
+      finished_at: null,
+    };
+  }
+
+  async saveUserLearningJobStatus(
+    value: UserLearningJobStatusResponse,
+  ): Promise<UserLearningJobStatusResponse> {
+    const normalized = userLearningJobStatusResponseSchema.parse(value);
+    await this.writeJsonFile(this.getUserLearningJobStatusPath(), normalized);
+    return normalized;
+  }
+
+  async markPendingUserLearningJobStatusInterrupted(): Promise<void> {
+    const currentStatus = await this.readUserLearningJobStatus();
+
+    if (!currentStatus || !isPendingTripAnalysisStatus(currentStatus.status)) {
+      return;
+    }
+
+    await this.saveUserLearningJobStatus({
+      ...currentStatus,
+      status: "interrupted",
+      finished_at: new Date().toISOString(),
+      error: {
+        code: "INTERNAL_ERROR",
+        message: "API 서버 재시작으로 이전 개인화 학습이 중단되었습니다.",
+      },
+    });
+  }
+
+  async loadHistoryOutputMarkdown(history: HistoryRecord): Promise<string | null> {
+    const outputPath = this.getTripOutputPath(history.source_trip_id);
+
+    if (!(await fileExists(outputPath))) {
+      return null;
+    }
+
+    try {
+      return await readFile(outputPath, "utf8");
+    } catch {
+      return null;
+    }
   }
 
   async readCompanions(): Promise<CompanionsData> {
@@ -847,6 +1016,7 @@ export class CampingRepository {
       travelPreferences,
       foodPreferences,
       links,
+      userLearningProfile,
       caches,
     ] = await Promise.all([
       this.readYamlFile(
@@ -879,6 +1049,7 @@ export class CampingRepository {
         "preferences/food.yaml 형식이 올바르지 않습니다.",
       ),
       this.readLinks(),
+      this.readUserLearningProfile(),
       this.loadRelevantCaches(trip),
     ]);
 
@@ -894,6 +1065,7 @@ export class CampingRepository {
       foodPreferences,
       links,
       trip,
+      userLearningProfile,
       caches,
     };
   }
@@ -913,6 +1085,29 @@ export class CampingRepository {
     ]);
 
     return { system, analysis };
+  }
+
+  async loadUserLearningPromptFiles(): Promise<{
+    historyRetrospectiveLearning: string;
+    userLearningProfile: string;
+  }> {
+    const [historyRetrospectiveLearning, userLearningProfile] = await Promise.all([
+      this.readTextFile(
+        path.join(this.config.promptsDir, "history-retrospective-learning.md"),
+        "DEPENDENCY_MISSING",
+        "prompts/history-retrospective-learning.md 파일이 필요합니다.",
+      ),
+      this.readTextFile(
+        path.join(this.config.promptsDir, "user-learning-profile.md"),
+        "DEPENDENCY_MISSING",
+        "prompts/user-learning-profile.md 파일이 필요합니다.",
+      ),
+    ]);
+
+    return {
+      historyRetrospectiveLearning,
+      userLearningProfile,
+    };
   }
 
   async loadReferenceDocuments(): Promise<NamedTextFile[]> {
@@ -1729,6 +1924,30 @@ export class CampingRepository {
     }
   }
 
+  private async readJsonFile<T>(
+    filePath: string,
+    schema: {
+      safeParse: (
+        value: unknown,
+      ) => { success: true; data: T } | { success: false };
+    },
+    invalidCode: "TRIP_INVALID",
+    invalidMessage: string,
+  ): Promise<T> {
+    try {
+      const raw = await readFile(filePath, "utf8");
+      const parsed = schema.safeParse(JSON.parse(raw));
+
+      if (!parsed.success) {
+        throw new Error("invalid");
+      }
+
+      return parsed.data;
+    } catch {
+      throw new AppError(invalidCode, invalidMessage, 400);
+    }
+  }
+
   private async writeYamlFile(filePath: string, value: unknown): Promise<void> {
     await mkdir(path.dirname(filePath), { recursive: true });
     await writeFile(filePath, stringify(value), "utf8");
@@ -1773,6 +1992,30 @@ export class CampingRepository {
 
   private getHistoryFilePath(historyId: string) {
     return path.join(this.getHistoryDir(), getHistoryFilename(historyId));
+  }
+
+  private getHistoryLearningDir() {
+    return path.join(this.config.dataDir, "cache", "history-learning");
+  }
+
+  private getHistoryLearningInsightPath(historyId: string) {
+    return path.join(this.getHistoryLearningDir(), `${historyId}.json`);
+  }
+
+  private getUserLearningDir() {
+    return path.join(this.config.dataDir, "cache", "user-learning");
+  }
+
+  private getUserLearningProfilePath() {
+    return path.join(this.getUserLearningDir(), "profile.json");
+  }
+
+  private getUserLearningJobDir() {
+    return path.join(this.getUserLearningDir(), "jobs");
+  }
+
+  private getUserLearningJobStatusPath() {
+    return path.join(this.getUserLearningJobDir(), "profile.json");
   }
 
   private getLinksPath() {
