@@ -1128,6 +1128,10 @@ code {
   grid-column: 1 / -1;
 }
 
+.retrospective-satisfaction-control {
+  width: min(240px, 100%);
+}
+
 .field {
   display: grid;
   gap: 8px;

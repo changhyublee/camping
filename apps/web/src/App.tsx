@@ -6560,26 +6560,28 @@ export function App() {
                             </article>
                           </div>
                           <div className="form-grid">
-                            <FormField label="만족도">
-                              <select
-                                aria-label="만족도"
-                                value={retrospectiveDraft.overallSatisfaction}
-                                onChange={(event) =>
-                                  setRetrospectiveDraft((current) => ({
-                                    ...current,
-                                    overallSatisfaction: event.target.value,
-                                  }))
-                                }
-                              >
-                                <option value="">선택 안 함</option>
-                                <option value="5">5점 매우 만족</option>
-                                <option value="4">4점 만족</option>
-                                <option value="3">3점 보통</option>
-                                <option value="2">2점 아쉬움</option>
-                                <option value="1">1점 매우 아쉬움</option>
-                              </select>
+                            <FormField full label="만족도">
+                              <div className="retrospective-satisfaction-control">
+                                <select
+                                  aria-label="만족도"
+                                  value={retrospectiveDraft.overallSatisfaction}
+                                  onChange={(event) =>
+                                    setRetrospectiveDraft((current) => ({
+                                      ...current,
+                                      overallSatisfaction: event.target.value,
+                                    }))
+                                  }
+                                >
+                                  <option value="">선택 안 함</option>
+                                  <option value="5">5점 매우 만족</option>
+                                  <option value="4">4점 만족</option>
+                                  <option value="3">3점 보통</option>
+                                  <option value="2">2점 아쉬움</option>
+                                  <option value="1">1점 매우 아쉬움</option>
+                                </select>
+                              </div>
                             </FormField>
-                            <FormField label="사용한 반복 장비">
+                            <FormField full label="사용한 반복 장비">
                               {equipment?.durable.items.length ? (
                                 <div className="choice-list">
                                   {equipment.durable.items.map((item) => {
