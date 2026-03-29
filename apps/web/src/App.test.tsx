@@ -1134,18 +1134,36 @@ describe("App", () => {
     await userEvent.click(await screen.findByRole("button", { name: "캠핑 계획" }));
 
     expect(await screen.findByText("4월 가평 가족 캠핑")).toBeInTheDocument();
-    expect(await screen.findByText("AI 보조는 저장 후 질문할 때 사용")).toBeInTheDocument();
+    expect(screen.getByRole("tablist", { name: "계획 상세 보기" })).toBeInTheDocument();
+    expect(screen.getByRole("tab", { name: "분석 결과" })).toHaveAttribute(
+      "aria-selected",
+      "true",
+    );
+    expect(screen.getByRole("tab", { name: "분석 결과" })).toHaveAttribute(
+      "aria-controls",
+      "planning-detail-panel-analysis",
+    );
+    expect(screen.getByRole("tab", { name: "AI 보조" })).not.toHaveAttribute("aria-controls");
     expect(await screen.findByText("섹션별 분석")).toBeInTheDocument();
     expect(
       screen.getByText(
         "필요한 섹션만 먼저 수집하고, 누적된 결과를 하나의 Markdown 플랜으로 계속 합성합니다.",
       ),
     ).toBeInTheDocument();
+    await userEvent.click(screen.getByRole("tab", { name: "AI 보조" }));
+    expect(screen.getByRole("tab", { name: "AI 보조" })).toHaveAttribute(
+      "aria-controls",
+      "planning-detail-panel-assistant",
+    );
+    expect(screen.getByRole("tab", { name: "분석 결과" })).not.toHaveAttribute("aria-controls");
+    expect(await screen.findByText("AI 보조는 저장 후 질문할 때 사용")).toBeInTheDocument();
     expect(
       screen.getByPlaceholderText(
         "예: 빠진 준비물이 있는지 먼저 점검해줘. 비 예보와 아이 동행 기준으로 알려줘",
       ),
     ).toBeInTheDocument();
+
+    await userEvent.click(screen.getByRole("tab", { name: "분석 결과" }));
     expect(
       screen.getByText(
         "1. 요약",
@@ -1811,6 +1829,7 @@ describe("App", () => {
     render(<App />);
 
     await userEvent.click(await screen.findByRole("button", { name: "카테고리 설정" }));
+    await userEvent.click(screen.getByRole("tab", { name: "로컬 백업" }));
     await userEvent.click(screen.getByRole("button", { name: "지금 백업 생성" }));
 
     expect(await screen.findByText("로컬 데이터 백업 완료")).toBeInTheDocument();
@@ -2130,6 +2149,7 @@ describe("App", () => {
 
     await userEvent.click(await screen.findByRole("button", { name: "장비 관리" }));
     await userEvent.click(screen.getByRole("tab", { name: "소모품" }));
+    await userEvent.click(screen.getByRole("tab", { name: "항목 추가" }));
     await userEvent.click(screen.getByRole("button", { name: "연료 카테고리 펼치기" }));
     await userEvent.click(
       await screen.findByRole("button", { name: "부탄가스 상세 펼치기" }),
@@ -2157,7 +2177,11 @@ describe("App", () => {
     expect(consumableTab).toHaveAttribute("aria-selected", "true");
     expect(screen.getByRole("tabpanel", { name: "소모품" })).toBeInTheDocument();
     expect(screen.getByRole("heading", { name: "소모품 목록" })).toBeInTheDocument();
-    expect(screen.getByRole("heading", { name: "소모품 추가" })).toBeInTheDocument();
+    expect(screen.getByRole("tablist", { name: "장비 상세 보기" })).toBeInTheDocument();
+    await userEvent.click(screen.getByRole("tab", { name: "항목 추가" }));
+    expect(
+      screen.getByRole("button", { name: "소모품 추가" }),
+    ).toBeInTheDocument();
   });
 
   it("moves between equipment tabs with keyboard navigation", async () => {
@@ -2707,6 +2731,7 @@ describe("App", () => {
     render(<App />);
 
     await userEvent.click(await screen.findByRole("button", { name: "장비 관리" }));
+    await userEvent.click(screen.getByRole("tab", { name: "항목 추가" }));
     expect(screen.getAllByRole("combobox", { name: "카테고리" }).length).toBeGreaterThan(0);
 
     await userEvent.click(screen.getByRole("button", { name: "카테고리 설정" }));
@@ -2780,6 +2805,7 @@ describe("App", () => {
     expect(labelInput).toHaveValue("임시 라벨");
 
     await userEvent.click(screen.getByRole("button", { name: "장비 관리" }));
+    await userEvent.click(screen.getByRole("tab", { name: "항목 추가" }));
 
     expect(screen.getAllByRole("option", { name: "쉘터/텐트" }).length).toBeGreaterThan(0);
     expect(screen.queryAllByRole("option", { name: "임시 라벨" })).toHaveLength(0);
@@ -2812,6 +2838,7 @@ describe("App", () => {
     expect(await screen.findByText("장비 카테고리 저장 실패")).toBeInTheDocument();
 
     await userEvent.click(screen.getByRole("button", { name: "장비 관리" }));
+    await userEvent.click(screen.getByRole("tab", { name: "항목 추가" }));
     expect(screen.getAllByRole("option", { name: "쉘터/텐트" }).length).toBeGreaterThan(0);
     expect(screen.queryAllByRole("option", { name: "임시 라벨" })).toHaveLength(0);
   });
@@ -2943,6 +2970,7 @@ describe("App", () => {
     render(<App />);
 
     await userEvent.click(await screen.findByRole("button", { name: "캠핑 히스토리" }));
+    await userEvent.click(screen.getByRole("tab", { name: "후기 작성" }));
     await userEvent.type(
       screen.getByRole("textbox", { name: "자유 후기" }),
       "강풍 때문에 방풍 장비가 더 필요했다.",
@@ -2955,6 +2983,23 @@ describe("App", () => {
     expect(screen.getByText("학습 업데이트 중")).toBeInTheDocument();
     expect(state.history[0].retrospectives).toHaveLength(1);
     expect(state.userLearningStatus.status).toBe("queued");
+  });
+
+  it("keeps history save action available in the overview tab", async () => {
+    state.history = [createHistoryRecord()];
+
+    render(<App />);
+
+    await userEvent.click(await screen.findByRole("button", { name: "캠핑 히스토리" }));
+
+    const titleInput = screen.getByRole("textbox", { name: "히스토리 제목" });
+
+    await userEvent.clear(titleInput);
+    await userEvent.type(titleInput, "수정한 히스토리 제목");
+    await userEvent.click(screen.getByRole("button", { name: "히스토리 저장" }));
+
+    expect(await screen.findByText("히스토리 저장 완료")).toBeInTheDocument();
+    expect(state.history[0]?.title).toBe("수정한 히스토리 제목");
   });
 
   it("opens archived output markdown from history detail", async () => {
@@ -3017,6 +3062,7 @@ describe("App", () => {
     render(<App />);
 
     await userEvent.click(await screen.findByRole("button", { name: "캠핑 히스토리" }));
+    await userEvent.click(screen.getByRole("tab", { name: "기록/결과" }));
 
     expect(
       await screen.findByText(".camping-data/outputs/2026-03-08-yangpyeong-plan.md"),
@@ -3085,6 +3131,7 @@ describe("App", () => {
     render(<App />);
 
     await userEvent.click(await screen.findByRole("button", { name: "캠핑 히스토리" }));
+    await userEvent.click(screen.getByRole("tab", { name: "기록/결과" }));
     await userEvent.click(await screen.findByRole("button", { name: "결과 열기" }));
 
     expect(await screen.findByText("양평 히스토리 결과")).toBeInTheDocument();
@@ -3242,6 +3289,7 @@ describe("App", () => {
     render(<App />);
 
     await userEvent.click(await screen.findByRole("button", { name: "캠핑 히스토리" }));
+    await userEvent.click(screen.getByRole("tab", { name: "기록/결과" }));
     await userEvent.click(screen.getByRole("button", { name: "결과 열기" }));
     await userEvent.click(
       screen.getByRole("button", { name: /4월 속초 주말 캠핑/u }),
@@ -3252,6 +3300,8 @@ describe("App", () => {
       status: 200,
       json: async () => state.outputs["2026-03-08-yangpyeong"],
     } as Response);
+
+    await userEvent.click(screen.getByRole("tab", { name: "요약" }));
 
     await waitFor(() => {
       expect(screen.getByDisplayValue("4월 속초 주말 캠핑")).toBeInTheDocument();

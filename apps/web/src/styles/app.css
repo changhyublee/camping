@@ -1190,6 +1190,55 @@ textarea.form-grid__full {
   flex-wrap: wrap;
 }
 
+.detail-shell,
+.detail-section-stack {
+  display: grid;
+  gap: 18px;
+}
+
+.detail-tabs {
+  display: flex;
+  gap: 10px;
+  flex-wrap: nowrap;
+  padding: 10px;
+  border: 1px solid var(--line);
+  border-radius: 24px;
+  background: rgba(255, 255, 255, 0.34);
+  overflow-x: auto;
+  scrollbar-gutter: stable;
+}
+
+.detail-tabs .segment-button {
+  flex: 0 0 auto;
+  width: auto;
+  min-height: 52px;
+  padding: 14px 18px;
+  border-radius: 18px;
+  text-align: center;
+  white-space: nowrap;
+}
+
+.detail-tab-panel,
+.detail-section-card {
+  display: grid;
+  gap: 18px;
+}
+
+.detail-section-card {
+  padding: 18px 20px;
+  border: 1px solid rgba(47, 98, 83, 0.12);
+  border-radius: 22px;
+  background: linear-gradient(180deg, rgba(250, 248, 243, 0.78), rgba(244, 240, 234, 0.7));
+}
+
+.detail-tab-panel__header {
+  display: flex;
+  align-items: flex-start;
+  justify-content: space-between;
+  gap: 12px;
+  flex-wrap: wrap;
+}
+
 .button-row--compact {
   gap: 8px;
 }
@@ -1708,6 +1757,7 @@ textarea.form-grid__full {
   .panel__header,
   .action-row,
   .companion-card__header,
+  .detail-tab-panel__header,
   .history-output-card__header,
   .markdown-layer__header,
   .link-group__header,
@@ -1719,6 +1769,7 @@ textarea.form-grid__full {
 
   .button-row,
   .segmented-row,
+  .detail-tabs,
   .equipment-tabs {
     width: 100%;
   }
@@ -1736,6 +1787,11 @@ textarea.form-grid__full {
   .segment-button,
   .equipment-tab {
     width: 100%;
+  }
+
+  .detail-tabs .segment-button {
+    width: auto;
+    min-width: 132px;
   }
 
   .history-output-card__actions,
