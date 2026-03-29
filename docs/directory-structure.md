@@ -115,6 +115,7 @@ apps/web/src/
 ├── app/
 │   ├── AppShell.tsx
 │   ├── navigation.ts
+│   ├── ui-state.ts
 │   └── useAppViewModel.tsx
 ├── pages/
 │   ├── DashboardPage.tsx
@@ -135,7 +136,8 @@ apps/web/src/
 - `App.tsx`: 앱 진입점
 - `app/AppShell.tsx`: 메뉴, 경로 동기화, 전역 배너와 오버레이 조합
 - `app/navigation.ts`: 페이지 키, 라벨, 경로, 네비게이션 그룹 메타데이터
-- `app/useAppViewModel.tsx`: 현재 웹 상태 조합과 페이지 렌더용 view model
+- `app/ui-state.ts`: 페이지 탭 메타데이터와 `sessionStorage` 기반 UI 복원 규칙
+- `app/useAppViewModel.tsx`: 현재 웹 상태 조합과 페이지 렌더용 view model adapter
 - `pages/*Page.tsx`: 메뉴별 page entry
 - `pages/PageHost.tsx`: 현재 page entry가 공통 조합을 위임하는 host
 - `components/`: 재사용 표시 컴포넌트

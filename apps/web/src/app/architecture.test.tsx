@@ -5,6 +5,7 @@ import { describe, expect, it } from "vitest";
 const SRC_ROOT = join(process.cwd(), "src");
 const APP_FILE = join(SRC_ROOT, "App.tsx");
 const APP_SHELL_FILE = join(SRC_ROOT, "app", "AppShell.tsx");
+const APP_VIEW_MODEL_FILE = join(SRC_ROOT, "app", "useAppViewModel.tsx");
 const MAIN_FILE = join(SRC_ROOT, "main.tsx");
 const PAGES_DIR = join(SRC_ROOT, "pages");
 const APP_DIR = join(SRC_ROOT, "app");
@@ -36,6 +37,15 @@ describe("프런트엔드 구조 가드", () => {
     expect(getLineCount(APP_SHELL_FILE)).toBeLessThanOrEqual(320);
     expect(source).not.toMatch(/fetch\(|apiClient/);
     expect(source).not.toMatch(/MarkdownLayer,\s*useAppViewModel|InfoTooltip,\s*useAppViewModel/);
+  });
+
+  it("useAppViewModel 은 탭 메타와 persisted ui-state 구현을 ui-state 모듈로 위임한다", () => {
+    const source = readFileSync(APP_VIEW_MODEL_FILE, "utf8");
+
+    expect(source).toMatch(/from "\.\/ui-state"/);
+    expect(source).not.toMatch(/const UI_STATE_STORAGE_KEY =/);
+    expect(source).not.toMatch(/window\.sessionStorage\.(getItem|setItem)/);
+    expect(source).not.toMatch(/type PersistedUiState =/);
   });
 
   it("페이지 엔트리는 작게 유지되고 도메인 API를 직접 호출하지 않는다", () => {

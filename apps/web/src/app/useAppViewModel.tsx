@@ -61,104 +61,51 @@ import { cloneEquipmentCategories } from "@camping/shared";
 import { apiClient, ApiClientError, type AiJobEventSubscription } from "../api/client";
 import { InfoTooltip } from "../components/InfoTooltip";
 import { StatusBanner } from "../components/StatusBanner";
-import { PAGE_KEYS, PAGE_LABELS, getPathForPage, type PageKey } from "./navigation";
-const EQUIPMENT_SECTIONS: EquipmentSection[] = [
-  "durable",
-  "consumables",
-  "precheck",
-];
-const PLANNING_DETAIL_TABS = ["analysis", "assistant", "learning"] as const;
-const HISTORY_DETAIL_TABS = [
-  "overview",
-  "records",
-  "retrospective",
-  "learning",
-] as const;
-const EQUIPMENT_DETAIL_TABS = ["summary", "create"] as const;
-const CATEGORY_DETAIL_TABS = ["create", "guidelines", "backup"] as const;
-const DASHBOARD_PAGE_TABS = ["overview", "actions", "links"] as const;
-const COMPANION_PAGE_TABS = ["list", "editor"] as const;
-const VEHICLE_PAGE_TABS = ["list", "editor"] as const;
-const EQUIPMENT_PAGE_TABS = ["list", "details"] as const;
-const CATEGORY_PAGE_TABS = ["list", "details"] as const;
-const HELP_PAGE_TABS = ["files", "guide"] as const;
-const PLANNING_PAGE_TABS = ["list", "editor", "details"] as const;
-const HISTORY_PAGE_TABS = ["list", "details"] as const;
-const LINK_PAGE_TABS = ["list", "editor"] as const;
-const UI_STATE_STORAGE_KEY = "camping.ui-state";
-
-type DashboardPageTab = (typeof DASHBOARD_PAGE_TABS)[number];
-type CompanionPageTab = (typeof COMPANION_PAGE_TABS)[number];
-type VehiclePageTab = (typeof VEHICLE_PAGE_TABS)[number];
-type EquipmentPageTab = (typeof EQUIPMENT_PAGE_TABS)[number];
-type CategoryPageTab = (typeof CATEGORY_PAGE_TABS)[number];
-type HelpPageTab = (typeof HELP_PAGE_TABS)[number];
-type PlanningPageTab = (typeof PLANNING_PAGE_TABS)[number];
-type HistoryPageTab = (typeof HISTORY_PAGE_TABS)[number];
-type LinkPageTab = (typeof LINK_PAGE_TABS)[number];
-type PlanningDetailTab = (typeof PLANNING_DETAIL_TABS)[number];
-type HistoryDetailTab = (typeof HISTORY_DETAIL_TABS)[number];
-type EquipmentDetailTab = (typeof EQUIPMENT_DETAIL_TABS)[number];
-type CategoryDetailTab = (typeof CATEGORY_DETAIL_TABS)[number];
-
-const DASHBOARD_PAGE_TAB_LABELS: Record<DashboardPageTab, string> = {
-  overview: "운영 요약",
-  actions: "빠른 실행",
-  links: "최근 기록",
-};
-const COMPANION_PAGE_TAB_LABELS: Record<CompanionPageTab, string> = {
-  editor: "프로필 편집",
-  list: "사람 목록",
-};
-const VEHICLE_PAGE_TAB_LABELS: Record<VehiclePageTab, string> = {
-  editor: "차량 편집",
-  list: "차량 목록",
-};
-const EQUIPMENT_PAGE_TAB_LABELS: Record<EquipmentPageTab, string> = {
-  list: "장비 목록",
-  details: "상세 작업",
-};
-const CATEGORY_PAGE_TAB_LABELS: Record<CategoryPageTab, string> = {
-  list: "카테고리 목록",
-  details: "보조 작업",
-};
-const HELP_PAGE_TAB_LABELS: Record<HelpPageTab, string> = {
-  files: "파일 안내",
-  guide: "운영 메모",
-};
-const PLANNING_PAGE_TAB_LABELS: Record<PlanningPageTab, string> = {
-  editor: "원본 입력",
-  list: "계획 목록",
-  details: "AI·결과",
-};
-const HISTORY_PAGE_TAB_LABELS: Record<HistoryPageTab, string> = {
-  details: "상세 보기",
-  list: "히스토리 목록",
-};
-const LINK_PAGE_TAB_LABELS: Record<LinkPageTab, string> = {
-  list: "링크 목록",
-  editor: "새 링크",
-};
-const PLANNING_DETAIL_TAB_LABELS: Record<PlanningDetailTab, string> = {
-  analysis: "분석 결과",
-  assistant: "AI 보조",
-  learning: "누적 학습",
-};
-const HISTORY_DETAIL_TAB_LABELS: Record<HistoryDetailTab, string> = {
-  overview: "요약",
-  retrospective: "후기 작성",
-  learning: "학습",
-  records: "기록/결과",
-};
-const EQUIPMENT_DETAIL_TAB_LABELS: Record<EquipmentDetailTab, string> = {
-  summary: "작업 요약",
-  create: "항목 추가",
-};
-const CATEGORY_DETAIL_TAB_LABELS: Record<CategoryDetailTab, string> = {
-  create: "새 카테고리",
-  guidelines: "관리 원칙",
-  backup: "로컬 백업",
-};
+import { PAGE_LABELS, getPathForPage, type PageKey } from "./navigation";
+import {
+  CATEGORY_DETAIL_TABS,
+  CATEGORY_DETAIL_TAB_LABELS,
+  CATEGORY_PAGE_TABS,
+  CATEGORY_PAGE_TAB_LABELS,
+  COMPANION_PAGE_TABS,
+  COMPANION_PAGE_TAB_LABELS,
+  DASHBOARD_PAGE_TABS,
+  DASHBOARD_PAGE_TAB_LABELS,
+  EQUIPMENT_DETAIL_TABS,
+  EQUIPMENT_DETAIL_TAB_LABELS,
+  EQUIPMENT_PAGE_TABS,
+  EQUIPMENT_PAGE_TAB_LABELS,
+  EQUIPMENT_SECTIONS,
+  HELP_PAGE_TABS,
+  HELP_PAGE_TAB_LABELS,
+  HISTORY_DETAIL_TABS,
+  HISTORY_DETAIL_TAB_LABELS,
+  HISTORY_PAGE_TABS,
+  HISTORY_PAGE_TAB_LABELS,
+  LINK_PAGE_TABS,
+  LINK_PAGE_TAB_LABELS,
+  PLANNING_DETAIL_TABS,
+  PLANNING_DETAIL_TAB_LABELS,
+  PLANNING_PAGE_TABS,
+  PLANNING_PAGE_TAB_LABELS,
+  VEHICLE_PAGE_TABS,
+  VEHICLE_PAGE_TAB_LABELS,
+  type CategoryDetailTab,
+  type CategoryPageTab,
+  type CompanionPageTab,
+  type DashboardPageTab,
+  type EquipmentDetailTab,
+  type EquipmentPageTab,
+  type HelpPageTab,
+  type HistoryDetailTab,
+  type HistoryPageTab,
+  type LinkPageTab,
+  type PlanningDetailTab,
+  type PlanningPageTab,
+  type VehiclePageTab,
+  readPersistedUiState,
+  writePersistedUiState,
+} from "./ui-state";
 
 type OperationState = {
   title: string;
@@ -194,26 +141,6 @@ type RetrospectiveDraft = {
   issues: string;
   nextTimeRequests: string;
   freeformNote: string;
-};
-
-type PersistedUiState = {
-  activePage: PageKey;
-  selectedTripId: string | null;
-  selectedHistoryId: string | null;
-  equipmentSection: EquipmentSection;
-  dashboardPageTab: DashboardPageTab;
-  companionPageTab: CompanionPageTab;
-  vehiclePageTab: VehiclePageTab;
-  equipmentPageTab: EquipmentPageTab;
-  categoryPageTab: CategoryPageTab;
-  helpPageTab: HelpPageTab;
-  planningPageTab: PlanningPageTab;
-  historyPageTab: HistoryPageTab;
-  linkPageTab: LinkPageTab;
-  planningDetailTab: PlanningDetailTab;
-  historyDetailTab: HistoryDetailTab;
-  equipmentDetailTab: EquipmentDetailTab;
-  categoryDetailTab: CategoryDetailTab;
 };
 
 type MarkdownLayerState = {
@@ -8554,145 +8481,6 @@ function formatRelativeDate(value: string) {
   }
 
   return parsed.toLocaleString("ko-KR");
-}
-
-function readPersistedUiState(): PersistedUiState | null {
-  if (typeof window === "undefined") {
-    return null;
-  }
-
-  try {
-    const raw = window.sessionStorage.getItem(UI_STATE_STORAGE_KEY);
-
-    if (!raw) {
-      return null;
-    }
-
-    const parsed = JSON.parse(raw) as Partial<PersistedUiState>;
-
-    if (
-      !parsed.activePage ||
-      !PAGE_KEYS.includes(parsed.activePage) ||
-      !parsed.equipmentSection ||
-      !isEquipmentSection(parsed.equipmentSection)
-    ) {
-      return null;
-    }
-
-    return {
-      activePage: parsed.activePage,
-      selectedTripId:
-        typeof parsed.selectedTripId === "string" ? parsed.selectedTripId : null,
-      selectedHistoryId:
-        typeof parsed.selectedHistoryId === "string" ? parsed.selectedHistoryId : null,
-      equipmentSection: parsed.equipmentSection,
-      dashboardPageTab: isDashboardPageTab(parsed.dashboardPageTab)
-        ? parsed.dashboardPageTab
-        : "overview",
-      companionPageTab: isCompanionPageTab(parsed.companionPageTab)
-        ? parsed.companionPageTab
-        : "list",
-      vehiclePageTab: isVehiclePageTab(parsed.vehiclePageTab)
-        ? parsed.vehiclePageTab
-        : "list",
-      equipmentPageTab: isEquipmentPageTab(parsed.equipmentPageTab)
-        ? parsed.equipmentPageTab
-        : "list",
-      categoryPageTab: isCategoryPageTab(parsed.categoryPageTab)
-        ? parsed.categoryPageTab
-        : "list",
-      helpPageTab: isHelpPageTab(parsed.helpPageTab) ? parsed.helpPageTab : "files",
-      planningPageTab: isPlanningPageTab(parsed.planningPageTab)
-        ? parsed.planningPageTab
-        : "list",
-      historyPageTab: isHistoryPageTab(parsed.historyPageTab)
-        ? parsed.historyPageTab
-        : "list",
-      linkPageTab: isLinkPageTab(parsed.linkPageTab) ? parsed.linkPageTab : "list",
-      planningDetailTab: isPlanningDetailTab(parsed.planningDetailTab)
-        ? parsed.planningDetailTab
-        : "analysis",
-      historyDetailTab: isHistoryDetailTab(parsed.historyDetailTab)
-        ? parsed.historyDetailTab
-        : "overview",
-      equipmentDetailTab: isEquipmentDetailTab(parsed.equipmentDetailTab)
-        ? parsed.equipmentDetailTab
-        : "summary",
-      categoryDetailTab: isCategoryDetailTab(parsed.categoryDetailTab)
-        ? parsed.categoryDetailTab
-        : "create",
-    };
-  } catch {
-    return null;
-  }
-}
-
-function writePersistedUiState(state: PersistedUiState) {
-  if (typeof window === "undefined") {
-    return;
-  }
-
-  try {
-    window.sessionStorage.setItem(UI_STATE_STORAGE_KEY, JSON.stringify(state));
-  } catch {
-    // Ignore storage write failures so the app remains usable.
-  }
-}
-
-function isEquipmentSection(value: string): value is EquipmentSection {
-  return value === "durable" || value === "consumables" || value === "precheck";
-}
-
-function isDashboardPageTab(value: unknown): value is DashboardPageTab {
-  return typeof value === "string" && DASHBOARD_PAGE_TABS.includes(value as DashboardPageTab);
-}
-
-function isCompanionPageTab(value: unknown): value is CompanionPageTab {
-  return typeof value === "string" && COMPANION_PAGE_TABS.includes(value as CompanionPageTab);
-}
-
-function isVehiclePageTab(value: unknown): value is VehiclePageTab {
-  return typeof value === "string" && VEHICLE_PAGE_TABS.includes(value as VehiclePageTab);
-}
-
-function isEquipmentPageTab(value: unknown): value is EquipmentPageTab {
-  return typeof value === "string" && EQUIPMENT_PAGE_TABS.includes(value as EquipmentPageTab);
-}
-
-function isCategoryPageTab(value: unknown): value is CategoryPageTab {
-  return typeof value === "string" && CATEGORY_PAGE_TABS.includes(value as CategoryPageTab);
-}
-
-function isHelpPageTab(value: unknown): value is HelpPageTab {
-  return typeof value === "string" && HELP_PAGE_TABS.includes(value as HelpPageTab);
-}
-
-function isPlanningPageTab(value: unknown): value is PlanningPageTab {
-  return typeof value === "string" && PLANNING_PAGE_TABS.includes(value as PlanningPageTab);
-}
-
-function isHistoryPageTab(value: unknown): value is HistoryPageTab {
-  return typeof value === "string" && HISTORY_PAGE_TABS.includes(value as HistoryPageTab);
-}
-
-function isLinkPageTab(value: unknown): value is LinkPageTab {
-  return typeof value === "string" && LINK_PAGE_TABS.includes(value as LinkPageTab);
-}
-
-function isPlanningDetailTab(value: unknown): value is PlanningDetailTab {
-  return typeof value === "string" && PLANNING_DETAIL_TABS.includes(value as PlanningDetailTab);
-}
-
-function isHistoryDetailTab(value: unknown): value is HistoryDetailTab {
-  return typeof value === "string" && HISTORY_DETAIL_TABS.includes(value as HistoryDetailTab);
-}
-
-function isEquipmentDetailTab(value: unknown): value is EquipmentDetailTab {
-  return typeof value === "string" && EQUIPMENT_DETAIL_TABS.includes(value as EquipmentDetailTab);
-}
-
-function isCategoryDetailTab(value: unknown): value is CategoryDetailTab {
-  return typeof value === "string" && CATEGORY_DETAIL_TABS.includes(value as CategoryDetailTab);
 }
 
 function toggleSectionTrackedId(
