@@ -122,20 +122,20 @@ const EQUIPMENT_SECTIONS: EquipmentSection[] = [
 const PLANNING_DETAIL_TABS = ["analysis", "assistant", "learning"] as const;
 const HISTORY_DETAIL_TABS = [
   "overview",
+  "records",
   "retrospective",
   "learning",
-  "records",
 ] as const;
 const EQUIPMENT_DETAIL_TABS = ["summary", "create"] as const;
 const CATEGORY_DETAIL_TABS = ["create", "guidelines", "backup"] as const;
 const DASHBOARD_PAGE_TABS = ["overview", "actions", "links"] as const;
-const COMPANION_PAGE_TABS = ["editor", "list"] as const;
-const VEHICLE_PAGE_TABS = ["editor", "list"] as const;
+const COMPANION_PAGE_TABS = ["list", "editor"] as const;
+const VEHICLE_PAGE_TABS = ["list", "editor"] as const;
 const EQUIPMENT_PAGE_TABS = ["list", "details"] as const;
 const CATEGORY_PAGE_TABS = ["list", "details"] as const;
 const HELP_PAGE_TABS = ["files", "guide"] as const;
-const PLANNING_PAGE_TABS = ["editor", "list", "details"] as const;
-const HISTORY_PAGE_TABS = ["details", "list"] as const;
+const PLANNING_PAGE_TABS = ["list", "editor", "details"] as const;
+const HISTORY_PAGE_TABS = ["list", "details"] as const;
 const LINK_PAGE_TABS = ["list", "editor"] as const;
 const UI_STATE_STORAGE_KEY = "camping.ui-state";
 
@@ -313,9 +313,9 @@ export function App() {
   const [dashboardPageTab, setDashboardPageTab] =
     useState<DashboardPageTab>(persistedUiState?.dashboardPageTab ?? "overview");
   const [companionPageTab, setCompanionPageTab] =
-    useState<CompanionPageTab>(persistedUiState?.companionPageTab ?? "editor");
+    useState<CompanionPageTab>(persistedUiState?.companionPageTab ?? "list");
   const [vehiclePageTab, setVehiclePageTab] =
-    useState<VehiclePageTab>(persistedUiState?.vehiclePageTab ?? "editor");
+    useState<VehiclePageTab>(persistedUiState?.vehiclePageTab ?? "list");
   const [equipmentPageTab, setEquipmentPageTab] =
     useState<EquipmentPageTab>(persistedUiState?.equipmentPageTab ?? "list");
   const [categoryPageTab, setCategoryPageTab] =
@@ -323,9 +323,9 @@ export function App() {
   const [helpPageTab, setHelpPageTab] =
     useState<HelpPageTab>(persistedUiState?.helpPageTab ?? "files");
   const [planningPageTab, setPlanningPageTab] =
-    useState<PlanningPageTab>(persistedUiState?.planningPageTab ?? "editor");
+    useState<PlanningPageTab>(persistedUiState?.planningPageTab ?? "list");
   const [historyPageTab, setHistoryPageTab] =
-    useState<HistoryPageTab>(persistedUiState?.historyPageTab ?? "details");
+    useState<HistoryPageTab>(persistedUiState?.historyPageTab ?? "list");
   const [linkPageTab, setLinkPageTab] =
     useState<LinkPageTab>(persistedUiState?.linkPageTab ?? "list");
   const [planningDetailTab, setPlanningDetailTab] =
@@ -1808,6 +1808,7 @@ export function App() {
     const nextDraft = createEmptyTripDraft();
 
     setActivePage("planning");
+    setPlanningPageTab("editor");
     setIsCreatingTrip(true);
     setSelectedTripId(null);
     setTripDraft(nextDraft);
@@ -1823,6 +1824,7 @@ export function App() {
 
   function selectTrip(tripId: string) {
     setActivePage("planning");
+    setPlanningPageTab("editor");
     setIsCreatingTrip(false);
     setSelectedTripId(tripId);
     setOperationState(null);
@@ -2151,6 +2153,8 @@ export function App() {
       analysisStatusRef.current = null;
       setAssistantResponse(null);
       setActivePage("history");
+      setHistoryPageTab("details");
+      setHistoryDetailTab("retrospective");
       setOperationState({
         title: "히스토리 아카이브 완료",
         tone: "success",
@@ -3087,6 +3091,54 @@ export function App() {
     }
   }
 
+  function handleSidebarPageChange(page: PageKey) {
+    setActivePage(page);
+
+    if (page === "dashboard") {
+      setDashboardPageTab("overview");
+      return;
+    }
+
+    if (page === "companions") {
+      setCompanionPageTab("list");
+      return;
+    }
+
+    if (page === "vehicles") {
+      setVehiclePageTab("list");
+      return;
+    }
+
+    if (page === "equipment") {
+      setEquipmentPageTab("list");
+      return;
+    }
+
+    if (page === "categories") {
+      setCategoryPageTab("list");
+      return;
+    }
+
+    if (page === "help") {
+      setHelpPageTab("files");
+      return;
+    }
+
+    if (page === "planning") {
+      setPlanningPageTab("list");
+      return;
+    }
+
+    if (page === "history") {
+      setHistoryPageTab("list");
+      return;
+    }
+
+    if (page === "links") {
+      setLinkPageTab("list");
+    }
+  }
+
   function renderNavButton(
     page: PageKey,
     description: string,
@@ -3101,7 +3153,7 @@ export function App() {
         aria-describedby={descriptionId}
         aria-label={PAGE_LABELS[page]}
         className={navButtonClass(isActive)}
-        onClick={() => setActivePage(page)}
+        onClick={() => handleSidebarPageChange(page)}
         type="button"
       >
         <span className="nav-button__head">
@@ -3489,7 +3541,10 @@ export function App() {
                     <div className="stack-list">
                       <button
                         className="list-card"
-                        onClick={() => setActivePage("planning")}
+                        onClick={() => {
+                          setActivePage("planning");
+                          setPlanningPageTab("list");
+                        }}
                         type="button"
                       >
                         <strong>캠핑 계획 열기</strong>
@@ -3497,7 +3552,10 @@ export function App() {
                       </button>
                       <button
                         className="list-card"
-                        onClick={() => setActivePage("equipment")}
+                        onClick={() => {
+                          setActivePage("equipment");
+                          setEquipmentPageTab("list");
+                        }}
                         type="button"
                       >
                         <strong>장비 점검으로 이동</strong>
@@ -3505,7 +3563,10 @@ export function App() {
                       </button>
                       <button
                         className="list-card"
-                        onClick={() => setActivePage("links")}
+                        onClick={() => {
+                          setActivePage("links");
+                          setLinkPageTab("list");
+                        }}
                         type="button"
                       >
                         <strong>외부 링크 정리</strong>
@@ -8592,10 +8653,10 @@ function readPersistedUiState(): PersistedUiState | null {
         : "overview",
       companionPageTab: isCompanionPageTab(parsed.companionPageTab)
         ? parsed.companionPageTab
-        : "editor",
+        : "list",
       vehiclePageTab: isVehiclePageTab(parsed.vehiclePageTab)
         ? parsed.vehiclePageTab
-        : "editor",
+        : "list",
       equipmentPageTab: isEquipmentPageTab(parsed.equipmentPageTab)
         ? parsed.equipmentPageTab
         : "list",
@@ -8605,10 +8666,10 @@ function readPersistedUiState(): PersistedUiState | null {
       helpPageTab: isHelpPageTab(parsed.helpPageTab) ? parsed.helpPageTab : "files",
       planningPageTab: isPlanningPageTab(parsed.planningPageTab)
         ? parsed.planningPageTab
-        : "editor",
+        : "list",
       historyPageTab: isHistoryPageTab(parsed.historyPageTab)
         ? parsed.historyPageTab
-        : "details",
+        : "list",
       linkPageTab: isLinkPageTab(parsed.linkPageTab) ? parsed.linkPageTab : "list",
       planningDetailTab: isPlanningDetailTab(parsed.planningDetailTab)
         ? parsed.planningDetailTab

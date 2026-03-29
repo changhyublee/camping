@@ -1122,6 +1122,61 @@ function mockFetch(input: RequestInfo | URL, init?: RequestInit) {
     return jsonResponse(output);
   }
 
+  const archiveTripMatch = pathname.match(/^\/api\/trips\/([^/]+)\/archive$/u);
+
+  if (archiveTripMatch && method === "POST") {
+    const tripId = archiveTripMatch[1];
+    const trip = state.tripDetails[tripId];
+
+    if (!trip) {
+      return jsonResponse(
+        {
+          status: "failed",
+          error: {
+            code: "TRIP_NOT_FOUND",
+            message: `trip 파일을 찾을 수 없습니다: ${tripId}`,
+          },
+        },
+        404,
+      );
+    }
+
+    const nextHistory = createHistoryRecord({
+      history_id: tripId,
+      source_trip_id: tripId,
+      title: trip.title,
+      date: trip.date,
+      location: trip.location,
+      companion_ids: trip.party.companion_ids,
+      attendee_count: trip.party.companion_ids.length,
+      notes: trip.notes,
+      trip_snapshot: trip,
+      output_path: state.outputs[tripId]?.output_path ?? null,
+      companion_snapshots: state.companions.filter((item) =>
+        trip.party.companion_ids.includes(item.id),
+      ),
+      vehicle_snapshot: trip.vehicle
+        ? {
+            id: trip.vehicle.id ?? "archived-vehicle",
+            name: trip.vehicle.name ?? "보관 차량",
+            notes: trip.vehicle.notes ?? [],
+            ...(typeof trip.vehicle.passenger_capacity === "number"
+              ? { passenger_capacity: trip.vehicle.passenger_capacity }
+              : {}),
+            ...(typeof trip.vehicle.load_capacity_kg === "number"
+              ? { load_capacity_kg: trip.vehicle.load_capacity_kg }
+              : {}),
+          }
+        : null,
+    });
+
+    state.history = [nextHistory, ...state.history];
+    state.trips = state.trips.filter((item) => item.trip_id !== tripId);
+    delete state.tripDetails[tripId];
+
+    return jsonResponse({ item: nextHistory });
+  }
+
   const assistantMatch = pathname.match(/^\/api\/trips\/([^/]+)\/assistant$/u);
 
   if (assistantMatch && method === "POST") {
@@ -1140,7 +1195,7 @@ describe("App", () => {
   it("navigates to planning and renders analysis markdown", async () => {
     render(<App />);
 
-    await openPage("캠핑 계획");
+    await openPageTab("캠핑 계획", "원본 입력");
     expect(await screen.findByRole("button", { name: "전체 분석 실행" })).toBeInTheDocument();
     await userEvent.click(screen.getByRole("tab", { name: "AI·결과" }));
 
@@ -1193,7 +1248,7 @@ describe("App", () => {
   it("opens the planning analysis markdown in a wide layer and closes it with Escape", async () => {
     render(<App />);
 
-    await openPage("캠핑 계획");
+    await openPageTab("캠핑 계획", "원본 입력");
     await userEvent.click(await screen.findByRole("button", { name: "전체 분석 실행" }));
     await userEvent.click(screen.getByRole("tab", { name: "AI·결과" }));
 
@@ -1241,8 +1296,7 @@ describe("App", () => {
 
     const firstRender = render(<App />);
 
-    await openPage("캠핑 계획");
-    await userEvent.click(screen.getByRole("tab", { name: "AI·결과" }));
+    await openPageTab("캠핑 계획", "AI·결과");
     expect(await screen.findByText("자동 복원")).toBeInTheDocument();
 
     firstRender.unmount();
@@ -1290,6 +1344,7 @@ describe("App", () => {
 
     render(<App />);
 
+    await userEvent.click(await screen.findByRole("tab", { name: "원본 입력" }));
     const button = await screen.findByRole("button", { name: "분석 중..." });
     expect(button).toBeDisabled();
 
@@ -1311,7 +1366,7 @@ describe("App", () => {
 
     render(<App />);
 
-    await openPage("캠핑 계획");
+    await openPageTab("캠핑 계획", "원본 입력");
     MockEventSource.latest().open();
 
     const runningResponse = createAnalysisResponse("2026-04-18-gapyeong", {
@@ -1402,7 +1457,7 @@ describe("App", () => {
 
     render(<App />);
 
-    await userEvent.click(await screen.findByRole("button", { name: "캠핑 히스토리" }));
+    await openPageTab("캠핑 히스토리", "상세 보기");
     MockEventSource.latest().open();
 
     state.historyLearning["2026-03-08-yangpyeong"] = {
@@ -1474,7 +1529,7 @@ describe("App", () => {
 
     render(<App />);
 
-    await openPage("캠핑 계획");
+    await openPageTab("캠핑 계획", "원본 입력");
     expect(await screen.findByDisplayValue("4월 가평 가족 캠핑")).toBeInTheDocument();
 
     deferredOutput.resolve({
@@ -1557,7 +1612,7 @@ describe("App", () => {
 
     render(<App />);
 
-    await openPage("캠핑 계획");
+    await openPageTab("캠핑 계획", "원본 입력");
 
     expect(
       await screen.findByText("예상 날씨 정보가 없어 결과 정확도가 제한될 수 있습니다."),
@@ -1597,8 +1652,7 @@ describe("App", () => {
 
     render(<App />);
 
-    await openPage("캠핑 계획");
-    await userEvent.click(screen.getByRole("tab", { name: "AI·결과" }));
+    await openPageTab("캠핑 계획", "AI·결과");
     expect(await screen.findByText("그대로 유지")).toBeInTheDocument();
     await userEvent.click(screen.getByRole("tab", { name: "원본 입력" }));
     await userEvent.click(await screen.findByRole("button", { name: "전체 분석 실행" }));
@@ -1617,7 +1671,7 @@ describe("App", () => {
   it("always requests analysis with automatic output saving", async () => {
     render(<App />);
 
-    await openPage("캠핑 계획");
+    await openPageTab("캠핑 계획", "원본 입력");
     await userEvent.click(await screen.findByRole("button", { name: "전체 분석 실행" }));
 
     const analyzeCall = fetchMock.mock.calls.find(([input]) => {
@@ -1683,7 +1737,7 @@ describe("App", () => {
 
     render(<App />);
 
-    await openPage("캠핑 계획");
+    await openPageTab("캠핑 계획", "원본 입력");
     await userEvent.click(await screen.findByRole("button", { name: "전체 분석 실행" }));
     await userEvent.click(screen.getByRole("tab", { name: "계획 목록" }));
     await userEvent.click(
@@ -2082,6 +2136,52 @@ describe("App", () => {
     expect(await screen.findByDisplayValue("4월 가평 가족 캠핑")).toBeInTheDocument();
   });
 
+  it("opens the planning list tab first when entering the page from the sidebar", async () => {
+    render(<App />);
+
+    await openPage("캠핑 계획");
+
+    expect(screen.getByRole("tab", { name: "계획 목록" })).toHaveAttribute(
+      "aria-selected",
+      "true",
+    );
+    expect(await screen.findByRole("button", { name: "새 계획 작성" })).toBeInTheDocument();
+  });
+
+  it("resets the planning page to the list tab when returning through the sidebar", async () => {
+    render(<App />);
+
+    await openPageTab("캠핑 계획", "AI·결과");
+    expect(screen.getByRole("tab", { name: "AI·결과" })).toHaveAttribute(
+      "aria-selected",
+      "true",
+    );
+
+    await openPage("대시보드");
+    await openPage("캠핑 계획");
+
+    expect(screen.getByRole("tab", { name: "계획 목록" })).toHaveAttribute(
+      "aria-selected",
+      "true",
+    );
+    expect(await screen.findByRole("button", { name: "새 계획 작성" })).toBeInTheDocument();
+  });
+
+  it("opens the planning list tab from the dashboard quick action", async () => {
+    render(<App />);
+
+    await openPageTab("캠핑 계획", "AI·결과");
+    await openPage("대시보드");
+    await userEvent.click(screen.getByRole("tab", { name: "빠른 실행" }));
+    await userEvent.click(screen.getByRole("button", { name: /캠핑 계획 열기/u }));
+
+    expect(screen.getByRole("tab", { name: "계획 목록" })).toHaveAttribute(
+      "aria-selected",
+      "true",
+    );
+    expect(await screen.findByRole("button", { name: "새 계획 작성" })).toBeInTheDocument();
+  });
+
   it("opens the companion editor tab immediately after selecting a person from the list tab", async () => {
     render(<App />);
 
@@ -2131,7 +2231,7 @@ describe("App", () => {
   it("preserves spaces in trip notes while editing", async () => {
     render(<App />);
 
-    await userEvent.click(await screen.findByRole("button", { name: "캠핑 계획" }));
+    await openPageTab("캠핑 계획", "원본 입력");
 
     const notesInput = screen.getByPlaceholderText(
       "사이트 특이사항, 출발 전 꼭 챙길 것, 당일 일정 메모, 아직 장비/링크로 옮기지 않은 임시 메모를 줄 단위로 적어두세요.",
@@ -2153,7 +2253,7 @@ describe("App", () => {
 
     expect(await screen.findByText("동행자 삭제 완료")).toBeInTheDocument();
 
-    await userEvent.click(screen.getByRole("button", { name: "캠핑 계획" }));
+    await openPageTab("캠핑 계획", "원본 입력");
     await userEvent.click(screen.getByRole("button", { name: "계획 저장" }));
 
     await waitFor(() => {
@@ -3028,7 +3128,7 @@ describe("App", () => {
 
     render(<App />);
 
-    await userEvent.click(await screen.findByRole("button", { name: "캠핑 히스토리" }));
+    await openPageTab("캠핑 히스토리", "상세 보기");
     await userEvent.click(screen.getByRole("tab", { name: "후기 작성" }));
     await userEvent.type(
       screen.getByRole("textbox", { name: "자유 후기" }),
@@ -3049,7 +3149,7 @@ describe("App", () => {
 
     render(<App />);
 
-    await userEvent.click(await screen.findByRole("button", { name: "캠핑 히스토리" }));
+    await openPageTab("캠핑 히스토리", "상세 보기");
 
     const titleInput = screen.getByRole("textbox", { name: "히스토리 제목" });
 
@@ -3074,6 +3174,38 @@ describe("App", () => {
       "true",
     );
     expect(await screen.findByRole("textbox", { name: "히스토리 제목" })).toBeInTheDocument();
+  });
+
+  it("opens the history list tab first when entering the page from the sidebar", async () => {
+    state.history = [createHistoryRecord()];
+
+    render(<App />);
+
+    await openPage("캠핑 히스토리");
+
+    expect(screen.getByRole("tab", { name: "히스토리 목록" })).toHaveAttribute(
+      "aria-selected",
+      "true",
+    );
+    expect(await screen.findByText("캠핑 히스토리 목록")).toBeInTheDocument();
+  });
+
+  it("opens the retrospective tab after archiving a trip", async () => {
+    render(<App />);
+
+    await openPageTab("캠핑 계획", "원본 입력");
+    await userEvent.click(screen.getByRole("button", { name: "히스토리로 이동" }));
+
+    expect(await screen.findByText("히스토리 아카이브 완료")).toBeInTheDocument();
+    expect(screen.getByRole("tab", { name: "상세 보기" })).toHaveAttribute(
+      "aria-selected",
+      "true",
+    );
+    expect(screen.getByRole("tab", { name: "후기 작성" })).toHaveAttribute(
+      "aria-selected",
+      "true",
+    );
+    expect(await screen.findByRole("textbox", { name: "자유 후기" })).toBeInTheDocument();
   });
 
   it("restores the last opened planning page tab from session storage", async () => {
@@ -3156,7 +3288,7 @@ describe("App", () => {
 
     render(<App />);
 
-    await userEvent.click(await screen.findByRole("button", { name: "캠핑 히스토리" }));
+    await openPageTab("캠핑 히스토리", "상세 보기");
     await userEvent.click(screen.getByRole("tab", { name: "기록/결과" }));
 
     expect(
@@ -3225,7 +3357,7 @@ describe("App", () => {
 
     render(<App />);
 
-    await userEvent.click(await screen.findByRole("button", { name: "캠핑 히스토리" }));
+    await openPageTab("캠핑 히스토리", "상세 보기");
     await userEvent.click(screen.getByRole("tab", { name: "기록/결과" }));
     await userEvent.click(await screen.findByRole("button", { name: "결과 열기" }));
 
@@ -3383,7 +3515,7 @@ describe("App", () => {
 
     render(<App />);
 
-    await openPage("캠핑 히스토리");
+    await openPageTab("캠핑 히스토리", "상세 보기");
     await userEvent.click(screen.getByRole("tab", { name: "기록/결과" }));
     await userEvent.click(screen.getByRole("button", { name: "결과 열기" }));
     await userEvent.click(screen.getByRole("tab", { name: "히스토리 목록" }));
