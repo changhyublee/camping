@@ -84,7 +84,7 @@
 - `app/common-formatters.ts`, `app/view-model-drafts.ts`, `app/planning-history-helpers.ts`, `app/equipment-*-helpers.ts` 는 view model 밖으로 뺀 순수 helper 모듈만 담당한다.
 - `app/browser-helpers.ts` 는 `window.confirm` 같은 작은 브라우저 상호작용 helper만 담당한다.
 - `app/tab-helpers.ts` 와 `app/view-model-types.ts` 는 도메인 공통 UI helper 와 shared type 경계만 담당한다.
-- 동행자, 차량, 링크, 히스토리 같은 CRUD 핸들러는 `features/*/actions.ts` 처럼 도메인 action 모듈로 분리하고, `useAppViewModel.tsx` 에서 직접 긴 async handler 본문을 유지하지 않는다.
+- 계획 분석, 장비 메타데이터, 동행자, 차량, 링크, 히스토리 같은 CRUD·AI 핸들러는 `features/*/actions.ts` 처럼 도메인 action 모듈로 분리하고, `useAppViewModel.tsx` 에서 직접 긴 async handler 본문을 유지하지 않는다.
 - `pages/*Page.tsx` 는 각 메뉴의 route entry 역할만 맡고, 실제 page intro, page tab, 상세 panel 조합은 `features/*/*PageContent.tsx` 나 하위 panel component로 위임한다.
 - `features/*` 는 장비, 히스토리, 계획, 공통 UI처럼 여러 화면에서 재사용하거나 page 안에서 길어지는 panel/component 를 도메인 단위로 분리하는 위치다.
 - 페이지 안에서 `목록`, `편집`, `결과`, `보조 작업` 처럼 목적이 다른 major section 이 3개 이상 생기면 별도 컴포넌트나 훅으로 분리한다.

@@ -255,7 +255,7 @@
 - 상위 파일에서 시각 규칙과 도메인 로직이 다시 뒤섞이지 않도록, `App.tsx` 와 `AppShell.tsx` 는 `apiClient` 직접 호출 금지 위치로 본다.
 - 전환 단계의 `useAppViewModel.tsx` 같은 adapter 파일은 새 화면 책임을 더 모으는 위치가 아니라, 분리 작업이 끝날 때까지 줄여 나가는 예외 파일로 취급한다.
 - 공통 변환 로직은 `app/common-formatters.ts`, draft 기본값과 저장 변환은 `app/view-model-drafts.ts`, 도메인 선택/상태 helper 는 `app/*-helpers.ts` 로 먼저 분리한다.
-- state 변화에 따라 자동으로 따라오는 저장/복원/잠금 로직은 `app/effects/*` 로 분리하고, CRUD 핸들러는 `features/*/actions.ts` 같은 도메인 action 모듈로 뺀다.
+- state 변화에 따라 자동으로 따라오는 저장/복원/잠금 로직은 `app/effects/*` 로 분리하고, 계획 분석/장비 메타데이터를 포함한 CRUD·AI 핸들러는 `features/*/actions.ts` 같은 도메인 action 모듈로 뺀다.
 - 테스트도 구조를 따른다. 시나리오 본문은 `App.test.tsx`, fetch/EventSource mock 과 기본 상태 팩토리는 `src/test/app-test-helpers.tsx`, `src/test/mock-state.ts` 로 분리한다.
 - 전역 스타일 entry는 `styles/index.css` 하나만 `main.tsx` 에서 불러오고, 토큰과 반응형 media query 는 `tokens.css`, `responsive.css` 로 나눠 유지한다.
 

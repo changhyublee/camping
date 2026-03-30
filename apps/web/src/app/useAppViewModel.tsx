@@ -33,7 +33,6 @@ import type {
 import {
   ALL_TRIP_ANALYSIS_CATEGORIES,
   AGE_GROUP_LABELS,
-  EQUIPMENT_CATEGORY_CODE_REQUIRED_MESSAGE,
   EQUIPMENT_SECTION_LABELS,
   EXTERNAL_LINK_CATEGORY_LABELS,
   USER_LEARNING_STATUS_LABELS,
@@ -53,7 +52,6 @@ import {
   writePersistedUiState,
 } from "./ui-state";
 import {
-  appendSyncWarnings,
   formatCompactTripId,
   formatRelativeDate,
   getErrorMessage,
@@ -73,7 +71,6 @@ import {
   buildVisibleEquipmentCategoryIdMap,
   createDurableMetadataJobStatusMap,
   ensureSectionIdTracked,
-  findEquipmentItem,
   getDurableMetadataStatusLabel,
   isPendingDurableMetadataJobStatus,
   omitDraftLabel,
@@ -84,7 +81,6 @@ import {
   syncCollapsedSectionTrackedIds,
   syncExpandedSectionTrackedIds,
   toggleSectionTrackedId,
-  toDurableEquipmentInput,
 } from "./equipment-view-helpers";
 import {
   buildTripVehicleSelection,
@@ -104,7 +100,6 @@ import {
   toggleSelectionId,
 } from "./planning-history-helpers";
 import {
-  buildTripDraftForSave,
   createCommaSeparatedInputs,
   createEmptyCategoryDrafts,
   createEmptyEquipmentCategoryDraft,
@@ -114,7 +109,6 @@ import {
   createEmptyEquipmentCategorySelectionDrafts,
   createEmptyPrecheckItem,
   createEmptySectionTrackedIds,
-  createEmptyTripDraft,
   createIdleUserLearningStatus,
   toggleExpandedEquipmentSections,
 } from "./view-model-drafts";
@@ -141,6 +135,8 @@ import { buildCompanionActions } from "../features/companions/actions";
 import { buildVehicleActions } from "../features/vehicles/actions";
 import { buildLinkActions } from "../features/links/actions";
 import { buildHistoryActions } from "../features/history/actions";
+import { buildPlanningActions } from "../features/planning/actions";
+import { buildEquipmentActions } from "../features/equipment/actions";
 
 export function useAppViewModel(initialPage?: PageKey) {
   const [persistedUiState] = useState(() => readPersistedUiState());
@@ -1599,33 +1595,6 @@ export function useAppViewModel(initialPage?: PageKey) {
     return response.items;
   }
 
-  function beginCreateTrip() {
-    const nextDraft = createEmptyTripDraft();
-
-    setActivePage("planning");
-    setPlanningPageTab("editor");
-    setIsCreatingTrip(true);
-    setSelectedTripId(null);
-    setTripDraft(nextDraft);
-    setCommaInputs(createCommaSeparatedInputs(nextDraft));
-    setTripNoteInput(joinLineList(nextDraft.notes));
-    setValidationWarnings([]);
-    setAnalysisOutput(null);
-    setAnalysisStatus(null);
-    analysisStatusRef.current = null;
-    setAssistantResponse(null);
-    setOperationState(null);
-    setLoadError(null);
-  }
-
-  function selectTrip(tripId: string) {
-    setActivePage("planning");
-    setPlanningPageTab("editor");
-    setIsCreatingTrip(false);
-    setSelectedTripId(tripId);
-    setOperationState(null);
-  }
-
   function toggleAnalysisCategorySelection(category: TripAnalysisCategory) {
     setSelectedAnalysisCategories((current) =>
       current.includes(category)
@@ -1647,6 +1616,59 @@ export function useAppViewModel(initialPage?: PageKey) {
   ) {
     setTripDraft((current) => (current ? updater(current) : current));
   }
+
+  const {
+    beginCreateTrip,
+    handleAnalyzeAll,
+    handleAnalyzeSelected,
+    handleApplyAssistantAction,
+    handleArchiveTrip,
+    handleAssistantSubmit,
+    handleDeleteTrip,
+    handleOpenAnalysisLayer,
+    handleRefreshAnalysisCategory,
+    handleSaveTrip,
+    selectTrip,
+  } = buildPlanningActions({
+    analysisOutput,
+    analysisStatusRef,
+    assistantInput,
+    equipment,
+    isAnalysisPending,
+    isCreatingTrip,
+    loadPlanningOutput,
+    maybeAutoRefreshDurableMetadata,
+    planningLoadRequestIdRef,
+    refreshEquipmentState,
+    selectedAnalysisCategories,
+    selectedTripId,
+    setActivePage,
+    setAnalysisOutput,
+    setAnalysisStatus,
+    setAssistantInput,
+    setAssistantLoading,
+    setAssistantResponse,
+    setCommaInputs,
+    setHistory,
+    setHistoryDetailTab,
+    setHistoryPageTab,
+    setIsCreatingTrip,
+    setLoadError,
+    setMarkdownLayer,
+    setOperationState,
+    setPlanningPageTab,
+    setSavingTrip,
+    setSelectedHistoryId,
+    setSelectedTripId,
+    setTripDraft,
+    setTripNoteInput,
+    setTrips,
+    setValidationWarnings,
+    tripDraft,
+    tripNoteInput,
+    applyAnalysisStatus,
+  });
+
   const {
     beginCreateCompanion,
     beginEditCompanion,
@@ -1686,775 +1708,6 @@ export function useAppViewModel(initialPage?: PageKey) {
     vehicleNoteInput,
   });
 
-  async function handleSaveTrip() {
-    if (!tripDraft) return;
-
-    setSavingTrip(true);
-    setOperationState(null);
-
-    try {
-      const response = isCreatingTrip
-        ? await apiClient.createTrip(buildTripDraftForSave(tripDraft, tripNoteInput))
-        : await apiClient.updateTrip(
-            selectedTripId ?? tripDraft.trip_id ?? "",
-            buildTripDraftForSave(tripDraft, tripNoteInput),
-          );
-
-      const tripList = await apiClient.getTrips();
-      setTrips(tripList.items);
-      setSelectedTripId(response.trip_id);
-      setIsCreatingTrip(false);
-      setTripDraft(response.data);
-      setCommaInputs(createCommaSeparatedInputs(response.data));
-      setTripNoteInput(joinLineList(response.data.notes));
-      const savedDescription = `${response.data.title} 계획을 저장했습니다.`;
-      const backgroundAnalysisNotice = isAnalysisPending
-        ? " 현재 분석에는 방금 저장한 변경이 반영되지 않습니다. 완료 후 다시 실행하세요."
-        : "";
-
-      try {
-        const validation = await apiClient.validateTrip(response.trip_id);
-        setValidationWarnings(validation.warnings);
-        setOperationState({
-          title: "캠핑 계획 저장 완료",
-          tone:
-            validation.warnings.length > 0 || isAnalysisPending
-              ? "warning"
-              : "success",
-          description:
-            validation.warnings.length > 0
-              ? `${savedDescription} 검증 경고를 확인하세요.${backgroundAnalysisNotice}`
-              : `${savedDescription}${backgroundAnalysisNotice}`,
-        });
-      } catch (error) {
-        setValidationWarnings(toValidationWarnings(error));
-        setOperationState({
-          title: "캠핑 계획 저장 완료",
-          tone: "warning",
-          description: `${savedDescription} 검증 경고를 확인하세요.${backgroundAnalysisNotice}`,
-        });
-      }
-    } catch (error) {
-      setOperationState({
-        title: "캠핑 계획 저장 실패",
-        tone: "error",
-        description: getErrorMessage(error),
-      });
-    } finally {
-      setSavingTrip(false);
-    }
-  }
-
-  async function handleDeleteTrip() {
-    if (!selectedTripId) return;
-    if (!confirmDeletion(`캠핑 계획을 삭제할까요?\n${selectedTripId}`)) return;
-
-    try {
-      await apiClient.deleteTrip(selectedTripId);
-      const response = await apiClient.getTrips();
-      setTrips(response.items);
-      setSelectedTripId(response.items[0]?.trip_id ?? null);
-      setTripDraft(null);
-      setCommaInputs(createCommaSeparatedInputs());
-      setTripNoteInput("");
-      setAnalysisOutput(null);
-      setAnalysisStatus(null);
-      analysisStatusRef.current = null;
-      setAssistantResponse(null);
-      setOperationState({
-        title: "캠핑 계획 삭제 완료",
-        tone: "success",
-        description: `${selectedTripId} 계획을 삭제했습니다.`,
-      });
-    } catch (error) {
-      setOperationState({
-        title: "캠핑 계획 삭제 실패",
-        tone: "error",
-        description: getErrorMessage(error),
-      });
-    }
-  }
-
-  async function handleArchiveTrip() {
-    if (!selectedTripId) return;
-
-    try {
-      const response = await apiClient.archiveTrip(selectedTripId);
-      const [tripResponse, historyResponse] = await Promise.all([
-        apiClient.getTrips(),
-        apiClient.getHistory(),
-      ]);
-
-      setTrips(tripResponse.items);
-      setHistory(historyResponse.items);
-      setSelectedTripId(tripResponse.items[0]?.trip_id ?? null);
-      setSelectedHistoryId(response.item.history_id);
-      setTripDraft(null);
-      setCommaInputs(createCommaSeparatedInputs());
-      setTripNoteInput("");
-      setAnalysisOutput(null);
-      setAnalysisStatus(null);
-      analysisStatusRef.current = null;
-      setAssistantResponse(null);
-      setActivePage("history");
-      setHistoryPageTab("details");
-      setHistoryDetailTab("retrospective");
-      setOperationState({
-        title: "히스토리 아카이브 완료",
-        tone: "success",
-        description: `${response.item.title} 계획을 히스토리로 이동했습니다.`,
-      });
-    } catch (error) {
-      setOperationState({
-        title: "아카이브 실패",
-        tone: "error",
-        description: getErrorMessage(error),
-      });
-    }
-  }
-
-  async function requestAnalysisRun(
-    categories: TripAnalysisCategory[],
-    options: {
-      forceRefresh?: boolean;
-      successTitle: string;
-      successDescription: string;
-    },
-  ) {
-    if (!selectedTripId || categories.length === 0) return;
-
-    const tripId = selectedTripId;
-    const requestId = planningLoadRequestIdRef.current;
-    setOperationState(null);
-
-    try {
-      const response = await apiClient.analyzeTrip({
-        trip_id: tripId,
-        categories,
-        force_refresh: options.forceRefresh,
-        save_output: true,
-      });
-
-      if (planningLoadRequestIdRef.current !== requestId) {
-        return;
-      }
-
-      applyAnalysisStatus(response);
-
-      if (response.status === "completed") {
-        await loadPlanningOutput(tripId, requestId, { preserveCurrent: true });
-        setOperationState({
-          title: options.successTitle,
-          tone: "success",
-          description: response.output_path ?? options.successDescription,
-        });
-      } else if (response.status === "failed") {
-        setOperationState({
-          title: "분석 실패",
-          tone: "error",
-          description:
-            response.error?.message ?? "백그라운드 분석 작업이 실패했습니다.",
-        });
-      } else if (response.status === "interrupted") {
-        setOperationState({
-          title: "분석 중단",
-          tone: "warning",
-          description:
-            response.error?.message ??
-            "이전 분석 작업이 중단되었습니다. 다시 실행해 주세요.",
-        });
-      } else {
-        setOperationState({
-          title: options.successTitle,
-          tone: "success",
-          description: options.successDescription,
-        });
-      }
-    } catch (error) {
-      if (planningLoadRequestIdRef.current !== requestId) {
-        return;
-      }
-
-      setOperationState({
-        title: "분석 실패",
-        tone: "error",
-        description: getErrorMessage(error),
-      });
-    }
-  }
-
-  async function handleAnalyzeSelected() {
-    await requestAnalysisRun(selectedAnalysisCategories, {
-      successTitle: "섹션 수집 시작",
-      successDescription:
-        "선택한 섹션을 기준으로 백그라운드 분석을 시작했습니다.",
-    });
-  }
-
-  async function handleAnalyzeAll() {
-    await requestAnalysisRun([...ALL_TRIP_ANALYSIS_CATEGORIES], {
-      successTitle: "전체 분석 시작",
-      successDescription:
-        "전체 섹션을 기준으로 백그라운드 분석을 시작했습니다.",
-    });
-  }
-
-  async function handleRefreshAnalysisCategory(category: TripAnalysisCategory) {
-    await requestAnalysisRun([category], {
-      forceRefresh: true,
-      successTitle: "섹션 재수집 시작",
-      successDescription: "선택한 섹션을 다시 수집하기 시작했습니다.",
-    });
-  }
-
-  function handleOpenAnalysisLayer() {
-    if (!analysisOutput?.markdown) {
-      return;
-    }
-
-    setMarkdownLayer({
-      eyebrow: "계획 분석 레이어",
-      title: `${tripDraft?.title ?? "현재 계획"} 분석 결과`,
-      description:
-        "본문 폭을 넓혀 이번 캠핑의 최종 Markdown 정리본을 다시 읽는 전용 보기입니다.",
-      outputPath: analysisOutput.output_path,
-      markdown: analysisOutput.markdown,
-    });
-  }
-
-  async function handleAssistantSubmit() {
-    if (!selectedTripId || !assistantInput.trim()) return;
-
-    setAssistantLoading(true);
-
-    try {
-      const response = await apiClient.assistTrip(selectedTripId, assistantInput);
-      setAssistantResponse(response);
-      setOperationState({
-        title: "AI 보조 응답 완료",
-        tone: "success",
-        description: "폼에서 반영할 항목과 장비 액션 제안을 확인하세요.",
-      });
-      setAssistantInput("");
-    } catch (error) {
-      setOperationState({
-        title: "AI 보조 응답 실패",
-        tone: "error",
-        description: getErrorMessage(error),
-      });
-    } finally {
-      setAssistantLoading(false);
-    }
-  }
-
-  async function handleApplyAssistantAction(action: PlanningAssistantAction) {
-    try {
-      const additionalWarnings: string[] = [];
-      let metadataCollectionStarted = false;
-
-      if (action.action === "increase_quantity" && action.item_id) {
-        const currentItem = findEquipmentItem(equipment, action.section, action.item_id);
-
-        if (!currentItem) {
-          throw new ApiClientError("현재 장비 목록에서 대상 항목을 찾지 못했습니다.");
-        }
-
-        if (action.section === "durable") {
-          await apiClient.updateEquipmentItem("durable", action.item_id, {
-            ...(currentItem as DurableEquipmentItem),
-            quantity:
-              (currentItem as DurableEquipmentItem).quantity +
-              (action.quantity_delta ?? 1),
-          });
-        } else if (action.section === "consumables") {
-          await apiClient.updateEquipmentItem("consumables", action.item_id, {
-            ...(currentItem as ConsumableEquipmentItem),
-            quantity_on_hand:
-              (currentItem as ConsumableEquipmentItem).quantity_on_hand +
-              (action.quantity_delta ?? 1),
-          });
-        }
-      }
-
-      if (action.action === "mark_needs_check" && action.item_id) {
-        const currentItem = findEquipmentItem(equipment, action.section, action.item_id);
-
-        if (!currentItem || action.section !== "precheck") {
-          throw new ApiClientError("점검 대상으로 적용할 항목을 찾지 못했습니다.");
-        }
-
-        await apiClient.updateEquipmentItem("precheck", action.item_id, {
-          ...(currentItem as PrecheckItem),
-          status: "needs_check",
-        });
-      }
-
-      if (action.action === "add_item") {
-        if (action.section === "durable" && action.durable_item) {
-          const { id: _ignored, ...payload } = action.durable_item;
-          const response = await apiClient.createEquipmentItem("durable", payload);
-          const metadataRefreshResult = await maybeAutoRefreshDurableMetadata(
-            response.item as DurableEquipmentItem,
-          );
-          metadataCollectionStarted = metadataRefreshResult.started;
-          if (metadataRefreshResult.warning) {
-            additionalWarnings.push(metadataRefreshResult.warning);
-          }
-        }
-
-        if (action.section === "consumables" && action.consumable_item) {
-          const { id: _ignored, ...payload } = action.consumable_item;
-          await apiClient.createEquipmentItem("consumables", payload);
-        }
-
-        if (action.section === "precheck" && action.precheck_item) {
-          const { id: _ignored, ...payload } = action.precheck_item;
-          await apiClient.createEquipmentItem("precheck", payload);
-        }
-      }
-
-      const syncWarnings = [
-        ...(await refreshEquipmentState()),
-        ...additionalWarnings,
-      ];
-      setOperationState({
-        title: "AI 제안 반영 완료",
-        tone: syncWarnings.length > 0 ? "warning" : "success",
-        description: appendSyncWarnings(
-          `${action.title}${metadataCollectionStarted ? " 메타데이터 수집은 백그라운드에서 계속됩니다." : ""}`,
-          syncWarnings,
-        ),
-      });
-    } catch (error) {
-      setOperationState({
-        title: "AI 제안 반영 실패",
-        tone: "error",
-        description: getErrorMessage(error),
-      });
-    }
-  }
-
-  async function handleCreateEquipmentItem(section: EquipmentSection) {
-    try {
-      const additionalWarnings: string[] = [];
-      let metadataCollectionStarted = false;
-
-      if (section === "durable") {
-        const response = await apiClient.createEquipmentItem(section, durableDraft);
-        const metadataRefreshResult = await maybeAutoRefreshDurableMetadata(
-          response.item as DurableEquipmentItem,
-        );
-        metadataCollectionStarted = metadataRefreshResult.started;
-        if (metadataRefreshResult.warning) {
-          additionalWarnings.push(metadataRefreshResult.warning);
-        }
-        setDurableDraft((current) => ({
-          ...createEmptyDurableItem(),
-          category: resolveCategorySelection(
-            current.category,
-            equipmentCategories.durable,
-          ),
-        }));
-      }
-
-      if (section === "consumables") {
-        await apiClient.createEquipmentItem(section, consumableDraft);
-        setConsumableDraft((current) => ({
-          ...createEmptyConsumableItem(),
-          category: resolveCategorySelection(
-            current.category,
-            equipmentCategories.consumables,
-          ),
-        }));
-      }
-
-      if (section === "precheck") {
-        await apiClient.createEquipmentItem(section, precheckDraft);
-        setPrecheckDraft((current) => ({
-          ...createEmptyPrecheckItem(),
-          category: resolveCategorySelection(
-            current.category,
-            equipmentCategories.precheck,
-          ),
-        }));
-      }
-
-      const syncWarnings = [
-        ...(await refreshEquipmentState()),
-        ...additionalWarnings,
-      ];
-      setOperationState({
-        title: "장비 항목 추가 완료",
-        tone: syncWarnings.length > 0 ? "warning" : "success",
-        description: appendSyncWarnings(
-          `${section} 섹션에 새 항목을 추가했습니다.${metadataCollectionStarted ? " 메타데이터 수집은 백그라운드에서 계속됩니다." : ""}`,
-          syncWarnings,
-        ),
-      });
-    } catch (error) {
-      setOperationState({
-        title: "장비 항목 추가 실패",
-        tone: "error",
-        description: getErrorMessage(error),
-      });
-    }
-  }
-
-  async function handleSaveEquipmentItem(
-    section: EquipmentSection,
-    itemId: string,
-  ) {
-    if (!equipment) return;
-
-    try {
-      const additionalWarnings: string[] = [];
-      let metadataCollectionStarted = false;
-      const pendingCategoryId =
-        equipmentCategorySelectionDrafts[section][itemId] ?? null;
-
-      if (section === "durable") {
-        const item = equipment.durable.items.find((candidate) => candidate.id === itemId);
-        if (item) {
-          const itemToSave =
-            pendingCategoryId && pendingCategoryId !== item.category
-              ? { ...item, category: pendingCategoryId }
-              : item;
-          await apiClient.updateEquipmentItem(
-            section,
-            itemId,
-            toDurableEquipmentInput(itemToSave),
-          );
-          const metadataRefreshResult = await maybeAutoRefreshDurableMetadata(itemToSave);
-          metadataCollectionStarted = metadataRefreshResult.started;
-          if (metadataRefreshResult.warning) {
-            additionalWarnings.push(metadataRefreshResult.warning);
-          }
-        }
-      }
-
-      if (section === "consumables") {
-        const item = equipment.consumables.items.find(
-          (candidate) => candidate.id === itemId,
-        );
-        if (item) {
-          const itemToSave =
-            pendingCategoryId && pendingCategoryId !== item.category
-              ? { ...item, category: pendingCategoryId }
-              : item;
-          await apiClient.updateEquipmentItem(section, itemId, itemToSave);
-        }
-      }
-
-      if (section === "precheck") {
-        const item = equipment.precheck.items.find(
-          (candidate) => candidate.id === itemId,
-        );
-        if (item) {
-          const itemToSave =
-            pendingCategoryId && pendingCategoryId !== item.category
-              ? { ...item, category: pendingCategoryId }
-              : item;
-          await apiClient.updateEquipmentItem(section, itemId, itemToSave);
-        }
-      }
-
-      if (pendingCategoryId) {
-        setEquipmentCategorySelectionDrafts((current) =>
-          setEquipmentCategorySelectionDraft(current, section, itemId, null),
-        );
-        setCollapsedEquipmentCategories((current) =>
-          removeSectionTrackedId(current, section, pendingCategoryId),
-        );
-        previousEquipmentGroupIdsRef.current = ensureSectionIdTracked(
-          buildVisibleEquipmentCategoryIdMap(equipment, equipmentCategories),
-          section,
-          pendingCategoryId,
-        );
-      }
-
-      const syncWarnings = [
-        ...(await refreshEquipmentState()),
-        ...additionalWarnings,
-      ];
-      setOperationState({
-        title: "장비 저장 완료",
-        tone: syncWarnings.length > 0 ? "warning" : "success",
-        description: appendSyncWarnings(
-          `${itemId}${metadataCollectionStarted ? " 메타데이터 수집은 백그라운드에서 계속됩니다." : ""}`,
-          syncWarnings,
-        ),
-      });
-    } catch (error) {
-      setOperationState({
-        title: "장비 저장 실패",
-        tone: "error",
-        description: getErrorMessage(error),
-      });
-    }
-  }
-
-  async function handleDeleteEquipmentItem(
-    section: EquipmentSection,
-    itemId: string,
-  ) {
-    if (!confirmDeletion(`장비 항목을 삭제할까요?\n${section} / ${itemId}`)) return;
-
-    try {
-      await apiClient.deleteEquipmentItem(section, itemId);
-      setEquipmentCategorySelectionDrafts((current) =>
-        setEquipmentCategorySelectionDraft(current, section, itemId, null),
-      );
-      const syncWarnings = await refreshEquipmentState();
-      setOperationState({
-        title: "장비 삭제 완료",
-        tone: syncWarnings.length > 0 ? "warning" : "success",
-        description: appendSyncWarnings(itemId, syncWarnings),
-      });
-    } catch (error) {
-      setOperationState({
-        title: "장비 삭제 실패",
-        tone: "error",
-        description: getErrorMessage(error),
-      });
-    }
-  }
-
-  async function handleRefreshDurableMetadata(itemId: string) {
-    const currentItem = equipment?.durable.items.find((item) => item.id === itemId);
-    const pendingCategoryId =
-      equipmentCategorySelectionDrafts.durable[itemId] ?? null;
-
-    try {
-      if (currentItem) {
-        const itemToSave =
-          pendingCategoryId && pendingCategoryId !== currentItem.category
-            ? { ...currentItem, category: pendingCategoryId }
-            : currentItem;
-        await apiClient.updateEquipmentItem(
-          "durable",
-          itemId,
-          toDurableEquipmentInput(itemToSave),
-        );
-
-        if (pendingCategoryId) {
-          setEquipmentCategorySelectionDrafts((current) =>
-            setEquipmentCategorySelectionDraft(current, "durable", itemId, null),
-          );
-          setCollapsedEquipmentCategories((current) =>
-            removeSectionTrackedId(current, "durable", pendingCategoryId),
-          );
-          previousEquipmentGroupIdsRef.current = ensureSectionIdTracked(
-            buildVisibleEquipmentCategoryIdMap(equipment, equipmentCategories),
-            "durable",
-            pendingCategoryId,
-          );
-        }
-      }
-
-      await refreshDurableMetadata(itemId, { manual: true });
-      const syncWarnings = await refreshEquipmentState();
-      setOperationState({
-        title: "장비 메타데이터 수집 시작",
-        tone: syncWarnings.length > 0 ? "warning" : "success",
-        description: appendSyncWarnings(
-          `${itemId} 메타데이터를 백그라운드에서 다시 수집합니다.`,
-          syncWarnings,
-        ),
-      });
-    } catch (error) {
-      setOperationState({
-        title: "장비 메타데이터 재수집 실패",
-        tone: "error",
-        description: getErrorMessage(error),
-      });
-    }
-  }
-
-  function handleToggleEquipmentCategory(
-    section: EquipmentSection,
-    categoryId: string,
-  ) {
-    setCollapsedEquipmentCategories((current) =>
-      toggleSectionTrackedId(current, section, categoryId),
-    );
-  }
-
-  function handleToggleCategoryEditor(
-    section: EquipmentSection,
-    categoryId: string,
-  ) {
-    setCollapsedCategoryEditors((current) =>
-      toggleSectionTrackedId(current, section, categoryId),
-    );
-  }
-
-  function handleToggleCategorySection(section: EquipmentSection) {
-    setEquipmentSection(section);
-    setExpandedCategorySections((current) =>
-      toggleExpandedEquipmentSections(current, section),
-    );
-  }
-
-  function handleToggleEquipmentItem(section: EquipmentSection, itemId: string) {
-    setExpandedEquipmentItems((current) =>
-      toggleSectionTrackedId(current, section, itemId),
-    );
-  }
-
-  function handleChangeEquipmentItemCategory(
-    section: EquipmentSection,
-    itemId: string,
-    categoryId: string,
-  ) {
-    const item = findEquipmentItem(equipment, section, itemId);
-
-    if (!item) {
-      return;
-    }
-
-    setEquipmentCategorySelectionDrafts((current) =>
-      setEquipmentCategorySelectionDraft(
-        current,
-        section,
-        itemId,
-        categoryId === item.category ? null : categoryId,
-      ),
-    );
-  }
-
-  async function handleCreateEquipmentCategory(section: EquipmentSection) {
-    const draft = categoryDrafts[section];
-    const label = draft.label.trim();
-    const manualCode = draft.id?.trim();
-
-    if (!label) {
-      setOperationState({
-        title: "장비 카테고리 추가 실패",
-        tone: "error",
-        description: "카테고리 표시 이름을 입력해 주세요.",
-      });
-      return;
-    }
-
-    if (!manualCode) {
-      setOperationState({
-        title: "장비 카테고리 추가 실패",
-        tone: "error",
-        description: EQUIPMENT_CATEGORY_CODE_REQUIRED_MESSAGE,
-      });
-      return;
-    }
-
-    try {
-      const response = await apiClient.createEquipmentCategory(section, {
-        ...draft,
-        id: manualCode,
-        label,
-      });
-      setEquipmentSection(section);
-      setExpandedCategorySections((current) =>
-        current.includes(section)
-          ? current
-          : toggleExpandedEquipmentSections(current, section),
-      );
-      setEquipmentCategories((current) => ({
-        ...current,
-        [section]: [...current[section], response.item].sort(sortEquipmentCategories),
-      }));
-      setCategoryDrafts((current) => ({
-        ...current,
-        [section]: createEmptyEquipmentCategoryDraft(),
-      }));
-      setOperationState({
-        title: "장비 카테고리 추가 완료",
-        tone: "success",
-        description: `${EQUIPMENT_SECTION_LABELS[section]} / ${response.item.label}`,
-      });
-    } catch (error) {
-      setOperationState({
-        title: "장비 카테고리 추가 실패",
-        tone: "error",
-        description: getErrorMessage(error),
-      });
-    }
-  }
-
-  async function handleSaveEquipmentCategory(
-    section: EquipmentSection,
-    categoryId: string,
-  ) {
-    const category = equipmentCategories[section].find((item) => item.id === categoryId);
-
-    if (!category) {
-      return;
-    }
-
-    try {
-      const nextLabel = (
-        categoryLabelDrafts[section][categoryId] ?? category.label
-      ).trim();
-      const response = await apiClient.updateEquipmentCategory(section, categoryId, {
-        ...category,
-        label: nextLabel,
-      });
-      setEquipmentCategories((current) => ({
-        ...current,
-        [section]: current[section]
-          .map((item) => (item.id === categoryId ? response.item : item))
-          .sort(sortEquipmentCategories),
-      }));
-      setCategoryLabelDrafts((current) => ({
-        ...current,
-        [section]: omitDraftLabel(current[section], categoryId),
-      }));
-      setOperationState({
-        title: "장비 카테고리 저장 완료",
-        tone: "success",
-        description: `${EQUIPMENT_SECTION_LABELS[section]} / ${response.item.label}`,
-      });
-    } catch (error) {
-      setOperationState({
-        title: "장비 카테고리 저장 실패",
-        tone: "error",
-        description: getErrorMessage(error),
-      });
-    }
-  }
-
-  async function handleDeleteEquipmentCategory(
-    section: EquipmentSection,
-    categoryId: string,
-  ) {
-    if (
-      !confirmDeletion(`장비 카테고리를 삭제할까요?\n${EQUIPMENT_SECTION_LABELS[section]} / ${categoryId}`)
-    ) {
-      return;
-    }
-
-    try {
-      await apiClient.deleteEquipmentCategory(section, categoryId);
-      setEquipmentCategories((current) => ({
-        ...current,
-        [section]: current[section].filter((item) => item.id !== categoryId),
-      }));
-      setCategoryLabelDrafts((current) => ({
-        ...current,
-        [section]: omitDraftLabel(current[section], categoryId),
-      }));
-      setOperationState({
-        title: "장비 카테고리 삭제 완료",
-        tone: "success",
-        description: `${EQUIPMENT_SECTION_LABELS[section]} / ${categoryId}`,
-      });
-    } catch (error) {
-      setOperationState({
-        title: "장비 카테고리 삭제 실패",
-        tone: "error",
-        description: getErrorMessage(error),
-      });
-    }
-  }
-
   const {
     handleAddRetrospective,
     handleDeleteHistory,
@@ -2487,6 +1740,48 @@ export function useAppViewModel(initialPage?: PageKey) {
     setLinkDraft,
     setLinks,
     setOperationState,
+  });
+
+  const {
+    handleChangeEquipmentItemCategory,
+    handleCreateEquipmentCategory,
+    handleCreateEquipmentItem,
+    handleDeleteEquipmentCategory,
+    handleDeleteEquipmentItem,
+    handleRefreshDurableMetadata,
+    handleSaveEquipmentCategory,
+    handleSaveEquipmentItem,
+    handleToggleCategoryEditor,
+    handleToggleCategorySection,
+    handleToggleEquipmentCategory,
+    handleToggleEquipmentItem,
+  } = buildEquipmentActions({
+    categoryDrafts,
+    categoryLabelDrafts,
+    collapsedEquipmentCategories,
+    consumableDraft,
+    durableDraft,
+    equipment,
+    equipmentCategories,
+    equipmentCategorySelectionDrafts,
+    maybeAutoRefreshDurableMetadata,
+    precheckDraft,
+    previousEquipmentGroupIdsRef,
+    refreshDurableMetadata,
+    refreshEquipmentState,
+    setCategoryDrafts,
+    setCategoryLabelDrafts,
+    setCollapsedCategoryEditors,
+    setCollapsedEquipmentCategories,
+    setConsumableDraft,
+    setDurableDraft,
+    setEquipmentCategories,
+    setEquipmentCategorySelectionDrafts,
+    setEquipmentSection,
+    setExpandedCategorySections,
+    setExpandedEquipmentItems,
+    setOperationState,
+    setPrecheckDraft,
   });
 
   async function handleCreateDataBackup() {

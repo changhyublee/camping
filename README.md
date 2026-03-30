@@ -167,7 +167,7 @@ pnpm build
 - 새 화면 로직은 feature component, page-local panel, helper 모듈로 추가하고, `App.tsx` 나 공통 host 파일로 다시 되돌리지 않습니다.
 - 페이지 안에서 major section 이 3개 이상 생기면 별도 컴포넌트로 분리하고, 비동기 호출은 상위 셸이 아니라 해당 페이지 주변의 훅이나 모듈로 격리합니다.
 - `app/effects/*` 는 세션 복원, body lock, 선택 대상 reset 같은 side effect 전용 hook만 담당합니다.
-- 동행자/차량/링크/히스토리 CRUD 핸들러는 `features/*/actions.ts` 로 분리하고, `useAppViewModel.tsx` 에 긴 async handler 본문을 직접 쌓지 않습니다.
+- 계획/장비를 포함한 도메인별 CRUD·AI 핸들러는 `features/*/actions.ts` 로 분리하고, `useAppViewModel.tsx` 에 긴 async handler 본문을 직접 쌓지 않습니다.
 - 테스트는 `App.test.tsx` 시나리오 본문과 `src/test/` helper로 나누고, 스타일 진입은 `styles/index.css` 하나만 `main.tsx` 에서 불러옵니다.
 
 ## 참고 메모

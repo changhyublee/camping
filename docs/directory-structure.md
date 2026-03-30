@@ -142,12 +142,14 @@ apps/web/src/
 │   │   └── actions.ts
 │   ├── dashboard/
 │   ├── equipment/
+│   │   └── actions.ts
 │   ├── help/
 │   ├── history/
 │   │   └── actions.ts
 │   ├── links/
 │   │   └── actions.ts
 │   ├── planning/
+│   │   └── actions.ts
 │   ├── shared/
 │   └── vehicles/
 │       └── actions.ts
@@ -190,7 +192,7 @@ apps/web/src/
 - `app/useAppViewModel.tsx`: state hook, helper, feature panel 을 조합하는 view model adapter
 - `features/*/*PageContent.tsx`: page intro, page tab, 상세 panel 조합을 맡는 page-local content
 - `features/*/*Panel*.tsx`: 계획/히스토리/장비처럼 길어지는 detail panel 분리 파일
-- `features/*/actions.ts`: 동행자, 차량, 링크, 히스토리처럼 도메인별 CRUD 핸들러를 view model 밖으로 뺀 action 모듈
+- `features/*/actions.ts`: 동행자, 차량, 링크, 히스토리, 계획, 장비처럼 도메인별 CRUD/AI 핸들러를 view model 밖으로 뺀 action 모듈
 - `features/`: 도메인별 화면 조각과 helper
 - `pages/*Page.tsx`: 메뉴별 route entry
 - `components/`: 재사용 표시 컴포넌트

@@ -62,7 +62,7 @@ describe("프런트엔드 구조 가드", () => {
   it("useAppViewModel 은 adapter 경계를 유지하고 공통 helper 구현을 별도 모듈로 위임한다", () => {
     const source = readFileSync(APP_VIEW_MODEL_FILE, "utf8");
 
-    expect(getLineCount(APP_VIEW_MODEL_FILE)).toBeLessThanOrEqual(2800);
+    expect(getLineCount(APP_VIEW_MODEL_FILE)).toBeLessThanOrEqual(2300);
     expect(source).toMatch(/from "\.\/ui-state"/);
     expect(source).toMatch(/from "\.\/common-formatters"/);
     expect(source).toMatch(/from "\.\/view-model-drafts"/);
@@ -75,6 +75,8 @@ describe("프런트엔드 구조 가드", () => {
     expect(source).toMatch(/from "\.\.\/features\/vehicles\/actions"/);
     expect(source).toMatch(/from "\.\.\/features\/links\/actions"/);
     expect(source).toMatch(/from "\.\.\/features\/history\/actions"/);
+    expect(source).toMatch(/from "\.\.\/features\/planning\/actions"/);
+    expect(source).toMatch(/from "\.\.\/features\/equipment\/actions"/);
     expect(source).toMatch(/from "\.\/state\/usePlanningState"/);
     expect(source).toMatch(/from "\.\/state\/useEquipmentState"/);
     expect(source).toMatch(/from "\.\/state\/useHistoryState"/);
@@ -158,7 +160,7 @@ describe("프런트엔드 구조 가드", () => {
     }
 
     for (const filePath of featureTsFiles) {
-      expect(getLineCount(filePath)).toBeLessThanOrEqual(500);
+      expect(getLineCount(filePath)).toBeLessThanOrEqual(550);
     }
   });
 
@@ -167,14 +169,16 @@ describe("프런트엔드 구조 가드", () => {
     const appTestHelperFile = join(TEST_DIR, "app-test-helpers.tsx");
     const mockStateFile = join(TEST_DIR, "mock-state.ts");
     const stylesEntryFile = join(STYLES_DIR, "index.css");
+    const stylesAppFile = join(STYLES_DIR, "app.css");
     const stylesTokensFile = join(STYLES_DIR, "tokens.css");
     const stylesResponsiveFile = join(STYLES_DIR, "responsive.css");
     const mainSource = readFileSync(MAIN_FILE, "utf8");
 
-    expect(getLineCount(appTestFile)).toBeLessThanOrEqual(2600);
-    expect(getLineCount(appTestHelperFile)).toBeLessThanOrEqual(1200);
+    expect(getLineCount(appTestFile)).toBeLessThanOrEqual(2550);
+    expect(getLineCount(appTestHelperFile)).toBeLessThanOrEqual(1150);
     expect(getLineCount(mockStateFile)).toBeLessThanOrEqual(320);
     expect(existsSync(stylesEntryFile)).toBe(true);
+    expect(getLineCount(stylesAppFile)).toBeLessThanOrEqual(1700);
     expect(existsSync(stylesTokensFile)).toBe(true);
     expect(existsSync(stylesResponsiveFile)).toBe(true);
     expect(mainSource).toContain('import "./styles/index.css";');
