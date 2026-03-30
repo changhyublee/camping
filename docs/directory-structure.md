@@ -121,7 +121,13 @@ apps/web/src/
 │   ├── equipment-view-helpers.ts
 │   ├── navigation.ts
 │   ├── planning-history-helpers.ts
-│   ├── tab-helpers.tsx
+│   ├── state/
+│   │   ├── useEquipmentState.ts
+│   │   ├── useHistoryState.ts
+│   │   ├── usePlanningState.ts
+│   │   ├── useReferenceDataState.ts
+│   │   └── useUiShellState.ts
+│   ├── tab-helpers.ts
 │   ├── ui-state.ts
 │   ├── view-model-drafts.ts
 │   ├── view-model-types.ts
@@ -159,11 +165,12 @@ apps/web/src/
 - `app/equipment-*.ts`: 장비 카테고리/메타데이터 관련 순수 helper
 - `app/navigation.ts`: 페이지 키, 라벨, 경로, 네비게이션 그룹 메타데이터
 - `app/planning-history-helpers.ts`: 계획/히스토리 선택, 차량/분석 상태 helper
-- `app/tab-helpers.tsx`: 탭/세그먼트 접근성 helper와 focus 이동 규칙
+- `app/state/*`: 도메인별 `useState`/`useRef` 묶음과 state hook 경계
+- `app/tab-helpers.ts`: 탭/세그먼트 접근성 helper와 focus 이동 규칙
 - `app/ui-state.ts`: 페이지 탭 메타데이터와 `sessionStorage` 기반 UI 복원 규칙
 - `app/view-model-drafts.ts`: draft 기본값과 저장용 변환 helper
 - `app/view-model-types.ts`: view model 과 feature 사이에서 공유하는 드래프트/맵 타입
-- `app/useAppViewModel.tsx`: 현재 웹 상태 조합과 페이지 렌더용 view model adapter
+- `app/useAppViewModel.tsx`: state hook, helper, feature panel 을 조합하는 view model adapter
 - `features/*/*PageContent.tsx`: page intro, page tab, 상세 panel 조합을 맡는 page-local content
 - `features/*/*Panel*.tsx`: 계획/히스토리/장비처럼 길어지는 detail panel 분리 파일
 - `features/`: 도메인별 화면 조각과 helper

@@ -1,8 +1,5 @@
 import { useCallback, useEffect, useMemo, useRef, useState } from "react";
-import type {
-  KeyboardEvent as ReactKeyboardEvent,
-  MutableRefObject,
-} from "react";
+import type { KeyboardEvent as ReactKeyboardEvent } from "react";
 import type {
   AiJobEvent,
   AnalyzeTripResponse,
@@ -48,28 +45,13 @@ import {
 import { cloneEquipmentCategories } from "@camping/shared";
 import { apiClient, ApiClientError, type AiJobEventSubscription } from "../api/client";
 import {
+  buildActiveTabTargets,
   getAdjacentEquipmentSection,
-  getDetailPanelId,
-  getDetailTabId,
-  getEquipmentSectionPanelId,
   getEquipmentSectionTabId,
 } from "./tab-helpers";
 import { getPathForPage, type PageKey } from "./navigation";
 import {
   EQUIPMENT_SECTIONS,
-  type CategoryDetailTab,
-  type CategoryPageTab,
-  type CompanionPageTab,
-  type DashboardPageTab,
-  type EquipmentDetailTab,
-  type EquipmentPageTab,
-  type HelpPageTab,
-  type HistoryDetailTab,
-  type HistoryPageTab,
-  type LinkPageTab,
-  type PlanningDetailTab,
-  type PlanningPageTab,
-  type VehiclePageTab,
   readPersistedUiState,
   writePersistedUiState,
 } from "./ui-state";
@@ -151,179 +133,198 @@ import {
   createIdleUserLearningStatus,
   toggleExpandedEquipmentSections,
 } from "./view-model-drafts";
-import {
-  AiJobRealtimeMode,
-  CategoryDrafts,
-  CategoryLabelDrafts,
-  CommaSeparatedInputs,
-  CompanionTextInputs,
-  DurableMetadataJobStatusMap,
-  HistoryEditorDraft,
-  OperationState,
-  RetrospectiveDraft,
-  SectionTrackedIds,
-  EquipmentCategorySelectionDrafts,
-} from "./view-model-types";
-
-type MarkdownLayerState = {
-  eyebrow: string;
-  title: string;
-  description: string;
-  outputPath: string | null;
-  markdown: string;
-};
+import { HistoryEditorDraft, RetrospectiveDraft } from "./view-model-types";
+import { usePlanningState } from "./state/usePlanningState";
+import { useEquipmentState } from "./state/useEquipmentState";
+import { useHistoryState } from "./state/useHistoryState";
+import { useReferenceDataState } from "./state/useReferenceDataState";
+import { useUiShellState } from "./state/useUiShellState";
 
 export function useAppViewModel(initialPage?: PageKey) {
   const [persistedUiState] = useState(() => readPersistedUiState());
   const [activePage, setActivePageState] = useState<PageKey>(
     initialPage ?? persistedUiState?.activePage ?? "dashboard",
   );
-  const [companions, setCompanions] = useState<Companion[]>([]);
-  const [companionDraft, setCompanionDraft] =
-    useState<Companion>(createEmptyCompanion());
-  const [editingCompanionId, setEditingCompanionId] = useState<string | null>(null);
-  const [vehicles, setVehicles] = useState<Vehicle[]>([]);
-  const [vehicleDraft, setVehicleDraft] = useState<VehicleInput>(createEmptyVehicle());
-  const [editingVehicleId, setEditingVehicleId] = useState<string | null>(null);
-  const [trips, setTrips] = useState<TripSummary[]>([]);
-  const [selectedTripId, setSelectedTripId] = useState<string | null>(
-    persistedUiState?.selectedTripId ?? null,
-  );
-  const [tripDraft, setTripDraft] = useState<TripDraft | null>(null);
-  const [isCreatingTrip, setIsCreatingTrip] = useState(false);
-  const [validationWarnings, setValidationWarnings] = useState<string[]>([]);
-  const [analysisOutput, setAnalysisOutput] =
-    useState<GetOutputResponse | null>(null);
-  const [analysisStatus, setAnalysisStatus] =
-    useState<AnalyzeTripResponse | null>(null);
-  const [selectedAnalysisCategories, setSelectedAnalysisCategories] = useState<
-    TripAnalysisCategory[]
-  >([...ALL_TRIP_ANALYSIS_CATEGORIES]);
-  const [assistantResponse, setAssistantResponse] =
-    useState<PlanningAssistantResponse | null>(null);
-  const [assistantInput, setAssistantInput] = useState("");
-  const [assistantLoading, setAssistantLoading] = useState(false);
-  const [equipment, setEquipment] = useState<EquipmentCatalog | null>(null);
-  const [equipmentCategories, setEquipmentCategories] =
-    useState<EquipmentCategoriesData>(cloneEquipmentCategories());
-  const [equipmentSection, setEquipmentSection] =
-    useState<EquipmentSection>(persistedUiState?.equipmentSection ?? "durable");
-  const [dashboardPageTab, setDashboardPageTab] =
-    useState<DashboardPageTab>(persistedUiState?.dashboardPageTab ?? "overview");
-  const [companionPageTab, setCompanionPageTab] =
-    useState<CompanionPageTab>(persistedUiState?.companionPageTab ?? "list");
-  const [vehiclePageTab, setVehiclePageTab] =
-    useState<VehiclePageTab>(persistedUiState?.vehiclePageTab ?? "list");
-  const [equipmentPageTab, setEquipmentPageTab] =
-    useState<EquipmentPageTab>(persistedUiState?.equipmentPageTab ?? "list");
-  const [categoryPageTab, setCategoryPageTab] =
-    useState<CategoryPageTab>(persistedUiState?.categoryPageTab ?? "list");
-  const [helpPageTab, setHelpPageTab] =
-    useState<HelpPageTab>(persistedUiState?.helpPageTab ?? "files");
-  const [planningPageTab, setPlanningPageTab] =
-    useState<PlanningPageTab>(persistedUiState?.planningPageTab ?? "list");
-  const [historyPageTab, setHistoryPageTab] =
-    useState<HistoryPageTab>(persistedUiState?.historyPageTab ?? "list");
-  const [linkPageTab, setLinkPageTab] =
-    useState<LinkPageTab>(persistedUiState?.linkPageTab ?? "list");
-  const [planningDetailTab, setPlanningDetailTab] =
-    useState<PlanningDetailTab>(persistedUiState?.planningDetailTab ?? "analysis");
-  const [historyDetailTab, setHistoryDetailTab] =
-    useState<HistoryDetailTab>(persistedUiState?.historyDetailTab ?? "overview");
-  const [equipmentDetailTab, setEquipmentDetailTab] =
-    useState<EquipmentDetailTab>(persistedUiState?.equipmentDetailTab ?? "summary");
-  const [categoryDetailTab, setCategoryDetailTab] =
-    useState<CategoryDetailTab>(persistedUiState?.categoryDetailTab ?? "create");
-  const [collapsedEquipmentCategories, setCollapsedEquipmentCategories] =
-    useState<SectionTrackedIds>(createEmptySectionTrackedIds());
-  const [expandedEquipmentItems, setExpandedEquipmentItems] =
-    useState<SectionTrackedIds>(createEmptySectionTrackedIds());
-  const [collapsedCategoryEditors, setCollapsedCategoryEditors] =
-    useState<SectionTrackedIds>(createEmptySectionTrackedIds());
-  const [expandedCategorySections, setExpandedCategorySections] = useState<
-    EquipmentSection[]
-  >([]);
-  const [durableMetadataJobStatuses, setDurableMetadataJobStatuses] =
-    useState<DurableMetadataJobStatusMap>({});
-  const [categoryDrafts, setCategoryDrafts] =
-    useState<CategoryDrafts>(createEmptyCategoryDrafts());
-  const [categoryLabelDrafts, setCategoryLabelDrafts] =
-    useState<CategoryLabelDrafts>(createEmptyCategoryLabelDrafts());
-  const [equipmentCategorySelectionDrafts, setEquipmentCategorySelectionDrafts] =
-    useState<EquipmentCategorySelectionDrafts>(
-      createEmptyEquipmentCategorySelectionDrafts(),
-    );
-  const [history, setHistory] = useState<HistoryRecord[]>([]);
-  const [selectedHistoryId, setSelectedHistoryId] = useState<string | null>(
-    persistedUiState?.selectedHistoryId ?? null,
-  );
-  const [savingRetrospective, setSavingRetrospective] = useState(false);
-  const [historyLearningInsight, setHistoryLearningInsight] =
-    useState<HistoryLearningInsight | null>(null);
-  const [historyLearningLoading, setHistoryLearningLoading] = useState(false);
-  const [historyLearningError, setHistoryLearningError] = useState<string | null>(null);
-  const [userLearningProfile, setUserLearningProfile] =
-    useState<UserLearningProfile | null>(null);
-  const [userLearningStatus, setUserLearningStatus] =
-    useState<UserLearningJobStatusResponse>(createIdleUserLearningStatus());
-  const [historyOutput, setHistoryOutput] = useState<GetOutputResponse | null>(null);
-  const [historyOutputLoading, setHistoryOutputLoading] = useState(false);
-  const [historyOutputError, setHistoryOutputError] = useState<string | null>(null);
-  const [markdownLayer, setMarkdownLayer] = useState<MarkdownLayerState | null>(null);
-  const [links, setLinks] = useState<ExternalLink[]>([]);
-  const [linkDraft, setLinkDraft] = useState<ExternalLinkInput>(createEmptyLink());
-  const [durableDraft, setDurableDraft] =
-    useState<DurableEquipmentItemInput>(createEmptyDurableItem());
-  const [consumableDraft, setConsumableDraft] =
-    useState<ConsumableEquipmentItemInput>(createEmptyConsumableItem());
-  const [precheckDraft, setPrecheckDraft] =
-    useState<PrecheckItemInput>(createEmptyPrecheckItem());
-  const [appLoading, setAppLoading] = useState(true);
-  const [creatingDataBackup, setCreatingDataBackup] = useState(false);
-  const [stoppingAllAiJobs, setStoppingAllAiJobs] = useState(false);
-  const [detailLoading, setDetailLoading] = useState(false);
-  const [savingTrip, setSavingTrip] = useState(false);
-  const [bannerState, setBannerState] = useState<OperationState | null>(null);
-  const [operationState, setOperationState] = useState<OperationState | null>(
-    null,
-  );
-  const [loadError, setLoadError] = useState<string | null>(null);
-  const [aiJobRealtimeMode, setAiJobRealtimeMode] =
-    useState<AiJobRealtimeMode>("inactive");
-  const [commaInputs, setCommaInputs] = useState<CommaSeparatedInputs>(
-    createCommaSeparatedInputs(),
-  );
-  const [companionTextInputs, setCompanionTextInputs] = useState<CompanionTextInputs>(
-    createCompanionTextInputs(),
-  );
-  const [vehicleNoteInput, setVehicleNoteInput] = useState("");
-  const [tripNoteInput, setTripNoteInput] = useState("");
-  const [historyEditorResetVersion, setHistoryEditorResetVersion] = useState(0);
-  const [retrospectiveResetVersion, setRetrospectiveResetVersion] = useState(0);
-  const historyEditorDraftRef = useRef<HistoryEditorDraft>(createHistoryEditorDraft());
-  const retrospectiveDraftRef = useRef<RetrospectiveDraft>(createEmptyRetrospectiveDraft());
-  const selectedTripIdRef = useRef<string | null>(persistedUiState?.selectedTripId ?? null);
-  const selectedHistoryIdRef = useRef<string | null>(null);
-  const historyLearningRequestIdRef = useRef(0);
-  const historyOutputRequestIdRef = useRef(0);
-  const planningLoadRequestIdRef = useRef(0);
-  const durableSearchFingerprintRef = useRef<Record<string, string>>({});
-  const durableMetadataJobStatusesRef = useRef<DurableMetadataJobStatusMap>({});
-  const analysisStatusRef = useRef<AnalyzeTripResponse | null>(null);
-  const userLearningStatusRef = useRef<UserLearningJobStatusResponse>(
-    createIdleUserLearningStatus(),
-  );
-  const isCreatingTripRef = useRef(false);
+  const referenceDataState = useReferenceDataState(persistedUiState);
+  const {
+    companions,
+    setCompanions,
+    companionDraft,
+    setCompanionDraft,
+    editingCompanionId,
+    setEditingCompanionId,
+    vehicles,
+    setVehicles,
+    vehicleDraft,
+    setVehicleDraft,
+    editingVehicleId,
+    setEditingVehicleId,
+    links,
+    setLinks,
+    linkDraft,
+    setLinkDraft,
+    companionPageTab,
+    setCompanionPageTab,
+    vehiclePageTab,
+    setVehiclePageTab,
+    linkPageTab,
+    setLinkPageTab,
+    companionTextInputs,
+    setCompanionTextInputs,
+    vehicleNoteInput,
+    setVehicleNoteInput,
+  } = referenceDataState;
+  const planningState = usePlanningState(persistedUiState);
+  const {
+    trips,
+    setTrips,
+    selectedTripId,
+    setSelectedTripId,
+    tripDraft,
+    setTripDraft,
+    isCreatingTrip,
+    setIsCreatingTrip,
+    validationWarnings,
+    setValidationWarnings,
+    analysisOutput,
+    setAnalysisOutput,
+    analysisStatus,
+    setAnalysisStatus,
+    selectedAnalysisCategories,
+    setSelectedAnalysisCategories,
+    assistantResponse,
+    setAssistantResponse,
+    assistantInput,
+    setAssistantInput,
+    assistantLoading,
+    setAssistantLoading,
+    planningPageTab,
+    setPlanningPageTab,
+    planningDetailTab,
+    setPlanningDetailTab,
+    detailLoading,
+    setDetailLoading,
+    savingTrip,
+    setSavingTrip,
+    commaInputs,
+    setCommaInputs,
+    tripNoteInput,
+    setTripNoteInput,
+    selectedTripIdRef,
+    planningLoadRequestIdRef,
+    analysisStatusRef,
+    isCreatingTripRef,
+  } = planningState;
+  const equipmentState = useEquipmentState(persistedUiState);
+  const {
+    equipment,
+    setEquipment,
+    equipmentCategories,
+    setEquipmentCategories,
+    equipmentSection,
+    setEquipmentSection,
+    equipmentPageTab,
+    setEquipmentPageTab,
+    categoryPageTab,
+    setCategoryPageTab,
+    equipmentDetailTab,
+    setEquipmentDetailTab,
+    categoryDetailTab,
+    setCategoryDetailTab,
+    collapsedEquipmentCategories,
+    setCollapsedEquipmentCategories,
+    expandedEquipmentItems,
+    setExpandedEquipmentItems,
+    collapsedCategoryEditors,
+    setCollapsedCategoryEditors,
+    expandedCategorySections,
+    setExpandedCategorySections,
+    durableMetadataJobStatuses,
+    setDurableMetadataJobStatuses,
+    categoryDrafts,
+    setCategoryDrafts,
+    categoryLabelDrafts,
+    setCategoryLabelDrafts,
+    equipmentCategorySelectionDrafts,
+    setEquipmentCategorySelectionDrafts,
+    durableDraft,
+    setDurableDraft,
+    consumableDraft,
+    setConsumableDraft,
+    precheckDraft,
+    setPrecheckDraft,
+    durableSearchFingerprintRef,
+    durableMetadataJobStatusesRef,
+    previousEquipmentGroupIdsRef,
+    previousCategoryEditorIdsRef,
+    previousEquipmentItemIdsRef,
+  } = equipmentState;
+  const historyState = useHistoryState(persistedUiState);
+  const {
+    history,
+    setHistory,
+    selectedHistoryId,
+    setSelectedHistoryId,
+    historyPageTab,
+    setHistoryPageTab,
+    historyDetailTab,
+    setHistoryDetailTab,
+    savingRetrospective,
+    setSavingRetrospective,
+    historyLearningInsight,
+    setHistoryLearningInsight,
+    historyLearningLoading,
+    setHistoryLearningLoading,
+    historyLearningError,
+    setHistoryLearningError,
+    userLearningProfile,
+    setUserLearningProfile,
+    userLearningStatus,
+    setUserLearningStatus,
+    historyOutput,
+    setHistoryOutput,
+    historyOutputLoading,
+    setHistoryOutputLoading,
+    historyOutputError,
+    setHistoryOutputError,
+    historyEditorResetVersion,
+    setHistoryEditorResetVersion,
+    retrospectiveResetVersion,
+    setRetrospectiveResetVersion,
+    historyEditorDraftRef,
+    retrospectiveDraftRef,
+    selectedHistoryIdRef,
+    historyLearningRequestIdRef,
+    historyOutputRequestIdRef,
+    userLearningStatusRef,
+  } = historyState;
+  const uiShellState = useUiShellState(persistedUiState);
+  const {
+    dashboardPageTab,
+    setDashboardPageTab,
+    helpPageTab,
+    setHelpPageTab,
+    markdownLayer,
+    setMarkdownLayer,
+    appLoading,
+    setAppLoading,
+    creatingDataBackup,
+    setCreatingDataBackup,
+    stoppingAllAiJobs,
+    setStoppingAllAiJobs,
+    bannerState,
+    setBannerState,
+    operationState,
+    setOperationState,
+    loadError,
+    setLoadError,
+    aiJobRealtimeMode,
+    setAiJobRealtimeMode,
+  } = uiShellState;
   const aiJobEventSubscriptionRef = useRef<AiJobEventSubscription | null>(null);
   const aiJobEventReconnectTimeoutRef = useRef<number | null>(null);
   const aiJobEventReconnectAttemptsRef = useRef(0);
   const aiJobEventHasConnectedRef = useRef(false);
-  const previousEquipmentGroupIdsRef =
-    useRef<SectionTrackedIds>(createEmptySectionTrackedIds());
-  const previousCategoryEditorIdsRef =
-    useRef<SectionTrackedIds>(createEmptySectionTrackedIds());
-  const previousEquipmentItemIdsRef =
-    useRef<SectionTrackedIds>(createEmptySectionTrackedIds());
   const isAnalysisPending = isPendingAnalysisStatus(analysisStatus?.status);
   const setActivePage = useCallback(
     (
@@ -400,14 +401,6 @@ export function useAppViewModel(initialPage?: PageKey) {
   ]);
 
   useEffect(() => {
-    selectedTripIdRef.current = selectedTripId;
-  }, [selectedTripId]);
-
-  useEffect(() => {
-    isCreatingTripRef.current = isCreatingTrip;
-  }, [isCreatingTrip]);
-
-  useEffect(() => {
     if (!operationState) {
       return;
     }
@@ -428,14 +421,6 @@ export function useAppViewModel(initialPage?: PageKey) {
       window.clearTimeout(timeoutId);
     };
   }, [operationState]);
-
-  useEffect(() => {
-    analysisStatusRef.current = analysisStatus;
-  }, [analysisStatus]);
-
-  useEffect(() => {
-    userLearningStatusRef.current = userLearningStatus;
-  }, [userLearningStatus]);
 
   useEffect(() => {
     if (isCreatingTrip || !selectedTripId) {
@@ -566,52 +551,51 @@ export function useAppViewModel(initialPage?: PageKey) {
   const isUserLearningPending = isPendingUserLearningStatus(userLearningStatus.status);
   const shouldEnableAiJobRealtime =
     isAnalysisPending || hasPendingDurableMetadataJobs || isUserLearningPending;
-  const activeEquipmentTabId = getEquipmentSectionTabId(equipmentSection);
-  const activeEquipmentPanelId = getEquipmentSectionPanelId(equipmentSection);
-  const activeDashboardPageTabId = getDetailTabId("dashboard-page", dashboardPageTab);
-  const activeDashboardPagePanelId = getDetailPanelId("dashboard-page", dashboardPageTab);
-  const activeCompanionPageTabId = getDetailTabId("companion-page", companionPageTab);
-  const activeCompanionPagePanelId = getDetailPanelId("companion-page", companionPageTab);
-  const activeVehiclePageTabId = getDetailTabId("vehicle-page", vehiclePageTab);
-  const activeVehiclePagePanelId = getDetailPanelId("vehicle-page", vehiclePageTab);
-  const activeEquipmentPageTabId = getDetailTabId("equipment-page", equipmentPageTab);
-  const activeEquipmentPagePanelId = getDetailPanelId("equipment-page", equipmentPageTab);
-  const activeCategoryPageTabId = getDetailTabId("category-page", categoryPageTab);
-  const activeCategoryPagePanelId = getDetailPanelId("category-page", categoryPageTab);
-  const activeHelpPageTabId = getDetailTabId("help-page", helpPageTab);
-  const activeHelpPagePanelId = getDetailPanelId("help-page", helpPageTab);
-  const activePlanningPageTabId = getDetailTabId("planning-page", planningPageTab);
-  const activePlanningPagePanelId = getDetailPanelId("planning-page", planningPageTab);
-  const activeHistoryPageTabId = getDetailTabId("history-page", historyPageTab);
-  const activeHistoryPagePanelId = getDetailPanelId("history-page", historyPageTab);
-  const activeLinkPageTabId = getDetailTabId("link-page", linkPageTab);
-  const activeLinkPagePanelId = getDetailPanelId("link-page", linkPageTab);
-  const activePlanningDetailTabId = getDetailTabId("planning-detail", planningDetailTab);
-  const activePlanningDetailPanelId = getDetailPanelId(
-    "planning-detail",
+  const {
+    activeEquipmentTabId,
+    activeEquipmentPanelId,
+    activeDashboardPageTabId,
+    activeDashboardPagePanelId,
+    activeCompanionPageTabId,
+    activeCompanionPagePanelId,
+    activeVehiclePageTabId,
+    activeVehiclePagePanelId,
+    activeEquipmentPageTabId,
+    activeEquipmentPagePanelId,
+    activeCategoryPageTabId,
+    activeCategoryPagePanelId,
+    activeHelpPageTabId,
+    activeHelpPagePanelId,
+    activePlanningPageTabId,
+    activePlanningPagePanelId,
+    activeHistoryPageTabId,
+    activeHistoryPagePanelId,
+    activeLinkPageTabId,
+    activeLinkPagePanelId,
+    activePlanningDetailTabId,
+    activePlanningDetailPanelId,
+    activeHistoryDetailTabId,
+    activeHistoryDetailPanelId,
+    activeEquipmentDetailTabId,
+    activeEquipmentDetailPanelId,
+    activeCategoryDetailTabId,
+    activeCategoryDetailPanelId,
+  } = buildActiveTabTargets({
+    equipmentSection,
+    dashboardPageTab,
+    companionPageTab,
+    vehiclePageTab,
+    equipmentPageTab,
+    categoryPageTab,
+    helpPageTab,
+    planningPageTab,
+    historyPageTab,
+    linkPageTab,
     planningDetailTab,
-  );
-  const activeHistoryDetailTabId = getDetailTabId("history-detail", historyDetailTab);
-  const activeHistoryDetailPanelId = getDetailPanelId(
-    "history-detail",
     historyDetailTab,
-  );
-  const activeEquipmentDetailTabId = getDetailTabId(
-    "equipment-detail",
     equipmentDetailTab,
-  );
-  const activeEquipmentDetailPanelId = getDetailPanelId(
-    "equipment-detail",
-    equipmentDetailTab,
-  );
-  const activeCategoryDetailTabId = getDetailTabId(
-    "category-detail",
     categoryDetailTab,
-  );
-  const activeCategoryDetailPanelId = getDetailPanelId(
-    "category-detail",
-    categoryDetailTab,
-  );
+  });
   const selectedTripCompanions = useMemo(
     () => resolveSelectedCompanions(tripDraft?.party?.companion_ids ?? [], companions),
     [companions, tripDraft?.party?.companion_ids],
@@ -3155,13 +3139,12 @@ export function useAppViewModel(initialPage?: PageKey) {
     activePlanningPageTabId,
     activeVehiclePagePanelId,
     activeVehiclePageTabId,
+    ...referenceDataState,
+    ...planningState,
+    ...equipmentState,
+    ...historyState,
+    ...uiShellState,
     analysisCategoryStatuses,
-    analysisOutput,
-    analysisStatus,
-    assistantInput,
-    assistantLoading,
-    assistantResponse,
-    appLoading,
     beginCreateTrip,
     buildTripVehicleSelection,
     buildVehicleOptions,
@@ -3175,39 +3158,12 @@ export function useAppViewModel(initialPage?: PageKey) {
     currentHistoryLabel,
     currentTripLabel,
     currentUserLearningStatusLabel,
-    categoryDetailTab,
-    categoryDrafts,
-    categoryLabelDrafts,
-    categoryPageTab,
     clearAnalysisCategorySelection,
-    collapsedCategoryEditors,
-    collapsedEquipmentCategories,
-    commaInputs,
-    companionDraft,
-    companionPageTab,
-    companionTextInputs,
-    companions,
     completedAnalysisCategoryCount,
-    consumableDraft,
-    creatingDataBackup,
     dashboardAlerts,
     dashboardMetrics,
-    dashboardPageTab,
-    detailLoading,
-    durableDraft,
-    durableMetadataJobStatuses,
-    editingCompanionId,
-    editingVehicleId,
-    equipment,
-    equipmentCategories,
-    equipmentCategorySelectionDrafts,
-    equipmentDetailTab,
     equipmentMetrics,
-    equipmentPageTab,
-    equipmentSection,
     expandedCategorySectionCount,
-    expandedCategorySections,
-    expandedEquipmentItems,
     formatCompactTripId,
     formatRelativeDate,
     getTripAnalysisStatusLabel,
@@ -3250,104 +3206,30 @@ export function useAppViewModel(initialPage?: PageKey) {
     handleToggleCategorySection,
     handleToggleEquipmentCategory,
     handleToggleEquipmentItem,
-    helpPageTab,
-    history,
-    historyDetailTab,
-    historyEditorDraftRef,
-    historyEditorResetVersion,
-    historyLearningError,
-    historyLearningInsight,
-    historyLearningLoading,
-    historyOutput,
-    historyOutputError,
-    historyOutputLoading,
-    historyPageTab,
-    isCreatingTrip,
     isAnalysisPending,
     isPendingAnalysisStatus,
     isUserLearningPending,
-    linkDraft,
     linkGroups,
-    linkPageTab,
-    links,
-    loadError,
-    markdownLayer,
     missingCompanionIds,
-    operationState,
     parseInteger,
     parseNumber,
-    planningDetailTab,
-    planningPageTab,
-    precheckDraft,
     refreshingDurableMetadataIds,
     resolveHistoryVehicleSnapshot: (item: HistoryRecord) =>
       resolveHistoryVehicleSnapshot(item, vehicles),
-    retrospectiveDraftRef,
-    retrospectiveResetVersion,
-    savingRetrospective,
-    savingTrip,
-    selectedAnalysisCategories,
     selectedHistory,
     selectedHistoryCompanionSnapshots,
-    selectedHistoryId,
     selectedHistoryRetrospectives,
     selectedHistoryVehicle,
-    selectedTripId,
     selectedTripCompanions,
     selectedTripSummary,
     selectedTripVehicle,
     selectAllAnalysisCategories,
     selectTrip,
     setActivePage,
-    setAssistantInput,
-    setBannerState,
-    setCategoryDetailTab,
-    setCategoryDrafts,
-    setCategoryLabelDrafts,
-    setCategoryPageTab,
-    setCommaInputs,
-    setCompanionDraft,
-    setCompanionPageTab,
-    setCompanionTextInputs,
-    setConsumableDraft,
-    setDashboardPageTab,
-    setDurableDraft,
-    setEquipment,
-    setEquipmentDetailTab,
-    setEquipmentPageTab,
-    setEquipmentSection,
-    setHelpPageTab,
-    setHistoryDetailTab,
-    setHistoryPageTab,
-    setLinkDraft,
-    setLinkPageTab,
-    setLinks,
-    setMarkdownLayer,
-    setOperationState,
-    setPlanningDetailTab,
-    setPlanningPageTab,
-    setPrecheckDraft,
-    setSelectedHistoryId,
-    setTripNoteInput,
-    setVehicleDraft,
-    setVehicleNoteInput,
-    setVehiclePageTab,
     splitCommaList,
-    stoppingAllAiJobs,
     toggleAnalysisCategorySelection,
     toggleSelectionId,
-    tripDraft,
-    tripNoteInput,
-    trips,
     updateTripDraft,
-    userLearningProfile,
-    userLearningStatus,
-    validationWarnings,
-    bannerState,
-    vehicleDraft,
-    vehicleNoteInput,
-    vehiclePageTab,
-    vehicles,
   };
 }
 

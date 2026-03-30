@@ -9,6 +9,7 @@ const APP_VIEW_MODEL_FILE = join(SRC_ROOT, "app", "useAppViewModel.tsx");
 const MAIN_FILE = join(SRC_ROOT, "main.tsx");
 const PAGES_DIR = join(SRC_ROOT, "pages");
 const APP_DIR = join(SRC_ROOT, "app");
+const APP_STATE_DIR = join(APP_DIR, "state");
 const COMPONENTS_DIR = join(SRC_ROOT, "components");
 const FEATURES_DIR = join(SRC_ROOT, "features");
 
@@ -58,15 +59,33 @@ describe("프런트엔드 구조 가드", () => {
   it("useAppViewModel 은 adapter 경계를 유지하고 공통 helper 구현을 별도 모듈로 위임한다", () => {
     const source = readFileSync(APP_VIEW_MODEL_FILE, "utf8");
 
-    expect(getLineCount(APP_VIEW_MODEL_FILE)).toBeLessThanOrEqual(3450);
+    expect(getLineCount(APP_VIEW_MODEL_FILE)).toBeLessThanOrEqual(3300);
     expect(source).toMatch(/from "\.\/ui-state"/);
     expect(source).toMatch(/from "\.\/common-formatters"/);
     expect(source).toMatch(/from "\.\/view-model-drafts"/);
     expect(source).toMatch(/from "\.\/planning-history-helpers"/);
     expect(source).toMatch(/from "\.\/equipment-view-helpers"/);
+    expect(source).toMatch(/from "\.\/state\/usePlanningState"/);
+    expect(source).toMatch(/from "\.\/state\/useEquipmentState"/);
+    expect(source).toMatch(/from "\.\/state\/useHistoryState"/);
+    expect(source).toMatch(/from "\.\/state\/useReferenceDataState"/);
+    expect(source).toMatch(/from "\.\/state\/useUiShellState"/);
     expect(source).not.toMatch(/const UI_STATE_STORAGE_KEY =/);
     expect(source).not.toMatch(/window\.sessionStorage\.(getItem|setItem)/);
     expect(source).not.toMatch(/type PersistedUiState =/);
+  });
+
+  it("app/state 훅은 도메인별 상태 경계만 담당하고 작게 유지한다", () => {
+    const stateFiles = collectFiles(APP_STATE_DIR, ".ts");
+
+    expect(stateFiles.length).toBeGreaterThanOrEqual(5);
+
+    for (const filePath of stateFiles) {
+      const source = readFileSync(filePath, "utf8");
+
+      expect(getLineCount(filePath)).toBeLessThanOrEqual(220);
+      expect(source).not.toMatch(/fetch\(|apiClient/);
+    }
   });
 
   it("페이지 엔트리는 작게 유지되고 도메인 API를 직접 호출하지 않는다", () => {

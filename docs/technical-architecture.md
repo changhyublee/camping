@@ -78,6 +78,8 @@
 - `App.tsx` 는 앱 셸 진입점만 담당하고, 도메인 상태/비동기 호출/폼 상세 렌더링을 직접 넣지 않는다.
 - `app/AppShell.tsx` 는 메뉴, 경로 동기화, 전역 배너와 레이어 같은 셸 조합만 담당한다.
 - `app/ui-state.ts` 는 페이지 탭 메타데이터와 `sessionStorage` 기반 UI 복원 규칙만 담당한다.
+- `app/state/*` 는 `planning`, `equipment`, `history`, `reference-data`, `ui-shell` 처럼 도메인별 state hook 경계만 담당한다.
+- 새 `useState` / `useRef` 묶음은 기본적으로 `app/state/*` 나 feature-local hook으로 분리하고, `useAppViewModel.tsx` 에 직접 누적하지 않는다.
 - `app/common-formatters.ts`, `app/view-model-drafts.ts`, `app/planning-history-helpers.ts`, `app/equipment-*-helpers.ts` 는 view model 밖으로 뺀 순수 helper 모듈만 담당한다.
 - `app/browser-helpers.ts` 는 `window.confirm` 같은 작은 브라우저 상호작용 helper만 담당한다.
 - `app/tab-helpers.tsx` 와 `app/view-model-types.ts` 는 도메인 공통 UI helper 와 shared type 경계만 담당한다.
@@ -85,9 +87,11 @@
 - `features/*` 는 장비, 히스토리, 계획, 공통 UI처럼 여러 화면에서 재사용하거나 page 안에서 길어지는 panel/component 를 도메인 단위로 분리하는 위치다.
 - 페이지 안에서 `목록`, `편집`, `결과`, `보조 작업` 처럼 목적이 다른 major section 이 3개 이상 생기면 별도 컴포넌트나 훅으로 분리한다.
 - 비동기 호출은 앱 셸이 아니라 해당 도메인 주변 모듈에서 격리하고, `App.tsx` 와 `AppShell.tsx` 에서 직접 `apiClient` 를 호출하지 않는다.
-- `useAppViewModel.tsx` 는 현재 전환 단계의 adapter로만 두고, 새 도메인 섹션이나 탭/세션 구현을 여기에 추가하지 않는다. 새 순수 helper나 page content 구현은 반드시 바깥 모듈로 추가한다.
+- `useAppViewModel.tsx` 는 state hook, helper, feature panel을 조합하는 adapter로만 두고, 새 도메인 섹션이나 탭/세션 구현을 여기에 직접 추가하지 않는다.
+- 전역 shell state가 아닌 새 draft, 선택 상태, reset version, request ref는 기본적으로 `app/state/*` 나 feature-local hook으로 먼저 배치한다.
 - 구조 가드는 테스트로 유지한다. `App.tsx` 는 얇은 진입점 크기를 넘기지 않고, page 엔트리도 직접 API 호출을 하지 않도록 검증한다.
 - `app/*.ts` 상위 모듈도 예외 없이 라인 수 가드를 둬서, 탭 메타데이터나 경로 규칙 같은 공통 모듈이 다시 거대한 단일 파일이 되지 않도록 유지한다.
+- `app/state/*.ts` 도 라인 수 가드를 둬서, state hook 하나가 다시 거대한 단일 store 역할을 하지 않도록 유지한다.
 - `features/*` 파일도 라인 수 가드를 둬서, 새 feature component 가 다시 거대한 단일 파일로 커지지 않도록 유지한다.
 - PR에서 `PageHost` 같은 공통 page host를 다시 도입해 여러 화면 JSX를 한 파일로 되돌리는 변경은 구조 원칙 위반으로 본다.
 

@@ -235,6 +235,8 @@
 - 같은 성격의 작은 카드 2~4개는 그룹으로 묶되, 그룹 안에서도 제목과 설명 순서를 유지한다.
 - 큰 카드 안에 작은 카드가 들어갈 때는 `panel > sub card > list item` 3단계 깊이를 넘기지 않는다.
 - 카드 내부에 탭, 아코디언, 내부 카드가 동시에 겹치면 시각 피로가 커지므로 2개 이상 중첩하지 않는다.
+- 프런트 상태 구조도 같은 원칙을 따른다. 페이지 draft, 선택 상태, reset version, request ref는 `useAppViewModel.tsx` 에 직접 쌓지 말고 `app/state/*` 나 feature-local hook으로 먼저 분리한다.
+- 새 화면 기능이 추가될 때 `state 선언 + effect + JSX` 가 한 파일에 같이 자라기 시작하면, JSX는 `features/*`, state는 `app/state/*`, 순수 계산은 helper 모듈로 바로 쪼갠다.
 
 ## 5.4 배경 처리
 
