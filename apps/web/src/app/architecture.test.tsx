@@ -9,9 +9,12 @@ const APP_VIEW_MODEL_FILE = join(SRC_ROOT, "app", "useAppViewModel.tsx");
 const MAIN_FILE = join(SRC_ROOT, "main.tsx");
 const PAGES_DIR = join(SRC_ROOT, "pages");
 const APP_DIR = join(SRC_ROOT, "app");
+const APP_EFFECTS_DIR = join(APP_DIR, "effects");
 const APP_STATE_DIR = join(APP_DIR, "state");
 const COMPONENTS_DIR = join(SRC_ROOT, "components");
 const FEATURES_DIR = join(SRC_ROOT, "features");
+const TEST_DIR = join(SRC_ROOT, "test");
+const STYLES_DIR = join(SRC_ROOT, "styles");
 
 function getLineCount(filePath: string) {
   return readFileSync(filePath, "utf8").trimEnd().split("\n").length;
@@ -59,12 +62,19 @@ describe("프런트엔드 구조 가드", () => {
   it("useAppViewModel 은 adapter 경계를 유지하고 공통 helper 구현을 별도 모듈로 위임한다", () => {
     const source = readFileSync(APP_VIEW_MODEL_FILE, "utf8");
 
-    expect(getLineCount(APP_VIEW_MODEL_FILE)).toBeLessThanOrEqual(3300);
+    expect(getLineCount(APP_VIEW_MODEL_FILE)).toBeLessThanOrEqual(2800);
     expect(source).toMatch(/from "\.\/ui-state"/);
     expect(source).toMatch(/from "\.\/common-formatters"/);
     expect(source).toMatch(/from "\.\/view-model-drafts"/);
     expect(source).toMatch(/from "\.\/planning-history-helpers"/);
     expect(source).toMatch(/from "\.\/equipment-view-helpers"/);
+    expect(source).toMatch(/from "\.\/effects\/useUiStateEffects"/);
+    expect(source).toMatch(/from "\.\/effects\/useHistoryStateEffects"/);
+    expect(source).toMatch(/from "\.\/effects\/useEquipmentStateEffects"/);
+    expect(source).toMatch(/from "\.\.\/features\/companions\/actions"/);
+    expect(source).toMatch(/from "\.\.\/features\/vehicles\/actions"/);
+    expect(source).toMatch(/from "\.\.\/features\/links\/actions"/);
+    expect(source).toMatch(/from "\.\.\/features\/history\/actions"/);
     expect(source).toMatch(/from "\.\/state\/usePlanningState"/);
     expect(source).toMatch(/from "\.\/state\/useEquipmentState"/);
     expect(source).toMatch(/from "\.\/state\/useHistoryState"/);
@@ -85,6 +95,16 @@ describe("프런트엔드 구조 가드", () => {
 
       expect(getLineCount(filePath)).toBeLessThanOrEqual(220);
       expect(source).not.toMatch(/fetch\(|apiClient/);
+    }
+  });
+
+  it("app/effects 훅은 반응형 side effect 경계만 담당하고 작게 유지한다", () => {
+    const effectFiles = collectFiles(APP_EFFECTS_DIR, ".ts");
+
+    expect(effectFiles.length).toBeGreaterThanOrEqual(3);
+
+    for (const filePath of effectFiles) {
+      expect(getLineCount(filePath)).toBeLessThanOrEqual(240);
     }
   });
 
@@ -140,6 +160,25 @@ describe("프런트엔드 구조 가드", () => {
     for (const filePath of featureTsFiles) {
       expect(getLineCount(filePath)).toBeLessThanOrEqual(500);
     }
+  });
+
+  it("테스트와 스타일 entry도 단일 거대 파일로 되돌아가지 않도록 유지한다", () => {
+    const appTestFile = join(SRC_ROOT, "App.test.tsx");
+    const appTestHelperFile = join(TEST_DIR, "app-test-helpers.tsx");
+    const mockStateFile = join(TEST_DIR, "mock-state.ts");
+    const stylesEntryFile = join(STYLES_DIR, "index.css");
+    const stylesTokensFile = join(STYLES_DIR, "tokens.css");
+    const stylesResponsiveFile = join(STYLES_DIR, "responsive.css");
+    const mainSource = readFileSync(MAIN_FILE, "utf8");
+
+    expect(getLineCount(appTestFile)).toBeLessThanOrEqual(2600);
+    expect(getLineCount(appTestHelperFile)).toBeLessThanOrEqual(1200);
+    expect(getLineCount(mockStateFile)).toBeLessThanOrEqual(320);
+    expect(existsSync(stylesEntryFile)).toBe(true);
+    expect(existsSync(stylesTokensFile)).toBe(true);
+    expect(existsSync(stylesResponsiveFile)).toBe(true);
+    expect(mainSource).toContain('import "./styles/index.css";');
+    expect(mainSource).not.toContain('import "./styles/app.css";');
   });
 
   it("main.tsx 는 App 진입만 담당한다", () => {

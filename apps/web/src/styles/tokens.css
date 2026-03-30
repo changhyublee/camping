@@ -1,0 +1,123 @@
+:root {
+  color-scheme: light;
+  --font-body:
+    "Pretendard",
+    "Noto Sans KR",
+    "Apple SD Gothic Neo",
+    "Malgun Gothic",
+    "Segoe UI",
+    sans-serif;
+  --font-display:
+    "Iowan Old Style",
+    "Palatino Linotype",
+    "Book Antiqua",
+    Georgia,
+    serif;
+  --font-mono:
+    "SFMono-Regular",
+    "JetBrains Mono",
+    "Cascadia Code",
+    "Fira Code",
+    monospace;
+  --bg-top: #f2efe5;
+  --bg-bottom: #d6d4cb;
+  --surface: rgba(250, 247, 241, 0.88);
+  --surface-strong: rgba(251, 249, 244, 0.94);
+  --surface-soft: rgba(255, 255, 255, 0.42);
+  --surface-muted: rgba(246, 243, 237, 0.88);
+  --surface-tint: rgba(242, 246, 242, 0.78);
+  --surface-nav: rgba(244, 240, 233, 0.92);
+  --surface-active: rgba(238, 244, 239, 0.88);
+  --line: rgba(63, 53, 39, 0.1);
+  --line-strong: rgba(47, 98, 83, 0.18);
+  --text: #2e261f;
+  --muted: #6c6054;
+  --accent: #2f6253;
+  --accent-strong: #24493f;
+  --accent-soft: rgba(47, 98, 83, 0.1);
+  --warning: #83571d;
+  --warning-bg: rgba(233, 210, 171, 0.48);
+  --danger: #8a342b;
+  --danger-bg: rgba(236, 197, 190, 0.54);
+  --success: #2a6a4f;
+  --success-bg: rgba(194, 228, 210, 0.56);
+  --info: #315e74;
+  --info-bg: rgba(194, 218, 232, 0.52);
+  --shadow: 0 22px 54px rgba(45, 40, 31, 0.1);
+  --shadow-soft: 0 12px 28px rgba(45, 40, 31, 0.08);
+  --focus: rgba(47, 98, 83, 0.32);
+  font-family: var(--font-body);
+}
+
+* {
+  box-sizing: border-box;
+}
+
+html {
+  scroll-behavior: smooth;
+}
+
+body {
+  margin: 0;
+  min-height: 100vh;
+  color: var(--text);
+  font-family: var(--font-body);
+  font-size: 16px;
+  line-height: 1.6;
+  background:
+    radial-gradient(circle at 10% 0%, rgba(96, 133, 117, 0.1), transparent 30%),
+    radial-gradient(circle at 92% 100%, rgba(136, 112, 74, 0.1), transparent 24%),
+    repeating-linear-gradient(
+      90deg,
+      rgba(255, 255, 255, 0.04) 0,
+      rgba(255, 255, 255, 0.04) 1px,
+      transparent 1px,
+      transparent 120px
+    ),
+    linear-gradient(165deg, var(--bg-top), var(--bg-bottom));
+}
+
+button,
+input,
+select,
+textarea,
+a {
+  font: inherit;
+}
+
+button,
+input,
+select,
+textarea {
+  color: var(--text);
+}
+
+button,
+a,
+input,
+select,
+textarea {
+  transition:
+    border-color 120ms ease,
+    background 120ms ease,
+    color 120ms ease,
+    box-shadow 120ms ease,
+    transform 120ms ease;
+}
+
+a {
+  color: var(--accent-strong);
+}
+
+code {
+  font-family: var(--font-mono);
+}
+
+:focus-visible {
+  outline: 2px solid var(--focus);
+  outline-offset: 2px;
+}
+
+#root {
+  min-height: 100vh;
+}

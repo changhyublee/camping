@@ -79,10 +79,12 @@
 - `app/AppShell.tsx` 는 메뉴, 경로 동기화, 전역 배너와 레이어 같은 셸 조합만 담당한다.
 - `app/ui-state.ts` 는 페이지 탭 메타데이터와 `sessionStorage` 기반 UI 복원 규칙만 담당한다.
 - `app/state/*` 는 `planning`, `equipment`, `history`, `reference-data`, `ui-shell` 처럼 도메인별 state hook 경계만 담당한다.
+- `app/effects/*` 는 state 간 연쇄 반응, 선택 대상 reset, body lock, 세션 복원 저장처럼 side effect 전용 hook만 담당한다.
 - 새 `useState` / `useRef` 묶음은 기본적으로 `app/state/*` 나 feature-local hook으로 분리하고, `useAppViewModel.tsx` 에 직접 누적하지 않는다.
 - `app/common-formatters.ts`, `app/view-model-drafts.ts`, `app/planning-history-helpers.ts`, `app/equipment-*-helpers.ts` 는 view model 밖으로 뺀 순수 helper 모듈만 담당한다.
 - `app/browser-helpers.ts` 는 `window.confirm` 같은 작은 브라우저 상호작용 helper만 담당한다.
-- `app/tab-helpers.tsx` 와 `app/view-model-types.ts` 는 도메인 공통 UI helper 와 shared type 경계만 담당한다.
+- `app/tab-helpers.ts` 와 `app/view-model-types.ts` 는 도메인 공통 UI helper 와 shared type 경계만 담당한다.
+- 동행자, 차량, 링크, 히스토리 같은 CRUD 핸들러는 `features/*/actions.ts` 처럼 도메인 action 모듈로 분리하고, `useAppViewModel.tsx` 에서 직접 긴 async handler 본문을 유지하지 않는다.
 - `pages/*Page.tsx` 는 각 메뉴의 route entry 역할만 맡고, 실제 page intro, page tab, 상세 panel 조합은 `features/*/*PageContent.tsx` 나 하위 panel component로 위임한다.
 - `features/*` 는 장비, 히스토리, 계획, 공통 UI처럼 여러 화면에서 재사용하거나 page 안에서 길어지는 panel/component 를 도메인 단위로 분리하는 위치다.
 - 페이지 안에서 `목록`, `편집`, `결과`, `보조 작업` 처럼 목적이 다른 major section 이 3개 이상 생기면 별도 컴포넌트나 훅으로 분리한다.
@@ -91,8 +93,10 @@
 - 전역 shell state가 아닌 새 draft, 선택 상태, reset version, request ref는 기본적으로 `app/state/*` 나 feature-local hook으로 먼저 배치한다.
 - 구조 가드는 테스트로 유지한다. `App.tsx` 는 얇은 진입점 크기를 넘기지 않고, page 엔트리도 직접 API 호출을 하지 않도록 검증한다.
 - `app/*.ts` 상위 모듈도 예외 없이 라인 수 가드를 둬서, 탭 메타데이터나 경로 규칙 같은 공통 모듈이 다시 거대한 단일 파일이 되지 않도록 유지한다.
+- `app/effects/*.ts` 도 라인 수 가드를 둬서, 여러 도메인의 side effect 를 다시 하나의 거대한 `useEffect` 묶음으로 되돌리지 않도록 유지한다.
 - `app/state/*.ts` 도 라인 수 가드를 둬서, state hook 하나가 다시 거대한 단일 store 역할을 하지 않도록 유지한다.
 - `features/*` 파일도 라인 수 가드를 둬서, 새 feature component 가 다시 거대한 단일 파일로 커지지 않도록 유지한다.
+- 테스트도 같은 원칙을 따른다. `App.test.tsx` 는 브라우저 시나리오 본문만 유지하고, fetch/EventSource mock 과 기본 상태 팩토리는 `src/test/` 아래 helper 모듈로 분리한다.
 - PR에서 `PageHost` 같은 공통 page host를 다시 도입해 여러 화면 JSX를 한 파일로 되돌리는 변경은 구조 원칙 위반으로 본다.
 
 ## 5. 로컬 저장 구조

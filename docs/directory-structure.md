@@ -116,6 +116,10 @@ apps/web/src/
 │   ├── AppShell.tsx
 │   ├── browser-helpers.ts
 │   ├── common-formatters.ts
+│   ├── effects/
+│   │   ├── useEquipmentStateEffects.ts
+│   │   ├── useHistoryStateEffects.ts
+│   │   └── useUiStateEffects.ts
 │   ├── equipment-category-helpers.ts
 │   ├── equipment-metadata-helpers.ts
 │   ├── equipment-view-helpers.ts
@@ -135,14 +139,18 @@ apps/web/src/
 ├── features/
 │   ├── categories/
 │   ├── companions/
+│   │   └── actions.ts
 │   ├── dashboard/
 │   ├── equipment/
 │   ├── help/
 │   ├── history/
+│   │   └── actions.ts
 │   ├── links/
+│   │   └── actions.ts
 │   ├── planning/
 │   ├── shared/
 │   └── vehicles/
+│       └── actions.ts
 ├── pages/
 │   ├── DashboardPage.tsx
 │   ├── PlanningPage.tsx
@@ -155,13 +163,22 @@ apps/web/src/
 │   └── HelpPage.tsx
 ├── components/
 ├── api/
-└── styles/
+├── styles/
+│   ├── app.css
+│   ├── index.css
+│   ├── responsive.css
+│   └── tokens.css
+└── test/
+    ├── app-test-helpers.tsx
+    ├── mock-state.ts
+    └── setup.ts
 ```
 
 - `App.tsx`: 앱 진입점
 - `app/AppShell.tsx`: 메뉴, 경로 동기화, 전역 배너와 오버레이 조합
 - `app/browser-helpers.ts`: 브라우저 상호작용처럼 `window` 의존이 있는 작은 helper
 - `app/common-formatters.ts`: 문자열/날짜/에러 메시지 같은 공통 변환 helper
+- `app/effects/*`: 세션 복원, body lock, 선택 대상 reset, 장비 표시 상태 동기화 같은 side effect 전용 hook
 - `app/equipment-*.ts`: 장비 카테고리/메타데이터 관련 순수 helper
 - `app/navigation.ts`: 페이지 키, 라벨, 경로, 네비게이션 그룹 메타데이터
 - `app/planning-history-helpers.ts`: 계획/히스토리 선택, 차량/분석 상태 helper
@@ -173,7 +190,13 @@ apps/web/src/
 - `app/useAppViewModel.tsx`: state hook, helper, feature panel 을 조합하는 view model adapter
 - `features/*/*PageContent.tsx`: page intro, page tab, 상세 panel 조합을 맡는 page-local content
 - `features/*/*Panel*.tsx`: 계획/히스토리/장비처럼 길어지는 detail panel 분리 파일
+- `features/*/actions.ts`: 동행자, 차량, 링크, 히스토리처럼 도메인별 CRUD 핸들러를 view model 밖으로 뺀 action 모듈
 - `features/`: 도메인별 화면 조각과 helper
 - `pages/*Page.tsx`: 메뉴별 route entry
 - `components/`: 재사용 표시 컴포넌트
 - `api/`: 로컬 API 클라이언트
+- `styles/index.css`: 웹 스타일 entry
+- `styles/tokens.css`: 색상, 폰트, base reset 같은 전역 토큰
+- `styles/responsive.css`: 반응형 media query 전용 파일
+- `test/app-test-helpers.tsx`: 브라우저 상호작용과 fetch/EventSource mock helper
+- `test/mock-state.ts`: 기본 mock 상태와 타입 정의

@@ -3,7 +3,6 @@ import type { KeyboardEvent as ReactKeyboardEvent } from "react";
 import type {
   AiJobEvent,
   AnalyzeTripResponse,
-  Companion,
   ConsumableEquipmentItem,
   ConsumableEquipmentItemInput,
   DurableMetadataJobStatus,
@@ -13,7 +12,6 @@ import type {
   EquipmentCatalog,
   EquipmentCategoriesData,
   EquipmentSection,
-  ExternalLink,
   ExternalLinkCategory,
   ExternalLinkInput,
   GetOutputResponse,
@@ -30,7 +28,6 @@ import type {
   TripSummary,
   UserLearningJobStatusResponse,
   UserLearningProfile,
-  Vehicle,
   VehicleInput,
 } from "@camping/shared";
 import {
@@ -103,42 +100,47 @@ import {
   resolveHistoryVehicleSnapshot,
   resolveSelectedVehicle,
   resolveSelectedCompanions,
-  sortCompanions,
   sortLinks,
-  sortVehicles,
   toggleSelectionId,
 } from "./planning-history-helpers";
 import {
-  buildCompanionInput,
-  buildHistoryRecordForSave,
-  buildRetrospectiveInput,
   buildTripDraftForSave,
-  buildVehicleInput,
   createCommaSeparatedInputs,
-  createCompanionTextInputs,
   createEmptyCategoryDrafts,
   createEmptyEquipmentCategoryDraft,
   createEmptyCategoryLabelDrafts,
-  createEmptyCompanion,
   createEmptyConsumableItem,
   createEmptyDurableItem,
   createEmptyEquipmentCategorySelectionDrafts,
-  createEmptyLink,
   createEmptyPrecheckItem,
-  createEmptyRetrospectiveDraft,
   createEmptySectionTrackedIds,
   createEmptyTripDraft,
-  createEmptyVehicle,
-  createHistoryEditorDraft,
   createIdleUserLearningStatus,
   toggleExpandedEquipmentSections,
 } from "./view-model-drafts";
-import { HistoryEditorDraft, RetrospectiveDraft } from "./view-model-types";
 import { usePlanningState } from "./state/usePlanningState";
 import { useEquipmentState } from "./state/useEquipmentState";
 import { useHistoryState } from "./state/useHistoryState";
 import { useReferenceDataState } from "./state/useReferenceDataState";
 import { useUiShellState } from "./state/useUiShellState";
+import {
+  useMarkdownLayerBodyLockEffect,
+  useMarkdownLayerResetEffect,
+  useOperationStateAutoClearEffect,
+  useUiStateSyncEffect,
+} from "./effects/useUiStateEffects";
+import {
+  useSelectedHistoryLearningEffect,
+  useSelectedHistoryResetEffect,
+} from "./effects/useHistoryStateEffects";
+import {
+  useEquipmentCategorySyncEffect,
+  useEquipmentVisibilitySyncEffect,
+} from "./effects/useEquipmentStateEffects";
+import { buildCompanionActions } from "../features/companions/actions";
+import { buildVehicleActions } from "../features/vehicles/actions";
+import { buildLinkActions } from "../features/links/actions";
+import { buildHistoryActions } from "../features/history/actions";
 
 export function useAppViewModel(initialPage?: PageKey) {
   const [persistedUiState] = useState(() => readPersistedUiState());
@@ -360,67 +362,26 @@ export function useAppViewModel(initialPage?: PageKey) {
     void loadInitialData();
   }, []);
 
-  useEffect(() => {
-    writePersistedUiState({
-      activePage,
-      selectedTripId,
-      selectedHistoryId,
-      equipmentSection,
-      dashboardPageTab,
-      companionPageTab,
-      vehiclePageTab,
-      equipmentPageTab,
-      categoryPageTab,
-      helpPageTab,
-      planningPageTab,
-      historyPageTab,
-      linkPageTab,
-      planningDetailTab,
-      historyDetailTab,
-      equipmentDetailTab,
-      categoryDetailTab,
-    });
-  }, [
+  useUiStateSyncEffect({
     activePage,
-    categoryPageTab,
-    categoryDetailTab,
-    companionPageTab,
-    dashboardPageTab,
-    equipmentPageTab,
-    equipmentDetailTab,
+    selectedTripId,
+    selectedHistoryId,
     equipmentSection,
+    dashboardPageTab,
+    companionPageTab,
+    vehiclePageTab,
+    equipmentPageTab,
+    categoryPageTab,
     helpPageTab,
-    historyDetailTab,
+    planningPageTab,
     historyPageTab,
     linkPageTab,
-    planningPageTab,
     planningDetailTab,
-    selectedHistoryId,
-    selectedTripId,
-    vehiclePageTab,
-  ]);
-
-  useEffect(() => {
-    if (!operationState) {
-      return;
-    }
-
-    const duration =
-      operationState.tone === "success"
-        ? 3400
-        : operationState.tone === "warning"
-          ? 4800
-          : 5600;
-    const timeoutId = window.setTimeout(() => {
-      setOperationState((current) =>
-        current === operationState ? null : current,
-      );
-    }, duration);
-
-    return () => {
-      window.clearTimeout(timeoutId);
-    };
-  }, [operationState]);
+    historyDetailTab,
+    equipmentDetailTab,
+    categoryDetailTab,
+  });
+  useOperationStateAutoClearEffect(operationState, setOperationState);
 
   useEffect(() => {
     if (isCreatingTrip || !selectedTripId) {
@@ -625,97 +586,44 @@ export function useAppViewModel(initialPage?: PageKey) {
     [selectedHistory, vehicles],
   );
 
-  useEffect(() => {
-    if (!selectedHistoryId || !selectedHistory || selectedHistory.retrospectives.length === 0) {
-      setHistoryLearningInsight(null);
-      setHistoryLearningError(null);
-      setHistoryLearningLoading(false);
-      return;
-    }
-
-    const requestId = historyLearningRequestIdRef.current + 1;
-    historyLearningRequestIdRef.current = requestId;
-    setHistoryLearningLoading(true);
-    setHistoryLearningError(null);
-
-    void apiClient
-      .getHistoryLearning(selectedHistoryId)
-      .then((response) => {
-        if (
-          selectedHistoryIdRef.current !== selectedHistoryId ||
-          historyLearningRequestIdRef.current !== requestId
-        ) {
-          return;
-        }
-
-        setHistoryLearningInsight(response.item);
-      })
-      .catch((error) => {
-        if (
-          selectedHistoryIdRef.current !== selectedHistoryId ||
-          historyLearningRequestIdRef.current !== requestId
-        ) {
-          return;
-        }
-
-        setHistoryLearningInsight(null);
-        setHistoryLearningError(getErrorMessage(error));
-      })
-      .finally(() => {
-        if (
-          selectedHistoryIdRef.current !== selectedHistoryId ||
-          historyLearningRequestIdRef.current !== requestId
-        ) {
-          return;
-        }
-
-        setHistoryLearningLoading(false);
-      });
-  }, [selectedHistory, selectedHistoryId]);
-
-  useEffect(() => {
-    selectedHistoryIdRef.current = selectedHistoryId;
-    historyLearningRequestIdRef.current += 1;
-    historyEditorDraftRef.current = createHistoryEditorDraft(selectedHistory);
-    retrospectiveDraftRef.current = createEmptyRetrospectiveDraft();
-    setRetrospectiveResetVersion((current) => current + 1);
-    setHistoryEditorResetVersion((current) => current + 1);
-    setHistoryLearningInsight(null);
-    setHistoryLearningError(null);
-    setHistoryLearningLoading(false);
-    setHistoryOutput(null);
-    setHistoryOutputError(null);
-    setHistoryOutputLoading(false);
-  }, [selectedHistoryId]);
+  useSelectedHistoryLearningEffect({
+    selectedHistoryId,
+    selectedHistory,
+    selectedHistoryIdRef,
+    historyLearningRequestIdRef,
+    setHistoryLearningInsight,
+    setHistoryLearningError,
+    setHistoryLearningLoading,
+  });
+  useSelectedHistoryResetEffect({
+    selectedHistoryId,
+    selectedHistory,
+    selectedHistoryIdRef,
+    historyLearningRequestIdRef,
+    historyEditorDraftRef,
+    retrospectiveDraftRef,
+    setRetrospectiveResetVersion,
+    setHistoryEditorResetVersion,
+    setHistoryLearningInsight,
+    setHistoryLearningError,
+    setHistoryLearningLoading,
+    setHistoryOutput,
+    setHistoryOutputError,
+    setHistoryOutputLoading,
+  });
 
   useEffect(() => {
     setSelectedAnalysisCategories([...ALL_TRIP_ANALYSIS_CATEGORIES]);
   }, [isCreatingTrip, selectedTripId]);
 
-  useEffect(() => {
-    setMarkdownLayer(null);
-  }, [activePage, isCreatingTrip, selectedHistoryId, selectedTripId]);
-
-  useEffect(() => {
-    if (!markdownLayer) {
-      return;
-    }
-
-    const previousOverflow = document.body.style.overflow;
-    const handleWindowKeyDown = (event: KeyboardEvent) => {
-      if (event.key === "Escape") {
-        setMarkdownLayer(null);
-      }
-    };
-
-    document.body.style.overflow = "hidden";
-    window.addEventListener("keydown", handleWindowKeyDown);
-
-    return () => {
-      document.body.style.overflow = previousOverflow;
-      window.removeEventListener("keydown", handleWindowKeyDown);
-    };
-  }, [markdownLayer]);
+  useMarkdownLayerResetEffect({
+    activePage,
+    isCreatingTrip,
+    selectedHistoryId,
+    selectedTripId,
+    setMarkdownLayer,
+  });
+  useMarkdownLayerBodyLockEffect(markdownLayer, setMarkdownLayer);
 
   useEffect(() => {
     const clearReconnectTimer = () => {
@@ -895,70 +803,22 @@ export function useAppViewModel(initialPage?: PageKey) {
     };
   }, [aiJobRealtimeMode, userLearningStatus.status]);
 
-  useEffect(() => {
-    setDurableDraft((current) => ({
-      ...current,
-      category: resolveCategorySelection(
-        current.category,
-        equipmentCategories.durable,
-      ),
-    }));
-    setConsumableDraft((current) => ({
-      ...current,
-      category: resolveCategorySelection(
-        current.category,
-        equipmentCategories.consumables,
-      ),
-    }));
-    setPrecheckDraft((current) => ({
-      ...current,
-      category: resolveCategorySelection(
-        current.category,
-        equipmentCategories.precheck,
-      ),
-    }));
-  }, [equipmentCategories]);
-
-  useEffect(() => {
-    const nextEquipmentGroupIds = buildVisibleEquipmentCategoryIdMap(
-      equipment,
-      equipmentCategories,
-    );
-    const previousEquipmentGroupIds = previousEquipmentGroupIdsRef.current;
-
-    setCollapsedEquipmentCategories((current) =>
-      syncCollapsedSectionTrackedIds(
-        current,
-        nextEquipmentGroupIds,
-        previousEquipmentGroupIds,
-      ),
-    );
-    previousEquipmentGroupIdsRef.current = nextEquipmentGroupIds;
-  }, [equipment, equipmentCategories]);
-
-  useEffect(() => {
-    const nextCategoryEditorIds = buildEquipmentCategoryIdMap(equipmentCategories);
-    const previousCategoryEditorIds = previousCategoryEditorIdsRef.current;
-
-    setCollapsedCategoryEditors((current) =>
-      syncCollapsedSectionTrackedIds(
-        current,
-        nextCategoryEditorIds,
-        previousCategoryEditorIds,
-      ),
-    );
-    previousCategoryEditorIdsRef.current = nextCategoryEditorIds;
-  }, [equipmentCategories]);
-
-  useEffect(() => {
-    const nextItemIds = buildEquipmentItemIdMap(equipment);
-    const previousItemIds = previousEquipmentItemIdsRef.current;
-
-    setExpandedEquipmentItems((current) =>
-      syncExpandedSectionTrackedIds(current, nextItemIds, previousItemIds),
-    );
-    previousEquipmentItemIdsRef.current = nextItemIds;
-  }, [equipment]);
+  useEquipmentCategorySyncEffect({
+    equipmentCategories,
+    setDurableDraft,
+    setConsumableDraft,
+    setPrecheckDraft,
+  });
+  useEquipmentVisibilitySyncEffect({
+    equipment,
+    equipmentCategories,
+    previousEquipmentGroupIdsRef,
+    previousCategoryEditorIdsRef,
+    previousEquipmentItemIdsRef,
+    setCollapsedEquipmentCategories,
+    setCollapsedCategoryEditors,
+    setExpandedEquipmentItems,
+  });
 
   function handleEquipmentTabKeyDown(
     event: ReactKeyboardEvent<HTMLButtonElement>,
@@ -1787,226 +1647,44 @@ export function useAppViewModel(initialPage?: PageKey) {
   ) {
     setTripDraft((current) => (current ? updater(current) : current));
   }
+  const {
+    beginCreateCompanion,
+    beginEditCompanion,
+    handleCreateCompanion,
+    handleDeleteCompanion,
+    handleSaveCompanion,
+  } = buildCompanionActions({
+    companionDraft,
+    companionTextInputs,
+    companions,
+    editingCompanionId,
+    setCompanionDraft,
+    setCompanionTextInputs,
+    setCompanions,
+    setEditingCompanionId,
+    setOperationState,
+    tripDraft,
+    updateTripDraft,
+  });
 
-  function beginCreateCompanion(companionId?: string) {
-    const nextDraft = createEmptyCompanion(companionId);
-    setEditingCompanionId(null);
-    setCompanionDraft(nextDraft);
-    setCompanionTextInputs(createCompanionTextInputs(nextDraft));
-  }
-
-  function beginEditCompanion(companion: Companion) {
-    const nextDraft = {
-      ...companion,
-      health_notes: [...companion.health_notes],
-      required_medications: [...companion.required_medications],
-      traits: {
-        cold_sensitive: companion.traits.cold_sensitive ?? false,
-        heat_sensitive: companion.traits.heat_sensitive ?? false,
-        rain_sensitive: companion.traits.rain_sensitive ?? false,
-      },
-    };
-    setEditingCompanionId(companion.id);
-    setCompanionDraft(nextDraft);
-    setCompanionTextInputs(createCompanionTextInputs(nextDraft));
-  }
-
-  async function handleCreateCompanion() {
-    try {
-      const response = await apiClient.createCompanion(
-        buildCompanionInput(companionDraft, companionTextInputs),
-      );
-      const nextCompanions = [...companions, response.item].sort(sortCompanions);
-
-      setCompanions(nextCompanions);
-      setCompanionDraft(createEmptyCompanion());
-      setCompanionTextInputs(createCompanionTextInputs());
-      setEditingCompanionId(null);
-      setOperationState({
-        title: "동행자 추가 완료",
-        tone: "success",
-        description: `${response.item.name} (${response.item.id})`,
-      });
-    } catch (error) {
-      setOperationState({
-        title: "동행자 추가 실패",
-        tone: "error",
-        description: getErrorMessage(error),
-      });
-    }
-  }
-
-  async function handleSaveCompanion() {
-    if (!editingCompanionId) return;
-
-    try {
-      const response = await apiClient.updateCompanion(
-        editingCompanionId,
-        buildCompanionInput(companionDraft, companionTextInputs),
-      );
-      setCompanions((current) =>
-        current
-          .map((item) => (item.id === response.item.id ? response.item : item))
-          .sort(sortCompanions),
-      );
-      setCompanionDraft(createEmptyCompanion());
-      setCompanionTextInputs(createCompanionTextInputs());
-      setEditingCompanionId(null);
-      setOperationState({
-        title: "동행자 저장 완료",
-        tone: "success",
-        description: `${response.item.name} (${response.item.id})`,
-      });
-    } catch (error) {
-      setOperationState({
-        title: "동행자 저장 실패",
-        tone: "error",
-        description: getErrorMessage(error),
-      });
-    }
-  }
-
-  async function handleDeleteCompanion(companionId: string) {
-    if (!confirmDeletion(`동행자 프로필을 삭제할까요?\n${companionId}`)) return;
-
-    try {
-      await apiClient.deleteCompanion(companionId);
-      setCompanions((current) =>
-        current.filter((item) => item.id !== companionId).sort(sortCompanions),
-      );
-
-      if (editingCompanionId === companionId) {
-        setEditingCompanionId(null);
-        setCompanionDraft(createEmptyCompanion());
-        setCompanionTextInputs(createCompanionTextInputs());
-      }
-
-      if (tripDraft?.party?.companion_ids.includes(companionId)) {
-        updateTripDraft((current) => ({
-          ...current,
-          party: {
-            companion_ids: current.party?.companion_ids.filter((item) => item !== companionId) ?? [],
-          },
-        }));
-      }
-
-      setOperationState({
-        title: "동행자 삭제 완료",
-        tone: "success",
-        description: companionId,
-      });
-    } catch (error) {
-      setOperationState({
-        title: "동행자 삭제 실패",
-        tone: "error",
-        description: getErrorMessage(error),
-      });
-    }
-  }
-
-  function beginCreateVehicle() {
-    const nextDraft = createEmptyVehicle();
-    setEditingVehicleId(null);
-    setVehicleDraft(nextDraft);
-    setVehicleNoteInput(joinLineList(nextDraft.notes));
-  }
-
-  function beginEditVehicle(vehicle: Vehicle) {
-    const nextDraft = {
-      ...vehicle,
-      notes: [...vehicle.notes],
-    };
-    setEditingVehicleId(vehicle.id);
-    setVehicleDraft(nextDraft);
-    setVehicleNoteInput(joinLineList(nextDraft.notes));
-  }
-
-  async function handleCreateVehicle() {
-    try {
-      const response = await apiClient.createVehicle(
-        buildVehicleInput(vehicleDraft, vehicleNoteInput),
-      );
-      setVehicles((current) => [...current, response.item].sort(sortVehicles));
-      setVehicleDraft(createEmptyVehicle());
-      setVehicleNoteInput("");
-      setEditingVehicleId(null);
-      setOperationState({
-        title: "차량 추가 완료",
-        tone: "success",
-        description: `${response.item.name} (${response.item.id})`,
-      });
-    } catch (error) {
-      setOperationState({
-        title: "차량 추가 실패",
-        tone: "error",
-        description: getErrorMessage(error),
-      });
-    }
-  }
-
-  async function handleSaveVehicle() {
-    if (!editingVehicleId) return;
-
-    try {
-      const response = await apiClient.updateVehicle(
-        editingVehicleId,
-        buildVehicleInput(vehicleDraft, vehicleNoteInput),
-      );
-      setVehicles((current) =>
-        current
-          .map((item) => (item.id === response.item.id ? response.item : item))
-          .sort(sortVehicles),
-      );
-      setVehicleDraft(createEmptyVehicle());
-      setVehicleNoteInput("");
-      setEditingVehicleId(null);
-      setOperationState({
-        title: "차량 저장 완료",
-        tone: "success",
-        description: `${response.item.name} (${response.item.id})`,
-      });
-    } catch (error) {
-      setOperationState({
-        title: "차량 저장 실패",
-        tone: "error",
-        description: getErrorMessage(error),
-      });
-    }
-  }
-
-  async function handleDeleteVehicle(vehicleId: string) {
-    if (!confirmDeletion(`차량 정보를 삭제할까요?\n${vehicleId}`)) return;
-
-    try {
-      await apiClient.deleteVehicle(vehicleId);
-      setVehicles((current) => current.filter((item) => item.id !== vehicleId));
-
-      if (editingVehicleId === vehicleId) {
-        setEditingVehicleId(null);
-        setVehicleDraft(createEmptyVehicle());
-        setVehicleNoteInput("");
-      }
-
-      if (tripDraft?.vehicle?.id === vehicleId) {
-        updateTripDraft((current) => ({
-          ...current,
-          vehicle: undefined,
-        }));
-      }
-
-      setOperationState({
-        title: "차량 삭제 완료",
-        tone: "success",
-        description: vehicleId,
-      });
-    } catch (error) {
-      setOperationState({
-        title: "차량 삭제 실패",
-        tone: "error",
-        description: getErrorMessage(error),
-      });
-    }
-  }
+  const {
+    beginCreateVehicle,
+    beginEditVehicle,
+    handleCreateVehicle,
+    handleDeleteVehicle,
+    handleSaveVehicle,
+  } = buildVehicleActions({
+    editingVehicleId,
+    setEditingVehicleId,
+    setOperationState,
+    setVehicleDraft,
+    setVehicleNoteInput,
+    setVehicles,
+    tripDraft,
+    updateTripDraft,
+    vehicleDraft,
+    vehicleNoteInput,
+  });
 
   async function handleSaveTrip() {
     if (!tripDraft) return;
@@ -2777,224 +2455,39 @@ export function useAppViewModel(initialPage?: PageKey) {
     }
   }
 
-  async function handleSaveHistory(editorDraft: HistoryEditorDraft) {
-    if (!selectedHistory) return;
+  const {
+    handleAddRetrospective,
+    handleDeleteHistory,
+    handleOpenHistoryOutput,
+    handleOpenHistoryOutputLayer,
+    handleSaveHistory,
+  } = buildHistoryActions({
+    applyUserLearningStatus,
+    historyEditorDraftRef,
+    historyOutput,
+    historyOutputRequestIdRef,
+    retrospectiveDraftRef,
+    selectedHistory,
+    selectedHistoryIdRef,
+    setHistory,
+    setHistoryEditorResetVersion,
+    setHistoryLearningError,
+    setHistoryOutput,
+    setHistoryOutputError,
+    setHistoryOutputLoading,
+    setMarkdownLayer,
+    setOperationState,
+    setRetrospectiveResetVersion,
+    setSavingRetrospective,
+    setSelectedHistoryId,
+  });
 
-    try {
-      const response = await apiClient.updateHistory(
-        selectedHistory.history_id,
-        buildHistoryRecordForSave(selectedHistory, editorDraft),
-      );
-      setHistory((current) =>
-        current.map((item) =>
-          item.history_id === response.item.history_id ? response.item : item,
-        ),
-      );
-      historyEditorDraftRef.current = createHistoryEditorDraft(response.item);
-      setHistoryEditorResetVersion((current) => current + 1);
-      setOperationState({
-        title: "히스토리 저장 완료",
-        tone: "success",
-        description: response.item.title,
-      });
-    } catch (error) {
-      setOperationState({
-        title: "히스토리 저장 실패",
-        tone: "error",
-        description: getErrorMessage(error),
-      });
-    }
-  }
-
-  async function handleAddRetrospective(draft: RetrospectiveDraft) {
-    if (!selectedHistory) {
-      return;
-    }
-
-    setSavingRetrospective(true);
-
-    try {
-      const response = await apiClient.addHistoryRetrospective(
-        selectedHistory.history_id,
-        buildRetrospectiveInput(draft),
-      );
-
-      setHistory((current) =>
-        current.map((item) =>
-          item.history_id === response.item.history_id ? response.item : item,
-        ),
-      );
-      applyUserLearningStatus(response.learning_status);
-      retrospectiveDraftRef.current = createEmptyRetrospectiveDraft();
-      setRetrospectiveResetVersion((current) => current + 1);
-      setHistoryLearningError(null);
-      setOperationState({
-        title: "후기 저장 완료",
-        tone: "success",
-        description: "회고를 저장했고 개인화 학습 업데이트를 시작했습니다.",
-      });
-    } catch (error) {
-      setOperationState({
-        title: "후기 저장 실패",
-        tone: "error",
-        description: getErrorMessage(error),
-      });
-    } finally {
-      setSavingRetrospective(false);
-    }
-  }
-
-  async function handleOpenHistoryOutput() {
-    if (!selectedHistory?.output_path) return;
-
-    const requestedHistoryId = selectedHistory.history_id;
-    const requestId = historyOutputRequestIdRef.current + 1;
-
-    historyOutputRequestIdRef.current = requestId;
-    setHistoryOutputLoading(true);
-    setHistoryOutputError(null);
-
-    try {
-      const response = await apiClient.getOutput(selectedHistory.source_trip_id);
-
-      if (
-        selectedHistoryIdRef.current !== requestedHistoryId ||
-        historyOutputRequestIdRef.current !== requestId
-      ) {
-        return;
-      }
-
-      setHistoryOutput(response);
-      setOperationState({
-        title: "히스토리 결과 불러오기 완료",
-        tone: "success",
-        description: response.output_path,
-      });
-    } catch (error) {
-      if (
-        selectedHistoryIdRef.current !== requestedHistoryId ||
-        historyOutputRequestIdRef.current !== requestId
-      ) {
-        return;
-      }
-
-      setHistoryOutput(null);
-      const message = getErrorMessage(error);
-      setHistoryOutputError(message);
-      setOperationState({
-        title: "히스토리 결과 불러오기 실패",
-        tone: "error",
-        description: message,
-      });
-    } finally {
-      if (
-        selectedHistoryIdRef.current !== requestedHistoryId ||
-        historyOutputRequestIdRef.current !== requestId
-      ) {
-        return;
-      }
-
-      setHistoryOutputLoading(false);
-    }
-  }
-
-  function handleOpenHistoryOutputLayer() {
-    if (!historyOutput?.markdown) {
-      return;
-    }
-
-    setMarkdownLayer({
-      eyebrow: "히스토리 결과 레이어",
-      title: `${selectedHistory?.title ?? "보관 기록"} 저장 결과`,
-      description:
-        "아카이브 당시 저장된 Markdown 결과를 넓은 폭으로 다시 확인하는 보기입니다.",
-      outputPath: historyOutput.output_path,
-      markdown: historyOutput.markdown,
-    });
-  }
-
-  async function handleDeleteHistory(historyId: string) {
-    if (!confirmDeletion(`캠핑 히스토리를 삭제할까요?\n${historyId}`)) return;
-
-    try {
-      await apiClient.deleteHistory(historyId);
-      const response = await apiClient.getHistory();
-      setHistory(response.items);
-      setSelectedHistoryId(response.items[0]?.history_id ?? null);
-      setOperationState({
-        title: "히스토리 삭제 완료",
-        tone: "success",
-        description: historyId,
-      });
-    } catch (error) {
-      setOperationState({
-        title: "히스토리 삭제 실패",
-        tone: "error",
-        description: getErrorMessage(error),
-      });
-    }
-  }
-
-  async function handleCreateLink() {
-    try {
-      const response = await apiClient.createLink(linkDraft);
-      setLinks((current) => [...current, response.item].sort(sortLinks));
-      setLinkDraft(createEmptyLink());
-      setOperationState({
-        title: "외부 링크 추가 완료",
-        tone: "success",
-        description: response.item.name,
-      });
-    } catch (error) {
-      setOperationState({
-        title: "외부 링크 추가 실패",
-        tone: "error",
-        description: getErrorMessage(error),
-      });
-    }
-  }
-
-  async function handleSaveLink(link: ExternalLink) {
-    try {
-      const response = await apiClient.updateLink(link.id, link);
-      setLinks((current) =>
-        current
-          .map((item) => (item.id === response.item.id ? response.item : item))
-          .sort(sortLinks),
-      );
-      setOperationState({
-        title: "외부 링크 저장 완료",
-        tone: "success",
-        description: response.item.name,
-      });
-    } catch (error) {
-      setOperationState({
-        title: "외부 링크 저장 실패",
-        tone: "error",
-        description: getErrorMessage(error),
-      });
-    }
-  }
-
-  async function handleDeleteLink(linkId: string) {
-    if (!confirmDeletion(`외부 링크를 삭제할까요?\n${linkId}`)) return;
-
-    try {
-      await apiClient.deleteLink(linkId);
-      setLinks((current) => current.filter((item) => item.id !== linkId));
-      setOperationState({
-        title: "외부 링크 삭제 완료",
-        tone: "success",
-        description: linkId,
-      });
-    } catch (error) {
-      setOperationState({
-        title: "외부 링크 삭제 실패",
-        tone: "error",
-        description: getErrorMessage(error),
-      });
-    }
-  }
+  const { handleCreateLink, handleDeleteLink, handleSaveLink } = buildLinkActions({
+    linkDraft,
+    setLinkDraft,
+    setLinks,
+    setOperationState,
+  });
 
   async function handleCreateDataBackup() {
     setCreatingDataBackup(true);
