@@ -30,6 +30,8 @@ import type {
   RetrospectiveEntryInput,
   SaveOutputRequest,
   SaveOutputResponse,
+  SendTripAnalysisEmailRequest,
+  SendTripAnalysisEmailResponse,
   TripData,
   TripDraft,
   TripSummary,
@@ -181,6 +183,15 @@ export const apiClient = {
   async archiveTrip(tripId: string): Promise<{ item: HistoryRecord }> {
     return request(`/api/trips/${tripId}/archive`, {
       method: "POST",
+    });
+  },
+  async sendTripAnalysisEmail(
+    tripId: string,
+    input: SendTripAnalysisEmailRequest,
+  ): Promise<SendTripAnalysisEmailResponse> {
+    return request(`/api/trips/${tripId}/analysis-email`, {
+      method: "POST",
+      body: JSON.stringify(input),
     });
   },
   async assistTrip(

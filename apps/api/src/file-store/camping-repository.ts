@@ -2273,6 +2273,7 @@ function normalizeTripDraft(draft: TripDraft, tripId: string): TripData {
     conditions: draft.conditions,
     meal_plan: draft.meal_plan,
     travel_plan: draft.travel_plan,
+    notifications: draft.notifications,
     notes: draft.notes ?? [],
   });
 

@@ -53,6 +53,10 @@ export function CompanionsPageContent(props: { view: AppViewModel }) {
             <span>복용약 기록</span>
             <strong>{companions.filter((item) => item.required_medications.length > 0).length}명</strong>
           </div>
+          <div className="meta-chip">
+            <span>메일 등록</span>
+            <strong>{companions.filter((item) => item.email?.trim()).length}명</strong>
+          </div>
         </div>
       </section>
 
@@ -135,6 +139,7 @@ export function CompanionsPageContent(props: { view: AppViewModel }) {
                           ? ` / ${companion.required_medications[0]}`
                           : ""}
                       </span>
+                      <span>{companion.email?.trim() ? companion.email.trim() : "메일 주소 없음"}</span>
                     </button>
                   ))
                 )}
@@ -174,6 +179,19 @@ export function CompanionsPageContent(props: { view: AppViewModel }) {
                       setCompanionDraft((current: Companion) => ({
                         ...current,
                         name: event.target.value,
+                      }))
+                    }
+                  />
+                </FormField>
+                <FormField label="메일 주소">
+                  <input
+                    type="email"
+                    placeholder="예: family@example.com"
+                    value={companionDraft.email ?? ""}
+                    onChange={(event) =>
+                      setCompanionDraft((current: Companion) => ({
+                        ...current,
+                        email: event.target.value || undefined,
                       }))
                     }
                   />

@@ -20,6 +20,7 @@ import type {
 import { ALL_TRIP_ANALYSIS_CATEGORIES } from "@camping/shared";
 import { apiClient, ApiClientError } from "../../api/client";
 import { confirmDeletion } from "../../app/browser-helpers";
+import { sendTripAnalysisEmailFromDraft } from "../../app/planning-email-actions";
 import {
   appendSyncWarnings,
   getErrorMessage,
@@ -84,12 +85,14 @@ type BuildPlanningActionsInput = {
   setOperationState: Dispatch<SetStateAction<OperationState | null>>;
   setPlanningPageTab: Dispatch<SetStateAction<PlanningPageTab>>;
   setSavingTrip: Dispatch<SetStateAction<boolean>>;
+  setSendingAnalysisEmail: Dispatch<SetStateAction<boolean>>;
   setSelectedTripId: Dispatch<SetStateAction<string | null>>;
   setSelectedHistoryId: Dispatch<SetStateAction<string | null>>;
   setTripDraft: Dispatch<SetStateAction<TripDraft | null>>;
   setTripNoteInput: Dispatch<SetStateAction<string>>;
   setTrips: Dispatch<SetStateAction<TripSummary[]>>;
   setValidationWarnings: Dispatch<SetStateAction<string[]>>;
+  sendingAnalysisEmail: boolean;
   tripDraft: TripDraft | null;
   tripNoteInput: string;
   applyAnalysisStatus: (status: AnalyzeTripResponse | null) => void;
@@ -184,6 +187,24 @@ export function buildPlanningActions(input: BuildPlanningActionsInput) {
     } finally {
       input.setSavingTrip(false);
     }
+  }
+
+  async function handleSendAnalysisEmail() {
+    if (!input.selectedTripId || !input.tripDraft || input.sendingAnalysisEmail) {
+      return;
+    }
+    await sendTripAnalysisEmailFromDraft({
+      selectedTripId: input.selectedTripId,
+      sendingAnalysisEmail: input.sendingAnalysisEmail,
+      setCommaInputs: input.setCommaInputs,
+      setOperationState: input.setOperationState,
+      setSendingAnalysisEmail: input.setSendingAnalysisEmail,
+      setTripDraft: input.setTripDraft,
+      setTripNoteInput: input.setTripNoteInput,
+      setTrips: input.setTrips,
+      tripDraft: input.tripDraft,
+      tripNoteInput: input.tripNoteInput,
+    });
   }
 
   async function handleDeleteTrip() {
@@ -498,6 +519,7 @@ export function buildPlanningActions(input: BuildPlanningActionsInput) {
     handleDeleteTrip,
     handleOpenAnalysisLayer,
     handleRefreshAnalysisCategory,
+    handleSendAnalysisEmail,
     handleSaveTrip,
     selectTrip,
   };

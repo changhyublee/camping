@@ -18,6 +18,7 @@ export function PlanningDetailsPanel(props: { view: AppViewModel }) {
     assistantInput,
     assistantLoading,
     assistantResponse,
+    canSendAnalysisEmail,
     clearAnalysisCategorySelection,
     completedAnalysisCategoryCount,
     currentUserLearningStatusLabel,
@@ -29,18 +30,26 @@ export function PlanningDetailsPanel(props: { view: AppViewModel }) {
     handleAssistantSubmit,
     handleOpenAnalysisLayer,
     handleRefreshAnalysisCategory,
+    handleSendAnalysisEmail,
     isPendingAnalysisStatus,
+    isAnalysisReadyForEmail,
     isUserLearningPending,
     planningDetailTab,
     selectedAnalysisCategories,
+    selectedTripEmailRecipientIds,
+    selectedTripEmailRecipients,
     selectedTripId,
     selectAllAnalysisCategories,
+    sendingAnalysisEmail,
     setAssistantInput,
     setPlanningDetailTab,
     toggleAnalysisCategorySelection,
     userLearningProfile,
     userLearningStatus,
   } = props.view;
+  const selectedEmailRecipientNames = selectedTripEmailRecipients.map((companion) => companion.name);
+  const hasInvalidEmailRecipients =
+    selectedTripEmailRecipientIds.length !== selectedTripEmailRecipients.length;
 
   return (
     <section className="panel planning-side-stack detail-panel">
@@ -308,6 +317,37 @@ export function PlanningDetailsPanel(props: { view: AppViewModel }) {
                     </button>
                     <button className="button button--primary" onClick={handleAnalyzeAll} type="button">
                       전체 실행
+                    </button>
+                  </div>
+                </div>
+                <div className="action-card">
+                  <strong>분석 결과 메일 발송</strong>
+                  <p>
+                    현재 선택된 수신자 {selectedTripEmailRecipients.length}명
+                    {selectedEmailRecipientNames.length > 0
+                      ? `: ${selectedEmailRecipientNames.join(", ")}`
+                      : "입니다."}
+                  </p>
+                  <p>
+                    {hasInvalidEmailRecipients
+                      ? "저장된 수신자 중 메일 주소가 없거나 현재 계획에서 빠진 동행자가 있어 원본 입력 탭에서 다시 확인해야 합니다."
+                      : selectedTripEmailRecipients.length > 0
+                        ? "원본 입력 탭의 동행자 summary 카드에서 체크한 대상에게만 전체 분석 Markdown을 수동 발송합니다."
+                        : "원본 입력 탭의 동행자 summary 카드에서 메일 받을 사람을 먼저 체크하세요."}
+                  </p>
+                  <p>
+                    {isAnalysisReadyForEmail
+                      ? "전체 분석 결과가 모두 모여 있어 지금 바로 발송할 수 있습니다."
+                      : "전체 분석 실행 후 모든 분석 항목 결과가 준비되어야 발송할 수 있습니다."}
+                  </p>
+                  <div className="button-row button-row--compact">
+                    <button
+                      className="button"
+                      disabled={!canSendAnalysisEmail}
+                      onClick={handleSendAnalysisEmail}
+                      type="button"
+                    >
+                      {sendingAnalysisEmail ? "메일 발송 중..." : "분석 결과 메일 발송"}
                     </button>
                   </div>
                 </div>

@@ -45,6 +45,7 @@
 - `DELETE /api/trips/:tripId`
 - `POST /api/trips/:tripId/archive`
 - `GET /api/trips/:tripId/analysis-status`
+- `POST /api/trips/:tripId/analysis-email`
 - `POST /api/trips/:tripId/assistant`
 - `POST /api/validate-trip`
 - `POST /api/analyze-trip`
@@ -69,6 +70,10 @@
 - API 서버 재시작 시 남아 있던 `queued` 또는 `running` 상태는 `interrupted` 로 복구된다
 - `POST /api/ai-jobs/cancel-all` 는 실행 중인 분석 요청을 중단하고 남아 있던 섹션 queue 를 비운다
 - 전역 중단 응답은 `cancelled_analysis_trip_count`, `cancelled_analysis_category_count`, `cancelled_metadata_item_count`, `cancelled_user_learning_job_count` 를 함께 반환한다
+- `POST /api/trips/:tripId/analysis-email` 은 전체 분석이 모두 모였을 때만 동작한다
+- 요청 본문은 `{ "recipient_companion_ids": ["self", "child-1"] }` 형식을 사용한다
+- 수신 대상은 현재 계획 `party.companion_ids` 안에 있으면서 메일 주소가 등록된 동행자만 허용한다
+- 발송 성공 시 현재 선택한 `recipient_companion_ids` 는 `trips/<trip-id>.yaml` 의 `notifications.email_recipient_companion_ids` 에 함께 저장한다
 
 ### 장비 관리
 
@@ -187,6 +192,7 @@
     {
       "id": "self",
       "name": "본인",
+      "email": "self@example.com",
       "age_group": "adult"
     }
   ]
@@ -228,6 +234,43 @@
   ]
 }
 ```
+
+### `POST /api/trips/:tripId/analysis-email`
+
+```json
+{
+  "trip_id": "2026-04-18-gapyeong",
+  "sent_at": "2026-03-24T11:00:00.000Z",
+  "sent_count": 2,
+  "recipients": [
+    {
+      "companion_id": "self",
+      "name": "본인",
+      "email": "self@example.com"
+    },
+    {
+      "companion_id": "child-1",
+      "name": "첫째",
+      "email": "child-1@example.com"
+    }
+  ],
+  "output_path": ".camping-data/outputs/2026-04-18-gapyeong-plan.md"
+}
+```
+
+## 5. 환경 변수
+
+- `SMTP_HOST`
+- `SMTP_PORT`
+- `SMTP_SECURE`
+- `SMTP_USER`
+- `SMTP_PASS`
+- `SMTP_FROM`
+
+메일 발송은 SMTP 설정이 모두 준비되지 않으면 `DEPENDENCY_MISSING` 으로 거절한다.
+
+- `SMTP_HOST` 와 `SMTP_FROM` 은 항상 필요하다.
+- SMTP 인증을 쓰는 환경이면 `SMTP_USER` 와 `SMTP_PASS` 를 함께 설정해야 한다.
 
 ### `POST /api/analyze-trip`
 

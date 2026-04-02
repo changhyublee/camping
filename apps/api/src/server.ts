@@ -8,6 +8,12 @@ import { CampingRepository } from "./file-store/camping-repository";
 import { registerApiRoutes } from "./routes/api-routes";
 import { AnalysisService } from "./services/analysis-service";
 import {
+  createSmtpTransporter,
+  MissingAnalysisEmailClient,
+  SmtpAnalysisEmailClient,
+  type AnalysisEmailClient,
+} from "./services/analysis-email-service";
+import {
   CodexCliCampsiteTipClient,
   MissingCampsiteTipClient,
   OpenAICampsiteTipClient,
@@ -36,6 +42,7 @@ import {
 export type BuildServerOptions = ConfigOverrides & {
   logger?: boolean;
   modelClient?: AnalysisModelClient;
+  analysisEmailClient?: AnalysisEmailClient;
   equipmentMetadataClient?: EquipmentMetadataSearchClient;
   campsiteTipClient?: CampsiteTipSearchClient;
   userLearningClient?: UserLearningClient;
@@ -47,6 +54,8 @@ export async function buildServer(
   const config = resolveConfig(options);
   const repository = new CampingRepository(config);
   const modelClient = options.modelClient ?? createModelClient(config);
+  const analysisEmailClient =
+    options.analysisEmailClient ?? createAnalysisEmailClient(config);
   const equipmentMetadataClient =
     options.equipmentMetadataClient ?? createEquipmentMetadataClient(config);
   const campsiteTipClient =
@@ -56,6 +65,7 @@ export async function buildServer(
   const analysisService = new AnalysisService(
     repository,
     modelClient,
+    analysisEmailClient,
     equipmentMetadataClient,
     campsiteTipClient,
     userLearningClient,
@@ -133,6 +143,39 @@ function createModelClient(
   return config.openaiApiKey
     ? new OpenAIResponsesClient(config.openaiApiKey, config.openaiModel)
     : new MissingOpenAIClient();
+}
+
+function createAnalysisEmailClient(
+  config: ReturnType<typeof resolveConfig>,
+): AnalysisEmailClient {
+  const smtpHost = config.smtpHost?.trim() ?? "";
+  const smtpFrom = config.smtpFrom?.trim() ?? "";
+  const smtpUser = config.smtpUser?.trim() ?? "";
+  const smtpPass = config.smtpPass?.trim() ?? "";
+  const hasSmtpUser = smtpUser.length > 0;
+  const hasSmtpPass = smtpPass.length > 0;
+
+  if (!smtpHost || !smtpFrom) {
+    return new MissingAnalysisEmailClient(
+      "SMTP_HOST 와 SMTP_FROM 을 설정해야 분석 결과 메일을 발송할 수 있습니다.",
+    );
+  }
+
+  if (hasSmtpUser !== hasSmtpPass) {
+    return new MissingAnalysisEmailClient(
+      "SMTP 인증을 사용하는 경우 SMTP_USER 와 SMTP_PASS 를 함께 설정해야 합니다.",
+    );
+  }
+
+  const transporter = createSmtpTransporter({
+    host: smtpHost,
+    port: config.smtpPort ?? (config.smtpSecure ? 465 : 587),
+    secure: config.smtpSecure,
+    user: hasSmtpUser ? smtpUser : undefined,
+    pass: hasSmtpPass ? smtpPass : undefined,
+  });
+
+  return new SmtpAnalysisEmailClient(transporter, smtpFrom);
 }
 
 function createEquipmentMetadataClient(

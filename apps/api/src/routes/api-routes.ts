@@ -18,6 +18,7 @@ import {
   precheckItemInputSchema,
   retrospectiveEntryInputSchema,
   saveOutputRequestSchema,
+  sendTripAnalysisEmailRequestSchema,
   tripDraftSchema,
   tripIdSchema,
   validateTripRequestSchema,
@@ -442,6 +443,23 @@ export async function registerApiRoutes(
     );
 
     return analysisService.assistTripPlanning(tripId, body.message);
+  });
+
+  app.post("/api/trips/:tripId/analysis-email", async (request) => {
+    const tripId = readIdParam(
+      (request.params as { tripId?: unknown }).tripId,
+      "trip_id",
+    );
+    const body = parseBodyOrThrow(
+      "analysis-email 요청",
+      sendTripAnalysisEmailRequestSchema,
+      request.body,
+    );
+
+    return analysisService.sendTripAnalysisEmail(
+      tripId,
+      body.recipient_companion_ids,
+    );
   });
 
   app.post("/api/validate-trip", async (request) => {

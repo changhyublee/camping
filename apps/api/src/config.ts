@@ -10,6 +10,12 @@ export type AppConfig = {
   openaiApiKey?: string;
   openaiModel: string;
   openaiMetadataModel: string;
+  smtpHost?: string;
+  smtpPort?: number;
+  smtpSecure: boolean;
+  smtpUser?: string;
+  smtpPass?: string;
+  smtpFrom?: string;
   codexBin: string;
   codexModel: string;
   codexMetadataModel: string;
@@ -40,6 +46,13 @@ export function resolveConfig(overrides: ConfigOverrides = {}): AppConfig {
       overrides.openaiMetadataModel ??
       process.env.OPENAI_METADATA_MODEL ??
       "gpt-5-mini",
+    smtpHost: overrides.smtpHost ?? process.env.SMTP_HOST,
+    smtpPort: overrides.smtpPort ?? parseOptionalNumber(process.env.SMTP_PORT),
+    smtpSecure:
+      overrides.smtpSecure ?? parseBooleanFlag(process.env.SMTP_SECURE) ?? false,
+    smtpUser: overrides.smtpUser ?? process.env.SMTP_USER,
+    smtpPass: overrides.smtpPass ?? process.env.SMTP_PASS,
+    smtpFrom: overrides.smtpFrom ?? process.env.SMTP_FROM,
     codexBin: overrides.codexBin ?? process.env.CODEX_BIN ?? "codex",
     codexModel: overrides.codexModel ?? process.env.CODEX_MODEL ?? "gpt-5.4",
     codexMetadataModel:
@@ -91,6 +104,31 @@ function parseCodexReasoningEffort(
     value === "xhigh"
   ) {
     return value;
+  }
+
+  return undefined;
+}
+
+function parseOptionalNumber(value: string | undefined): number | undefined {
+  if (!value) {
+    return undefined;
+  }
+
+  const parsed = Number(value);
+  return Number.isFinite(parsed) ? parsed : undefined;
+}
+
+function parseBooleanFlag(value: string | undefined): boolean | undefined {
+  if (!value) {
+    return undefined;
+  }
+
+  if (value === "true") {
+    return true;
+  }
+
+  if (value === "false") {
+    return false;
   }
 
   return undefined;

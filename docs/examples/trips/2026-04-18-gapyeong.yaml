@@ -16,6 +16,9 @@ party:
   companion_ids:
     - self
     - child-1
+notifications:
+  email_recipient_companion_ids:
+    - self
 vehicle:
   id: family-suv
   load_capacity_kg: 400

@@ -4,17 +4,24 @@ import path from "node:path";
 import { fileURLToPath } from "node:url";
 import { afterEach, describe, expect, it } from "vitest";
 import { parse, stringify } from "yaml";
-import type {
-  BackendHealth,
-  HistoryLearningInsight,
-  DurableMetadataJobStatusResponse,
-  CampsiteTipsResearch,
-  DurableEquipmentMetadata,
-  TripBundle,
-  UserLearningProfile,
+import {
+  ALL_TRIP_ANALYSIS_CATEGORIES,
+  TRIP_ANALYSIS_CATEGORY_METADATA,
+  type BackendHealth,
+  type HistoryLearningInsight,
+  type DurableMetadataJobStatusResponse,
+  type CampsiteTipsResearch,
+  type DurableEquipmentMetadata,
+  type TripBundle,
+  type UserLearningProfile,
 } from "@camping/shared";
 import { buildAiJobEventStreamHeaders } from "../src/routes/api-routes";
 import { buildServer } from "../src/server";
+import type {
+  AnalysisEmailClient,
+  SendAnalysisResultEmailInput,
+  SendAnalysisResultEmailResult,
+} from "../src/services/analysis-email-service";
 import type { CampsiteTipSearchClient } from "../src/services/campsite-tip-service";
 import type { EquipmentMetadataSearchClient } from "../src/services/equipment-metadata-service";
 import type { AnalysisModelClient } from "../src/services/openai-client";
@@ -144,6 +151,22 @@ class DeferredAnalysisClient implements AnalysisModelClient {
       auth_status: "ok",
       model: "gpt-5.4",
       message: "Logged in using ChatGPT",
+    };
+  }
+}
+
+class MockAnalysisEmailClient implements AnalysisEmailClient {
+  public calls: SendAnalysisResultEmailInput[] = [];
+
+  async sendAnalysisResultEmail(
+    input: SendAnalysisResultEmailInput,
+  ): Promise<SendAnalysisResultEmailResult> {
+    this.calls.push(input);
+
+    return {
+      sentAt: "2026-03-24T11:00:00.000Z",
+      sentCount: input.recipients.length,
+      recipients: input.recipients,
     };
   }
 }
@@ -495,6 +518,77 @@ async function createSeededDataDir() {
   return path.join(tempRoot, ".camping-data");
 }
 
+async function createCompletedAnalysisArtifacts(dataDir: string, tripId: string) {
+  const outputPath = path.join(dataDir, "outputs", `${tripId}-plan.md`);
+  const statusPath = path.join(dataDir, "cache", "analysis-jobs", `${tripId}.json`);
+  const resultsPath = path.join(
+    dataDir,
+    "cache",
+    "analysis-results",
+    `${tripId}.json`,
+  );
+  const collectedAt = "2026-03-24T10:00:30.000Z";
+  const resultCategories = ALL_TRIP_ANALYSIS_CATEGORIES.map((category) => {
+    const [section] = TRIP_ANALYSIS_CATEGORY_METADATA[category].sections;
+
+    return {
+      category,
+      label: TRIP_ANALYSIS_CATEGORY_METADATA[category].label,
+      sections: TRIP_ANALYSIS_CATEGORY_METADATA[category].sections,
+      markdown: `## ${section.order}. ${section.title}\n\n- ${category} 결과`,
+      updated_at: collectedAt,
+    };
+  });
+
+  await mkdir(path.dirname(outputPath), { recursive: true });
+  await writeFile(outputPath, "# 저장된 분석 결과\n\n- 메일 발송 테스트", "utf8");
+  await mkdir(path.dirname(statusPath), { recursive: true });
+  await writeFile(
+    statusPath,
+    JSON.stringify(
+      {
+        trip_id: tripId,
+        status: "completed",
+        requested_at: "2026-03-24T10:00:00.000Z",
+        started_at: "2026-03-24T10:00:01.000Z",
+        finished_at: "2026-03-24T10:00:30.000Z",
+        output_path: `.camping-data/outputs/${tripId}-plan.md`,
+        categories: ALL_TRIP_ANALYSIS_CATEGORIES.map((category) => ({
+          category,
+          label: TRIP_ANALYSIS_CATEGORY_METADATA[category].label,
+          sections: TRIP_ANALYSIS_CATEGORY_METADATA[category].sections,
+          status: "completed",
+          has_result: true,
+          requested_at: "2026-03-24T10:00:00.000Z",
+          started_at: "2026-03-24T10:00:01.000Z",
+          finished_at: collectedAt,
+          collected_at: collectedAt,
+        })),
+        completed_category_count: ALL_TRIP_ANALYSIS_CATEGORIES.length,
+        total_category_count: ALL_TRIP_ANALYSIS_CATEGORIES.length,
+      },
+      null,
+      2,
+    ),
+    "utf8",
+  );
+  await mkdir(path.dirname(resultsPath), { recursive: true });
+  await writeFile(
+    resultsPath,
+    JSON.stringify(
+      {
+        trip_id: tripId,
+        title: "4월 가평 가족 캠핑",
+        updated_at: collectedAt,
+        categories: resultCategories,
+      },
+      null,
+      2,
+    ),
+    "utf8",
+  );
+}
+
 async function waitForTripAnalysisStatus(
   app: Awaited<ReturnType<typeof buildServer>>,
   tripId: string,
@@ -809,6 +903,7 @@ describe("API server", () => {
       payload: {
         id: "ghost",
         name: "ghost",
+        email: "ghost@example.com",
         age_group: "adult",
         health_notes: [],
         required_medications: [],
@@ -825,16 +920,20 @@ describe("API server", () => {
       expect.objectContaining({
         id: "ghost",
         name: "ghost",
+        email: "ghost@example.com",
       }),
     );
 
     const companions = parse(
       await readFile(path.join(dataDir, "companions.yaml"), "utf8"),
     ) as {
-      companions: Array<{ id: string }>;
+      companions: Array<{ id: string; email?: string }>;
     };
 
     expect(companions.companions.map((item) => item.id)).toContain("ghost");
+    expect(
+      companions.companions.find((item) => item.id === "ghost")?.email,
+    ).toBe("ghost@example.com");
 
     await app.close();
   });
@@ -866,6 +965,42 @@ describe("API server", () => {
         status: "failed",
         error: expect.objectContaining({
           code: "TRIP_INVALID",
+        }),
+      }),
+    );
+
+    await app.close();
+  });
+
+  it("rejects companion emails that are not valid email format", async () => {
+    const dataDir = await createSeededDataDir();
+    const app = await buildServer({
+      dataDir,
+      projectRoot,
+      modelClient: new MockAnalysisClient("# sample"),
+    });
+
+    const response = await app.inject({
+      method: "POST",
+      url: "/api/companions",
+      payload: {
+        id: "ghost",
+        name: "잘못된 메일",
+        email: "not-an-email",
+        age_group: "adult",
+        health_notes: [],
+        required_medications: [],
+        traits: {},
+      },
+    });
+
+    expect(response.statusCode).toBe(400);
+    expect(response.json()).toEqual(
+      expect.objectContaining({
+        status: "failed",
+        error: expect.objectContaining({
+          code: "TRIP_INVALID",
+          message: expect.stringContaining("email"),
         }),
       }),
     );
@@ -2831,6 +2966,299 @@ describe("API server", () => {
         status: "failed",
         error: expect.objectContaining({
           code: "INVALID_TRIP_ID_FORMAT",
+        }),
+      }),
+    );
+
+    await app.close();
+  });
+
+  it("sends trip analysis email to selected companions and persists recipient ids", async () => {
+    const dataDir = await createSeededDataDir();
+    await createCompletedAnalysisArtifacts(dataDir, "2026-04-18-gapyeong");
+    const analysisEmailClient = new MockAnalysisEmailClient();
+    const app = await buildServer({
+      dataDir,
+      projectRoot,
+      modelClient: new MockAnalysisClient("# sample"),
+      analysisEmailClient,
+    });
+
+    const response = await app.inject({
+      method: "POST",
+      url: "/api/trips/2026-04-18-gapyeong/analysis-email",
+      payload: {
+        recipient_companion_ids: ["self", "child-1"],
+      },
+    });
+
+    expect(response.statusCode).toBe(200);
+    expect(response.json()).toEqual(
+      expect.objectContaining({
+        trip_id: "2026-04-18-gapyeong",
+        sent_count: 2,
+        output_path: ".camping-data/outputs/2026-04-18-gapyeong-plan.md",
+        recipients: [
+          {
+            companion_id: "self",
+            name: "본인",
+            email: "self@example.com",
+          },
+          {
+            companion_id: "child-1",
+            name: "첫째",
+            email: "child-1@example.com",
+          },
+        ],
+      }),
+    );
+    expect(analysisEmailClient.calls).toHaveLength(1);
+    expect(analysisEmailClient.calls[0]).toEqual(
+      expect.objectContaining({
+        tripTitle: "4월 가평 가족 캠핑",
+        outputPath: ".camping-data/outputs/2026-04-18-gapyeong-plan.md",
+        recipients: [
+          {
+            companionId: "self",
+            name: "본인",
+            email: "self@example.com",
+          },
+          {
+            companionId: "child-1",
+            name: "첫째",
+            email: "child-1@example.com",
+          },
+        ],
+      }),
+    );
+
+    const trip = parse(
+      await readFile(
+        path.join(dataDir, "trips", "2026-04-18-gapyeong.yaml"),
+        "utf8",
+      ),
+    ) as {
+      notifications?: {
+        email_recipient_companion_ids?: string[];
+      };
+    };
+
+    expect(trip.notifications?.email_recipient_companion_ids).toEqual([
+      "self",
+      "child-1",
+    ]);
+
+    await app.close();
+  });
+
+  it("deduplicates duplicate recipient ids before sending analysis email", async () => {
+    const dataDir = await createSeededDataDir();
+    await createCompletedAnalysisArtifacts(dataDir, "2026-04-18-gapyeong");
+    const analysisEmailClient = new MockAnalysisEmailClient();
+    const app = await buildServer({
+      dataDir,
+      projectRoot,
+      modelClient: new MockAnalysisClient("# sample"),
+      analysisEmailClient,
+    });
+
+    const response = await app.inject({
+      method: "POST",
+      url: "/api/trips/2026-04-18-gapyeong/analysis-email",
+      payload: {
+        recipient_companion_ids: ["self", "self", "child-1"],
+      },
+    });
+
+    expect(response.statusCode).toBe(200);
+    expect(response.json()).toEqual(
+      expect.objectContaining({
+        sent_count: 2,
+        recipients: [
+          {
+            companion_id: "self",
+            name: "본인",
+            email: "self@example.com",
+          },
+          {
+            companion_id: "child-1",
+            name: "첫째",
+            email: "child-1@example.com",
+          },
+        ],
+      }),
+    );
+    expect(analysisEmailClient.calls).toHaveLength(1);
+    expect(analysisEmailClient.calls[0].recipients).toEqual([
+      {
+        companionId: "self",
+        name: "본인",
+        email: "self@example.com",
+      },
+      {
+        companionId: "child-1",
+        name: "첫째",
+        email: "child-1@example.com",
+      },
+    ]);
+
+    const trip = parse(
+      await readFile(
+        path.join(dataDir, "trips", "2026-04-18-gapyeong.yaml"),
+        "utf8",
+      ),
+    ) as {
+      notifications?: {
+        email_recipient_companion_ids?: string[];
+      };
+    };
+
+    expect(trip.notifications?.email_recipient_companion_ids).toEqual([
+      "self",
+      "child-1",
+    ]);
+
+    await app.close();
+  });
+
+  it("blocks analysis email sending until every analysis category result is ready", async () => {
+    const dataDir = await createSeededDataDir();
+    const analysisEmailClient = new MockAnalysisEmailClient();
+    const app = await buildServer({
+      dataDir,
+      projectRoot,
+      modelClient: new MockAnalysisClient("# sample"),
+      analysisEmailClient,
+    });
+
+    const response = await app.inject({
+      method: "POST",
+      url: "/api/trips/2026-04-18-gapyeong/analysis-email",
+      payload: {
+        recipient_companion_ids: ["self"],
+      },
+    });
+
+    expect(response.statusCode).toBe(409);
+    expect(response.json()).toEqual(
+      expect.objectContaining({
+        status: "failed",
+        error: expect.objectContaining({
+          code: "CONFLICT",
+          message: "전체 분석 결과가 모두 모인 뒤에만 메일을 발송할 수 있습니다.",
+        }),
+      }),
+    );
+    expect(analysisEmailClient.calls).toHaveLength(0);
+
+    await app.close();
+  });
+
+  it("rejects selected companions without email addresses when sending analysis email", async () => {
+    const dataDir = await createSeededDataDir();
+    await createCompletedAnalysisArtifacts(dataDir, "2026-04-18-gapyeong");
+    const companionsPath = path.join(dataDir, "companions.yaml");
+    const companions = parse(await readFile(companionsPath, "utf8")) as {
+      companions: Array<Record<string, unknown>>;
+    };
+    companions.companions = companions.companions.map((companion) =>
+      companion.id === "self" ? { ...companion, email: undefined } : companion,
+    );
+    await writeFile(companionsPath, stringify(companions), "utf8");
+
+    const analysisEmailClient = new MockAnalysisEmailClient();
+    const app = await buildServer({
+      dataDir,
+      projectRoot,
+      modelClient: new MockAnalysisClient("# sample"),
+      analysisEmailClient,
+    });
+
+    const response = await app.inject({
+      method: "POST",
+      url: "/api/trips/2026-04-18-gapyeong/analysis-email",
+      payload: {
+        recipient_companion_ids: ["self"],
+      },
+    });
+
+    expect(response.statusCode).toBe(400);
+    expect(response.json()).toEqual(
+      expect.objectContaining({
+        status: "failed",
+        error: expect.objectContaining({
+          code: "TRIP_INVALID",
+          message: "메일 주소가 없는 동행자는 발송 대상으로 선택할 수 없습니다: 본인",
+        }),
+      }),
+    );
+    expect(analysisEmailClient.calls).toHaveLength(0);
+
+    await app.close();
+  });
+
+  it("returns dependency missing when SMTP settings are absent for analysis email", async () => {
+    const dataDir = await createSeededDataDir();
+    await createCompletedAnalysisArtifacts(dataDir, "2026-04-18-gapyeong");
+    const app = await buildServer({
+      dataDir,
+      projectRoot,
+      modelClient: new MockAnalysisClient("# sample"),
+      smtpHost: "",
+      smtpFrom: "",
+    });
+
+    const response = await app.inject({
+      method: "POST",
+      url: "/api/trips/2026-04-18-gapyeong/analysis-email",
+      payload: {
+        recipient_companion_ids: ["self"],
+      },
+    });
+
+    expect(response.statusCode).toBe(503);
+    expect(response.json()).toEqual(
+      expect.objectContaining({
+        status: "failed",
+        error: expect.objectContaining({
+          code: "DEPENDENCY_MISSING",
+          message: "SMTP_HOST 와 SMTP_FROM 을 설정해야 분석 결과 메일을 발송할 수 있습니다.",
+        }),
+      }),
+    );
+
+    await app.close();
+  });
+
+  it("returns dependency missing when only part of the SMTP auth pair is configured", async () => {
+    const dataDir = await createSeededDataDir();
+    await createCompletedAnalysisArtifacts(dataDir, "2026-04-18-gapyeong");
+    const app = await buildServer({
+      dataDir,
+      projectRoot,
+      modelClient: new MockAnalysisClient("# sample"),
+      smtpHost: "smtp.gmail.com",
+      smtpFrom: "changhyublee@gmail.com",
+      smtpUser: "changhyublee@gmail.com",
+      smtpPass: "",
+    });
+
+    const response = await app.inject({
+      method: "POST",
+      url: "/api/trips/2026-04-18-gapyeong/analysis-email",
+      payload: {
+        recipient_companion_ids: ["self"],
+      },
+    });
+
+    expect(response.statusCode).toBe(503);
+    expect(response.json()).toEqual(
+      expect.objectContaining({
+        status: "failed",
+        error: expect.objectContaining({
+          code: "DEPENDENCY_MISSING",
+          message:
+            "SMTP 인증을 사용하는 경우 SMTP_USER 와 SMTP_PASS 를 함께 설정해야 합니다.",
         }),
       }),
     );

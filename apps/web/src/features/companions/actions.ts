@@ -92,6 +92,17 @@ export function buildCompanionActions(input: BuildCompanionActionsInput) {
           .map((item) => (item.id === response.item.id ? response.item : item))
           .sort(sortCompanions),
       );
+      if (!response.item.email?.trim()) {
+        input.updateTripDraft((current) => ({
+          ...current,
+          notifications: {
+            email_recipient_companion_ids:
+              current.notifications?.email_recipient_companion_ids.filter(
+                (item) => item !== response.item.id,
+              ) ?? [],
+          },
+        }));
+      }
       input.setCompanionDraft(createEmptyCompanion());
       input.setCompanionTextInputs(createCompanionTextInputs());
       input.setEditingCompanionId(null);
@@ -132,6 +143,12 @@ export function buildCompanionActions(input: BuildCompanionActionsInput) {
           party: {
             companion_ids:
               current.party?.companion_ids.filter((item) => item !== companionId) ?? [],
+          },
+          notifications: {
+            email_recipient_companion_ids:
+              current.notifications?.email_recipient_companion_ids.filter(
+                (item) => item !== companionId,
+              ) ?? [],
           },
         }));
       }

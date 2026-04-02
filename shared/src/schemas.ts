@@ -88,6 +88,7 @@ export const profileSchema = z.object({
 export const companionSchema = z.object({
   id: companionIdSchema,
   name: z.string().min(1),
+  email: z.string().email().optional(),
   age_group: ageGroupSchema,
   birth_year: z.number().int().optional(),
   health_notes: z.array(z.string()).default([]),
@@ -345,6 +346,11 @@ export const tripSchema = z.object({
   party: z.object({
     companion_ids: z.array(companionIdSchema).default([]),
   }),
+  notifications: z
+    .object({
+      email_recipient_companion_ids: z.array(companionIdSchema).default([]),
+    })
+    .optional(),
   vehicle: z
     .object({
       id: vehicleIdSchema.optional(),
@@ -529,6 +535,24 @@ export const analyzeTripRequestSchema = z.object({
   force_refresh: z.boolean().optional(),
   override_instructions: z.string().optional(),
   save_output: z.boolean().optional(),
+});
+
+export const sendTripAnalysisEmailRequestSchema = z.object({
+  recipient_companion_ids: z.array(companionIdSchema).min(1),
+});
+
+export const sendTripAnalysisEmailResponseSchema = z.object({
+  trip_id: tripIdSchema,
+  sent_at: z.string().datetime(),
+  sent_count: z.number().int().nonnegative(),
+  recipients: z.array(
+    z.object({
+      companion_id: companionIdSchema,
+      name: z.string().min(1),
+      email: z.string().email(),
+    }),
+  ),
+  output_path: z.string(),
 });
 
 export const saveOutputRequestSchema = z.object({

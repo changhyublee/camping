@@ -204,6 +204,8 @@ export function useAppViewModel(initialPage?: PageKey) {
     setDetailLoading,
     savingTrip,
     setSavingTrip,
+    sendingAnalysisEmail,
+    setSendingAnalysisEmail,
     commaInputs,
     setCommaInputs,
     tripNoteInput,
@@ -561,6 +563,40 @@ export function useAppViewModel(initialPage?: PageKey) {
     () => resolveSelectedVehicle(tripDraft?.vehicle, vehicles),
     [tripDraft?.vehicle, vehicles],
   );
+  const selectedTripEmailRecipientIds = useMemo(
+    () => tripDraft?.notifications?.email_recipient_companion_ids ?? [],
+    [tripDraft?.notifications?.email_recipient_companion_ids],
+  );
+  const selectedTripEmailRecipients = useMemo(() => {
+    const selectedRecipientIdSet = new Set(selectedTripEmailRecipientIds);
+
+    return selectedTripCompanions.filter(
+      (companion) =>
+        selectedRecipientIdSet.has(companion.id) &&
+        typeof companion.email === "string" &&
+        companion.email.trim().length > 0,
+    );
+  }, [selectedTripCompanions, selectedTripEmailRecipientIds]);
+  const hasInvalidSelectedTripEmailRecipients = useMemo(() => {
+    const selectedCompanionMap = new Map(
+      selectedTripCompanions.map((companion) => [companion.id, companion]),
+    );
+
+    return selectedTripEmailRecipientIds.some((companionId) => {
+      const companion = selectedCompanionMap.get(companionId);
+      return !companion || !companion.email?.trim();
+    });
+  }, [selectedTripCompanions, selectedTripEmailRecipientIds]);
+  const isAnalysisReadyForEmail =
+    !isAnalysisPending &&
+    analysisCategoryStatuses.length > 0 &&
+    completedAnalysisCategoryCount === analysisCategoryStatuses.length;
+  const canSendAnalysisEmail =
+    !isCreatingTrip &&
+    !sendingAnalysisEmail &&
+    isAnalysisReadyForEmail &&
+    selectedTripEmailRecipientIds.length > 0 &&
+    !hasInvalidSelectedTripEmailRecipients;
 
   const missingCompanionIds = useMemo(
     () =>
@@ -1627,6 +1663,7 @@ export function useAppViewModel(initialPage?: PageKey) {
     handleDeleteTrip,
     handleOpenAnalysisLayer,
     handleRefreshAnalysisCategory,
+    handleSendAnalysisEmail,
     handleSaveTrip,
     selectTrip,
   } = buildPlanningActions({
@@ -1658,12 +1695,14 @@ export function useAppViewModel(initialPage?: PageKey) {
     setOperationState,
     setPlanningPageTab,
     setSavingTrip,
+    setSendingAnalysisEmail,
     setSelectedHistoryId,
     setSelectedTripId,
     setTripDraft,
     setTripNoteInput,
     setTrips,
     setValidationWarnings,
+    sendingAnalysisEmail,
     tripDraft,
     tripNoteInput,
     applyAnalysisStatus,
@@ -1946,6 +1985,7 @@ export function useAppViewModel(initialPage?: PageKey) {
     currentHistoryLabel,
     currentTripLabel,
     currentUserLearningStatusLabel,
+    canSendAnalysisEmail,
     clearAnalysisCategorySelection,
     completedAnalysisCategoryCount,
     dashboardAlerts,
@@ -1982,6 +2022,7 @@ export function useAppViewModel(initialPage?: PageKey) {
     handleOpenHistoryOutputLayer,
     handleRefreshAnalysisCategory,
     handleRefreshDurableMetadata,
+    handleSendAnalysisEmail,
     handleSaveEquipmentCategory,
     handleSaveEquipmentItem,
     handleSaveHistory,
@@ -1995,6 +2036,7 @@ export function useAppViewModel(initialPage?: PageKey) {
     handleToggleEquipmentCategory,
     handleToggleEquipmentItem,
     isAnalysisPending,
+    isAnalysisReadyForEmail,
     isPendingAnalysisStatus,
     isUserLearningPending,
     linkGroups,
@@ -2008,9 +2050,12 @@ export function useAppViewModel(initialPage?: PageKey) {
     selectedHistoryCompanionSnapshots,
     selectedHistoryRetrospectives,
     selectedHistoryVehicle,
+    selectedTripEmailRecipientIds,
+    selectedTripEmailRecipients,
     selectedTripCompanions,
     selectedTripSummary,
     selectedTripVehicle,
+    sendingAnalysisEmail,
     selectAllAnalysisCategories,
     selectTrip,
     setActivePage,

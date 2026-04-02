@@ -2,6 +2,7 @@ version: 1
 companions:
   - id: self
     name: 본인
+    email: self@example.com
     age_group: adult
     birth_year: 1990
     health_notes: []
@@ -12,6 +13,7 @@ companions:
       rain_sensitive: false
   - id: child-1
     name: 첫째
+    email: child-1@example.com
     age_group: preschooler
     birth_year: 2021
     health_notes:

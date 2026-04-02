@@ -29,6 +29,7 @@ import type {
   RetrospectiveEntryInput,
   SaveOutputRequest,
   SaveOutputResponse,
+  SendTripAnalysisEmailResponse,
   TripDraft,
   TripAnalysisCategory,
   TripId,
@@ -41,6 +42,10 @@ import type { CampingRepository } from "../file-store/camping-repository";
 import type { DataBackupReason } from "../file-store/local-data-backup";
 import { AppError } from "./app-error";
 import { AiJobEventBroker } from "./ai-job-event-broker";
+import type {
+  AnalysisEmailClient,
+  AnalysisEmailRecipient,
+} from "./analysis-email-service";
 import { AnalysisJobManager } from "./analysis-job-manager";
 import { EquipmentMetadataJobManager } from "./equipment-metadata-job-manager";
 import type { CampsiteTipSearchClient } from "./campsite-tip-service";
@@ -72,6 +77,7 @@ export class AnalysisService {
   constructor(
     private readonly repository: CampingRepository,
     private readonly modelClient: AnalysisModelClient,
+    private readonly analysisEmailClient: AnalysisEmailClient,
     private readonly equipmentMetadataClient: EquipmentMetadataSearchClient,
     private readonly campsiteTipClient: CampsiteTipSearchClient,
     private readonly userLearningClient: UserLearningClient,
@@ -421,6 +427,103 @@ export class AnalysisService {
   async getTripAnalysisStatus(tripId: TripId): Promise<AnalyzeTripResponse> {
     await this.repository.readTrip(tripId);
     return this.analysisJobManager.getTripAnalysisStatus(tripId);
+  }
+
+  async sendTripAnalysisEmail(
+    tripId: TripId,
+    recipientCompanionIds: string[],
+  ): Promise<SendTripAnalysisEmailResponse> {
+    const trip = await this.repository.readTrip(tripId);
+    const analysisStatus = await this.analysisJobManager.getTripAnalysisStatus(tripId);
+    const normalizedRecipientCompanionIds = [...new Set(recipientCompanionIds)];
+
+    if (analysisStatus.status === "queued" || analysisStatus.status === "running") {
+      throw new AppError(
+        "CONFLICT",
+        "전체 분석이 아직 진행 중이라 메일을 발송할 수 없습니다.",
+        409,
+      );
+    }
+
+    if (analysisStatus.completed_category_count !== analysisStatus.total_category_count) {
+      throw new AppError(
+        "CONFLICT",
+        "전체 분석 결과가 모두 모인 뒤에만 메일을 발송할 수 있습니다.",
+        409,
+      );
+    }
+
+    const tripCompanionIds = new Set(trip.party.companion_ids);
+    const invalidRecipientIds = normalizedRecipientCompanionIds.filter(
+      (companionId) => !tripCompanionIds.has(companionId),
+    );
+
+    if (invalidRecipientIds.length > 0) {
+      throw new AppError(
+        "TRIP_INVALID",
+        `현재 계획 동행자가 아닌 메일 수신 대상이 포함되어 있습니다: ${invalidRecipientIds.join(", ")}`,
+        400,
+      );
+    }
+
+    const companionMap = new Map(
+      (await this.repository.readCompanions()).companions.map((companion) => [
+        companion.id,
+        companion,
+      ]),
+    );
+    const recipients = normalizedRecipientCompanionIds.map((companionId) => {
+      const companion = companionMap.get(companionId);
+
+      if (!companion) {
+        throw new AppError(
+          "TRIP_INVALID",
+          `동행자 정보를 찾을 수 없습니다: ${companionId}`,
+          400,
+        );
+      }
+
+      if (!companion.email?.trim()) {
+        throw new AppError(
+          "TRIP_INVALID",
+          `메일 주소가 없는 동행자는 발송 대상으로 선택할 수 없습니다: ${companion.name}`,
+          400,
+        );
+      }
+
+      return {
+        companionId: companion.id,
+        name: companion.name,
+        email: companion.email.trim(),
+      } satisfies AnalysisEmailRecipient;
+    });
+
+    await this.repository.updateTrip(tripId, {
+      ...trip,
+      notifications: {
+        email_recipient_companion_ids: normalizedRecipientCompanionIds,
+      },
+    });
+
+    const output = await this.repository.readOutput(tripId);
+    const emailResult = await this.analysisEmailClient.sendAnalysisResultEmail({
+      tripTitle: trip.title,
+      outputPath: output.output_path,
+      markdown: output.markdown,
+      recipients,
+    });
+
+    return {
+      trip_id: tripId,
+      sent_at: emailResult.sentAt,
+      sent_count: emailResult.sentCount,
+      recipients: emailResult.recipients.map((recipient) => ({
+        companion_id: recipient.companionId,
+        name: recipient.name,
+        email: recipient.email,
+      })),
+      output_path: output.output_path,
+    };
   }
 
   private async executeTripAnalysis(

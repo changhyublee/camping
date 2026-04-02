@@ -48,6 +48,9 @@ export function createEmptyTripDraft(): TripDraft {
     party: {
       companion_ids: [],
     },
+    notifications: {
+      email_recipient_companion_ids: [],
+    },
     conditions: {
       electricity_available: true,
       cooking_allowed: true,
@@ -71,6 +74,7 @@ export function createEmptyCompanion(companionId = ""): Companion {
   return {
     id: companionId,
     name: companionId,
+    email: undefined,
     age_group: "adult",
     health_notes: [],
     required_medications: [],
@@ -98,8 +102,11 @@ export function buildCompanionInput(
   draft: Companion,
   textInputs: CompanionTextInputs,
 ): Companion {
+  const normalizedEmail = draft.email?.trim();
+
   return {
     ...draft,
+    email: normalizedEmail ? normalizedEmail : undefined,
     health_notes: splitLineList(textInputs.healthNotes),
     required_medications: splitLineList(textInputs.requiredMedications),
   };

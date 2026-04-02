@@ -11,6 +11,7 @@ import type {
   GetOutputResponse,
   HistoryLearningInsight,
   RefreshDurableEquipmentMetadataResponse,
+  SendTripAnalysisEmailResponse,
   TripData,
   TripSummary,
   UserLearningJobStatusResponse,
@@ -23,7 +24,6 @@ export type ApiResponse<T> = {
   body: T;
   status?: number;
 };
-
 type MetadataStatusSequenceEntry =
   | ApiResponse<RefreshDurableEquipmentMetadataResponse>
   | null;
@@ -51,6 +51,10 @@ export type MockState = {
     string,
     ApiResponse<AnalyzeTripResponse> | ApiResponse<AnalyzeTripResponse>[]
   >;
+  analysisEmailResponses: Record<
+    string,
+    ApiResponse<SendTripAnalysisEmailResponse | FailedValidationResponse>
+  >;
   equipment: EquipmentCatalog;
   equipmentCategories: EquipmentCategoriesData;
   history: import("@camping/shared").HistoryRecord[];
@@ -70,6 +74,12 @@ export type MockState = {
   updateTripCalls: Array<{
     tripId: string;
     body: TripData;
+  }>;
+  sendAnalysisEmailCalls: Array<{
+    tripId: string;
+    body: {
+      recipient_companion_ids: string[];
+    };
   }>;
   dataBackups: DataBackupSnapshot[];
   metadataStatuses: Record<
@@ -150,6 +160,9 @@ export function createMockState(): MockState {
     party: {
       companion_ids: ["self", "child-1"],
     },
+    notifications: {
+      email_recipient_companion_ids: [],
+    },
     vehicle: {
       id: "family-suv",
       name: "패밀리 SUV",
@@ -181,6 +194,7 @@ export function createMockState(): MockState {
       {
         id: "self",
         name: "본인",
+        email: "self@example.com",
         age_group: "adult",
         birth_year: 1990,
         health_notes: [],
@@ -202,6 +216,20 @@ export function createMockState(): MockState {
           cold_sensitive: true,
           heat_sensitive: false,
           rain_sensitive: true,
+        },
+      },
+      {
+        id: "guardian-1",
+        name: "보호자",
+        email: "guardian@example.com",
+        age_group: "adult",
+        birth_year: 1988,
+        health_notes: [],
+        required_medications: [],
+        traits: {
+          cold_sensitive: false,
+          heat_sensitive: false,
+          rain_sensitive: false,
         },
       },
     ],
@@ -241,6 +269,7 @@ export function createMockState(): MockState {
         body: createAnalysisResponse(trip.trip_id),
       },
     },
+    analysisEmailResponses: {},
     equipment: {
       durable: {
         version: 1,
@@ -284,6 +313,7 @@ export function createMockState(): MockState {
     },
     outputAvailability: {},
     updateTripCalls: [],
+    sendAnalysisEmailCalls: [],
     dataBackups: [],
     metadataStatuses: {},
   };

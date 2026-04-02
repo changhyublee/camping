@@ -7,19 +7,24 @@ export function PlanningEditorPanel(props: { view: AppViewModel }) {
   const {
     buildTripVehicleSelection,
     buildVehicleOptions,
+    canSendAnalysisEmail,
     commaInputs,
     companions,
     detailLoading,
     handleAnalyzeAll,
     handleArchiveTrip,
     handleDeleteTrip,
+    handleSendAnalysisEmail,
     handleSaveTrip,
     isAnalysisPending,
+    isAnalysisReadyForEmail,
     isCreatingTrip,
     missingCompanionIds,
     savingTrip,
+    selectedTripEmailRecipientIds,
     selectedTripCompanions,
     selectedTripVehicle,
+    sendingAnalysisEmail,
     setActivePage,
     setCommaInputs,
     setTripNoteInput,
@@ -31,6 +36,7 @@ export function PlanningEditorPanel(props: { view: AppViewModel }) {
     validationWarnings,
     vehicles,
   } = props.view;
+  const selectedRecipientIdSet = new Set(selectedTripEmailRecipientIds);
 
   return (
     <section className="panel">
@@ -135,12 +141,25 @@ export function PlanningEditorPanel(props: { view: AppViewModel }) {
                           <input
                             checked={included}
                             onChange={() =>
-                              updateTripDraft((current) => ({
-                                ...current,
-                                party: {
-                                  companion_ids: toggleSelectionId(current.party?.companion_ids ?? [], companion.id),
-                                },
-                              }))
+                              updateTripDraft((current) => {
+                                const nextCompanionIds = toggleSelectionId(
+                                  current.party?.companion_ids ?? [],
+                                  companion.id,
+                                );
+
+                                return {
+                                  ...current,
+                                  party: {
+                                    companion_ids: nextCompanionIds,
+                                  },
+                                  notifications: {
+                                    email_recipient_companion_ids:
+                                      current.notifications?.email_recipient_companion_ids.filter((item) =>
+                                        nextCompanionIds.includes(item),
+                                      ) ?? [],
+                                  },
+                                };
+                              })
                             }
                             type="checkbox"
                           />
@@ -174,6 +193,32 @@ export function PlanningEditorPanel(props: { view: AppViewModel }) {
                             ? ` / 복용약 ${companion.required_medications[0]}`
                             : ""}
                         </p>
+                        <p className="panel__copy">
+                          {companion.email?.trim()
+                            ? `메일 ${companion.email.trim()}`
+                            : "메일 주소 없음"}
+                        </p>
+                        <label className="checkbox-row">
+                          <input
+                            checked={selectedRecipientIdSet.has(companion.id)}
+                            disabled={!companion.email?.trim()}
+                            onChange={() =>
+                              updateTripDraft((current) => ({
+                                ...current,
+                                notifications: {
+                                  email_recipient_companion_ids: toggleSelectionId(
+                                    current.notifications?.email_recipient_companion_ids ?? [],
+                                    companion.id,
+                                  ),
+                                },
+                              }))
+                            }
+                            type="checkbox"
+                          />
+                          {companion.email?.trim()
+                            ? "이 동행자에게 분석 결과 메일 발송"
+                            : "메일 주소가 없어 발송할 수 없음"}
+                        </label>
                       </article>
                     ))}
                   </div>
@@ -189,6 +234,19 @@ export function PlanningEditorPanel(props: { view: AppViewModel }) {
                     <p>{missingCompanionIds.join(", ")} 를 사람 관리에서 정리하세요.</p>
                   </div>
                 ) : null}
+
+                <div className="action-card">
+                  <strong>분석 결과 메일 발송</strong>
+                  <p>
+                    체크한 동행자에게만 전체 분석 Markdown을 보냅니다. 메일 주소가
+                    없는 동행자는 선택할 수 없습니다.
+                  </p>
+                  <p>
+                    {isAnalysisReadyForEmail
+                      ? "전체 분석 결과가 모두 모여 있어 바로 발송할 수 있습니다."
+                      : "전체 분석 실행 후 모든 분석 항목 결과가 준비되어야 발송할 수 있습니다."}
+                  </p>
+                </div>
               </div>
             </FormField>
             <FormField full label="차량 선택">
@@ -375,6 +433,16 @@ export function PlanningEditorPanel(props: { view: AppViewModel }) {
               {!isCreatingTrip ? (
                 <button className="button" disabled={isAnalysisPending} onClick={handleDeleteTrip} type="button">
                   계획 삭제
+                </button>
+              ) : null}
+              {!isCreatingTrip ? (
+                <button
+                  className="button"
+                  disabled={!canSendAnalysisEmail}
+                  onClick={handleSendAnalysisEmail}
+                  type="button"
+                >
+                  {sendingAnalysisEmail ? "메일 발송 중..." : "분석 결과 메일 발송"}
                 </button>
               ) : null}
               {!isCreatingTrip ? (

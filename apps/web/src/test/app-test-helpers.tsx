@@ -30,18 +30,14 @@ import type {
   ValidateTripResponse,
   Vehicle,
 } from "@camping/shared";
-import {
-  createMockState as createBaseMockState,
-  type ApiResponse,
-  type MockState,
-} from "./mock-state";
+import { createMockState as createBaseMockState, type ApiResponse, type MockState } from "./mock-state";
+import { handleAnalysisEmailRequest, readAnalysisEmailTripIdFromPath } from "./analysis-email-test-helpers";
 
 export type { ApiResponse, MockState } from "./mock-state";
 export { createMockState } from "./mock-state";
 
 export const fetchMock = vi.fn<typeof fetch>();
 const originalEventSource = globalThis.EventSource;
-
 vi.stubGlobal("fetch", fetchMock);
 
 export class MockEventSource {
@@ -181,11 +177,9 @@ export function emptyResponse(status = 204) {
 
 export function createDeferredResponse() {
   let resolve: ((value: Response) => void) | null = null;
-
   const promise = new Promise<Response>((nextResolve) => {
     resolve = nextResolve;
   });
-
   return {
     promise,
     resolve: (body: unknown, status = 200) => {
@@ -210,7 +204,6 @@ export function parseBody(init?: RequestInit) {
 export async function openPage(pageName: string) {
   await userEvent.click(await screen.findByRole("button", { name: pageName }));
 }
-
 export async function openPageTab(pageName: string, tabName: string) {
   await openPage(pageName);
   await userEvent.click(await screen.findByRole("tab", { name: tabName }));
@@ -230,12 +223,10 @@ export function summarizeTrip(trip: TripData): TripSummary {
 function updateTripSummary(trip: TripData) {
   const nextSummary = summarizeTrip(trip);
   const index = state.trips.findIndex((item) => item.trip_id === trip.trip_id);
-
   if (index >= 0) {
     state.trips[index] = nextSummary;
     return;
   }
-
   state.trips.push(nextSummary);
 }
 
@@ -966,6 +957,17 @@ export function mockFetch(input: RequestInfo | URL, init?: RequestInit) {
 
   if (pathname === "/api/links" && method === "GET") {
     return jsonResponse({ items: state.links });
+  }
+
+  const analysisEmailTripId = readAnalysisEmailTripIdFromPath(pathname);
+
+  if (analysisEmailTripId && method === "POST") {
+    return handleAnalysisEmailRequest({
+      init,
+      jsonResponse,
+      state,
+      tripId: analysisEmailTripId,
+    });
   }
 
   const tripIdFromPath = readTripIdFromPath(pathname);

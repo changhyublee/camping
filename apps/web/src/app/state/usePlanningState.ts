@@ -37,6 +37,7 @@ export function usePlanningState(persistedUiState: PersistedUiState | null) {
   );
   const [detailLoading, setDetailLoading] = useState(false);
   const [savingTrip, setSavingTrip] = useState(false);
+  const [sendingAnalysisEmail, setSendingAnalysisEmail] = useState(false);
   const [commaInputs, setCommaInputs] = useState<CommaSeparatedInputs>(
     createCommaSeparatedInputs(),
   );
@@ -89,6 +90,8 @@ export function usePlanningState(persistedUiState: PersistedUiState | null) {
     setDetailLoading,
     savingTrip,
     setSavingTrip,
+    sendingAnalysisEmail,
+    setSendingAnalysisEmail,
     commaInputs,
     setCommaInputs,
     tripNoteInput,
