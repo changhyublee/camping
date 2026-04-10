@@ -21,6 +21,8 @@ import { ALL_TRIP_ANALYSIS_CATEGORIES } from "@camping/shared";
 import { apiClient, ApiClientError } from "../../api/client";
 import { confirmDeletion } from "../../app/browser-helpers";
 import { sendTripAnalysisEmailFromDraft } from "../../app/planning-email-actions";
+import { mergeLatestExpectedWeatherIntoDraft } from "../../app/planning-save-helpers";
+import { hasMeaningfulExpectedWeather } from "../../app/planning-weather-actions";
 import {
   appendSyncWarnings,
   getErrorMessage,
@@ -76,6 +78,7 @@ type BuildPlanningActionsInput = {
   setAssistantLoading: Dispatch<SetStateAction<boolean>>;
   setAssistantResponse: Dispatch<SetStateAction<PlanningAssistantResponse | null>>;
   setCommaInputs: Dispatch<SetStateAction<CommaSeparatedInputs>>;
+  setExpectedWeatherEditedSinceLoad: Dispatch<SetStateAction<boolean>>;
   setHistory: Dispatch<SetStateAction<HistoryRecord[]>>;
   setHistoryDetailTab: Dispatch<SetStateAction<HistoryDetailTab>>;
   setHistoryPageTab: Dispatch<SetStateAction<HistoryPageTab>>;
@@ -95,6 +98,7 @@ type BuildPlanningActionsInput = {
   sendingAnalysisEmail: boolean;
   tripDraft: TripDraft | null;
   tripNoteInput: string;
+  expectedWeatherEditedSinceLoad: boolean;
   applyAnalysisStatus: (status: AnalyzeTripResponse | null) => void;
 };
 
@@ -107,6 +111,7 @@ export function buildPlanningActions(input: BuildPlanningActionsInput) {
     input.setIsCreatingTrip(true);
     input.setSelectedTripId(null);
     input.setTripDraft(nextDraft);
+    input.setExpectedWeatherEditedSinceLoad(false);
     input.setCommaInputs(createCommaSeparatedInputs(nextDraft));
     input.setTripNoteInput(joinLineList(nextDraft.notes));
     input.setValidationWarnings([]);
@@ -135,13 +140,18 @@ export function buildPlanningActions(input: BuildPlanningActionsInput) {
     input.setOperationState(null);
 
     try {
-      const response = input.isCreatingTrip
-        ? await apiClient.createTrip(
-            buildTripDraftForSave(input.tripDraft, input.tripNoteInput),
-          )
-        : await apiClient.updateTrip(
+      const draftForSave = input.isCreatingTrip
+        ? buildTripDraftForSave(input.tripDraft, input.tripNoteInput)
+        : await mergeLatestExpectedWeatherIntoDraft(
             input.selectedTripId ?? input.tripDraft.trip_id ?? "",
             buildTripDraftForSave(input.tripDraft, input.tripNoteInput),
+            input.expectedWeatherEditedSinceLoad,
+          );
+      const response = input.isCreatingTrip
+        ? await apiClient.createTrip(draftForSave)
+        : await apiClient.updateTrip(
+            input.selectedTripId ?? input.tripDraft.trip_id ?? "",
+            draftForSave,
           );
 
       const tripList = await apiClient.getTrips();
@@ -149,9 +159,16 @@ export function buildPlanningActions(input: BuildPlanningActionsInput) {
       input.setSelectedTripId(response.trip_id);
       input.setIsCreatingTrip(false);
       input.setTripDraft(response.data);
+      input.setExpectedWeatherEditedSinceLoad(false);
       input.setCommaInputs(createCommaSeparatedInputs(response.data));
       input.setTripNoteInput(joinLineList(response.data.notes));
       const savedDescription = `${response.data.title} 계획을 저장했습니다.`;
+      const autoWeatherNotice =
+        !hasMeaningfulExpectedWeather(response.data.conditions?.expected_weather) &&
+        response.data.location?.region &&
+        (response.data.date?.start || response.data.date?.end)
+          ? " 날씨 입력이 비어 있어 Google 검색 기반 자동 수집을 백그라운드에서 시작했습니다."
+          : "";
       const backgroundAnalysisNotice = input.isAnalysisPending
         ? " 현재 분석에는 방금 저장한 변경이 반영되지 않습니다. 완료 후 다시 실행하세요."
         : "";
@@ -167,15 +184,15 @@ export function buildPlanningActions(input: BuildPlanningActionsInput) {
               : "success",
           description:
             validation.warnings.length > 0
-              ? `${savedDescription} 검증 경고를 확인하세요.${backgroundAnalysisNotice}`
-              : `${savedDescription}${backgroundAnalysisNotice}`,
+              ? `${savedDescription} 검증 경고를 확인하세요.${autoWeatherNotice}${backgroundAnalysisNotice}`
+              : `${savedDescription}${autoWeatherNotice}${backgroundAnalysisNotice}`,
         });
       } catch (error) {
         input.setValidationWarnings(toValidationWarnings(error));
         input.setOperationState({
           title: "캠핑 계획 저장 완료",
           tone: "warning",
-          description: `${savedDescription} 검증 경고를 확인하세요.${backgroundAnalysisNotice}`,
+          description: `${savedDescription} 검증 경고를 확인하세요.${autoWeatherNotice}${backgroundAnalysisNotice}`,
         });
       }
     } catch (error) {

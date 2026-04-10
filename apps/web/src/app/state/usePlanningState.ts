@@ -37,6 +37,9 @@ export function usePlanningState(persistedUiState: PersistedUiState | null) {
   );
   const [detailLoading, setDetailLoading] = useState(false);
   const [savingTrip, setSavingTrip] = useState(false);
+  const [collectingTripWeather, setCollectingTripWeather] = useState(false);
+  const [expectedWeatherEditedSinceLoad, setExpectedWeatherEditedSinceLoad] =
+    useState(false);
   const [sendingAnalysisEmail, setSendingAnalysisEmail] = useState(false);
   const [commaInputs, setCommaInputs] = useState<CommaSeparatedInputs>(
     createCommaSeparatedInputs(),
@@ -90,6 +93,10 @@ export function usePlanningState(persistedUiState: PersistedUiState | null) {
     setDetailLoading,
     savingTrip,
     setSavingTrip,
+    collectingTripWeather,
+    setCollectingTripWeather,
+    expectedWeatherEditedSinceLoad,
+    setExpectedWeatherEditedSinceLoad,
     sendingAnalysisEmail,
     setSendingAnalysisEmail,
     commaInputs,

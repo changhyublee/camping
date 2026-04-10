@@ -2,6 +2,7 @@ import type { FastifyInstance } from "fastify";
 import {
   addHistoryRetrospectiveResponseSchema,
   analyzeTripRequestSchema,
+  collectTripWeatherRequestSchema,
   companionIdSchema,
   companionInputSchema,
   consumableEquipmentItemInputSchema,
@@ -378,6 +379,7 @@ export async function registerApiRoutes(
     const trip = await analysisService.createTrip(
       parseBodyOrThrow("trip 생성 요청", tripDraftSchema, request.body),
     );
+    analysisService.triggerTripWeatherCollectionIfMissing(trip.trip_id);
     return {
       trip_id: trip.trip_id,
       data: trip,
@@ -405,10 +407,26 @@ export async function registerApiRoutes(
       tripId,
       parseBodyOrThrow("trip 수정 요청", tripDraftSchema, request.body),
     );
+    analysisService.triggerTripWeatherCollectionIfMissing(tripId);
     return {
       trip_id: tripId,
       data: trip,
     };
+  });
+
+  app.post("/api/trips/weather/collect", async (request) => {
+    const body = parseBodyOrThrow(
+      "trip 날씨 수집 요청",
+      collectTripWeatherRequestSchema,
+      request.body,
+    );
+
+    return analysisService.collectTripWeather({
+      region: body.region,
+      campsiteName: body.campsite_name,
+      startDate: body.start_date,
+      endDate: body.end_date,
+    });
   });
 
   app.delete("/api/trips/:tripId", async (request) => {

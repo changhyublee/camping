@@ -29,10 +29,12 @@ import type {
   RetrospectiveEntryInput,
   SaveOutputRequest,
   SaveOutputResponse,
+  TripExpectedWeather,
   SendTripAnalysisEmailResponse,
   TripDraft,
   TripAnalysisCategory,
   TripId,
+  TripWeatherResearch,
   ValidateTripResponse,
   Vehicle,
   VehicleInput,
@@ -53,6 +55,7 @@ import type { EquipmentMetadataSearchClient } from "./equipment-metadata-service
 import type { AnalysisModelClient } from "./openai-client";
 import { UserLearningJobManager } from "./user-learning-job-manager";
 import type { UserLearningClient } from "./user-learning-service";
+import type { TripWeatherCollectionInput, TripWeatherSearchClient } from "./trip-weather-service";
 import { runPlanningAssistant } from "./planning-assistant";
 import { buildAnalysisPrompt } from "./prompt-builder";
 import {
@@ -73,6 +76,7 @@ export class AnalysisService {
   private readonly metadataJobManager: EquipmentMetadataJobManager;
   private readonly userLearningJobManager: UserLearningJobManager;
   private readonly aiJobEventBroker = new AiJobEventBroker();
+  private readonly weatherCollectionJobs = new Map<TripId, Promise<void>>();
 
   constructor(
     private readonly repository: CampingRepository,
@@ -81,6 +85,7 @@ export class AnalysisService {
     private readonly equipmentMetadataClient: EquipmentMetadataSearchClient,
     private readonly campsiteTipClient: CampsiteTipSearchClient,
     private readonly userLearningClient: UserLearningClient,
+    private readonly tripWeatherClient: TripWeatherSearchClient,
   ) {
     this.analysisJobManager = new AnalysisJobManager(
       repository,
@@ -105,6 +110,10 @@ export class AnalysisService {
     await this.analysisJobManager.recoverInterruptedJobs();
     await this.metadataJobManager.recoverInterruptedJobs();
     await this.userLearningJobManager.recoverInterruptedJobs();
+  }
+
+  async shutdown() {
+    await Promise.allSettled([...this.weatherCollectionJobs.values()]);
   }
 
   async listTrips() {
@@ -345,6 +354,40 @@ export class AnalysisService {
       status: "ok",
       warnings,
     };
+  }
+
+  async collectTripWeather(
+    input: TripWeatherCollectionInput,
+  ): Promise<{
+    item: TripWeatherResearch;
+    expected_weather: TripExpectedWeather;
+  }> {
+    const research = await this.tripWeatherClient.collectTripWeather(input);
+
+    return {
+      item: research,
+      expected_weather: toExpectedWeather(research),
+    };
+  }
+
+  triggerTripWeatherCollectionIfMissing(tripId: TripId) {
+    const existingJob = this.weatherCollectionJobs.get(tripId);
+
+    if (existingJob) {
+      return;
+    }
+
+    const job = this.collectAndPersistTripWeatherIfMissing(tripId)
+      .catch(() => {
+        // Ignore background collection failures so trip save still succeeds.
+      })
+      .finally(() => {
+        if (this.weatherCollectionJobs.get(tripId) === job) {
+          this.weatherCollectionJobs.delete(tripId);
+        }
+      });
+
+    this.weatherCollectionJobs.set(tripId, job);
   }
 
   async assistTripPlanning(
@@ -656,6 +699,45 @@ export class AnalysisService {
     }
   }
 
+  private async collectAndPersistTripWeatherIfMissing(tripId: TripId) {
+    const trip = await this.repository.readTrip(tripId);
+
+    if (hasExpectedWeatherValue(trip.conditions?.expected_weather)) {
+      return;
+    }
+
+    const collectionInput = buildTripWeatherCollectionInput(trip);
+
+    if (!collectionInput) {
+      return;
+    }
+
+    try {
+      const research = await this.tripWeatherClient.collectTripWeather(collectionInput);
+      await this.repository.saveTripWeatherResearch(tripId, research);
+
+      const latestTrip = await this.repository.readTrip(tripId);
+
+      if (hasExpectedWeatherValue(latestTrip.conditions?.expected_weather)) {
+        return;
+      }
+
+      await this.repository.updateTrip(tripId, {
+        ...latestTrip,
+        conditions: {
+          ...latestTrip.conditions,
+          expected_weather: toExpectedWeather(research),
+        },
+      });
+    } catch (error) {
+      const fallback = createFailedTripWeatherResearch(trip, error);
+
+      await this.repository.saveTripWeatherResearch(tripId, fallback).catch(() => {
+        // Ignore cache write failures so auto collection never crashes the request flow.
+      });
+    }
+  }
+
   private async executeUserLearning(
     triggerHistoryId: string | null,
     signal?: AbortSignal,
@@ -794,6 +876,89 @@ function createFailedResearch(
     tip_items: [],
     best_site_items: [],
     sources: [],
+  };
+}
+
+function buildTripWeatherCollectionInput(
+  trip: TripDraft,
+): TripWeatherCollectionInput | null {
+  const region = trip.location?.region?.trim();
+
+  if (!region || (!trip.date?.start && !trip.date?.end)) {
+    return null;
+  }
+
+  return {
+    region,
+    campsiteName: trip.location?.campsite_name?.trim(),
+    startDate: trip.date?.start,
+    endDate: trip.date?.end,
+  };
+}
+
+function toExpectedWeather(research: TripWeatherResearch): TripExpectedWeather {
+  return {
+    source: research.source ?? "google-search-ai",
+    summary: research.summary,
+    min_temp_c: research.min_temp_c,
+    max_temp_c: research.max_temp_c,
+    precipitation: research.precipitation,
+  };
+}
+
+function hasExpectedWeatherValue(expectedWeather?: TripExpectedWeather | null) {
+  return Boolean(
+    expectedWeather?.summary?.trim() ||
+      expectedWeather?.precipitation?.trim() ||
+      typeof expectedWeather?.min_temp_c === "number" ||
+      typeof expectedWeather?.max_temp_c === "number",
+  );
+}
+
+function createFailedTripWeatherResearch(
+  trip: TripDraft,
+  error: unknown,
+): TripWeatherResearch {
+  const collectionInput = buildTripWeatherCollectionInput(trip);
+  const query = collectionInput
+    ? [
+        collectionInput.region,
+        collectionInput.campsiteName,
+        collectionInput.startDate,
+        collectionInput.endDate,
+        "날씨",
+      ]
+        .filter(Boolean)
+        .join(" ")
+    : "날씨";
+
+  return {
+    lookup_status: "failed",
+    searched_at: new Date().toISOString(),
+    query,
+    region: trip.location?.region?.trim() || "미입력 지역",
+    campsite_name: trip.location?.campsite_name?.trim(),
+    start_date: trip.date?.start,
+    end_date: trip.date?.end,
+    summary:
+      error instanceof Error
+        ? `날씨 자동 수집에 실패했습니다. ${error.message}`
+        : "날씨 자동 수집에 실패했습니다.",
+    search_result_excerpt: undefined,
+    source: "google-search-ai",
+    google_search_url: collectionInput
+      ? `https://www.google.com/search?hl=ko&gl=kr&q=${encodeURIComponent(query)}`
+      : undefined,
+    notes: [],
+    sources: collectionInput
+      ? [
+          {
+            title: "Google 검색 결과",
+            url: `https://www.google.com/search?hl=ko&gl=kr&q=${encodeURIComponent(query)}`,
+            domain: "www.google.com",
+          },
+        ]
+      : [],
   };
 }
 

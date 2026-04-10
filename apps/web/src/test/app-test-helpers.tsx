@@ -32,6 +32,24 @@ import type {
 } from "@camping/shared";
 import { createMockState as createBaseMockState, type ApiResponse, type MockState } from "./mock-state";
 import { handleAnalysisEmailRequest, readAnalysisEmailTripIdFromPath } from "./analysis-email-test-helpers";
+import {
+  isDurableMetadataStatusesPath,
+  readCompanionIdFromPath,
+  readDurableEquipmentMetadataRefreshId,
+  readEquipmentCategoryParams,
+  readEquipmentItemParams,
+  readHistoryIdFromPath,
+  readHistoryLearningIdFromPath,
+  readHistoryRetrospectiveIdFromPath,
+  readOutputTripIdFromPath,
+  readTripAnalysisStatusTripId,
+  readTripIdFromPath,
+  readVehicleIdFromPath,
+} from "./path-test-helpers";
+import {
+  handleTripWeatherCollectionRequest,
+  isTripWeatherCollectionPath,
+} from "./trip-weather-test-helpers";
 
 export type { ApiResponse, MockState } from "./mock-state";
 export { createMockState } from "./mock-state";
@@ -228,84 +246,6 @@ function updateTripSummary(trip: TripData) {
     return;
   }
   state.trips.push(nextSummary);
-}
-
-function readTripIdFromPath(pathname: string) {
-  const match = pathname.match(/^\/api\/trips\/([^/]+)$/u);
-  return match?.[1] ?? null;
-}
-
-function readCompanionIdFromPath(pathname: string) {
-  const match = pathname.match(/^\/api\/companions\/([^/]+)$/u);
-  return match?.[1] ?? null;
-}
-
-function readVehicleIdFromPath(pathname: string) {
-  const match = pathname.match(/^\/api\/vehicles\/([^/]+)$/u);
-  return match?.[1] ?? null;
-}
-
-function readOutputTripIdFromPath(pathname: string) {
-  const match = pathname.match(/^\/api\/outputs\/([^/]+)$/u);
-  return match?.[1] ?? null;
-}
-
-function readTripAnalysisStatusTripId(pathname: string) {
-  const match = pathname.match(/^\/api\/trips\/([^/]+)\/analysis-status$/u);
-  return match?.[1] ?? null;
-}
-
-function readHistoryIdFromPath(pathname: string) {
-  const match = pathname.match(/^\/api\/history\/([^/]+)$/u);
-  return match?.[1] ?? null;
-}
-
-function readHistoryLearningIdFromPath(pathname: string) {
-  const match = pathname.match(/^\/api\/history\/([^/]+)\/learning$/u);
-  return match?.[1] ?? null;
-}
-
-function readHistoryRetrospectiveIdFromPath(pathname: string) {
-  const match = pathname.match(/^\/api\/history\/([^/]+)\/retrospectives$/u);
-  return match?.[1] ?? null;
-}
-
-function readEquipmentItemParams(pathname: string) {
-  const match = pathname.match(/^\/api\/equipment\/([^/]+)\/items(?:\/([^/]+))?$/u);
-
-  if (!match) {
-    return null;
-  }
-
-  return {
-    section: match[1] as "durable" | "consumables" | "precheck",
-    itemId: match[2] ?? null,
-  };
-}
-
-function readDurableEquipmentMetadataRefreshId(pathname: string) {
-  const match = pathname.match(
-    /^\/api\/equipment\/durable\/items\/([^/]+)\/metadata\/refresh$/u,
-  );
-
-  return match?.[1] ?? null;
-}
-
-function isDurableMetadataStatusesPath(pathname: string) {
-  return pathname === "/api/equipment/durable/metadata-statuses";
-}
-
-function readEquipmentCategoryParams(pathname: string) {
-  const match = pathname.match(/^\/api\/equipment\/categories\/([^/]+)(?:\/([^/]+))?$/u);
-
-  if (!match) {
-    return null;
-  }
-
-  return {
-    section: match[1] as "durable" | "consumables" | "precheck",
-    categoryId: match[2] ?? null,
-  };
 }
 
 export function createAnalysisResponse(
@@ -957,6 +897,14 @@ export function mockFetch(input: RequestInfo | URL, init?: RequestInit) {
 
   if (pathname === "/api/links" && method === "GET") {
     return jsonResponse({ items: state.links });
+  }
+
+  if (isTripWeatherCollectionPath(pathname) && method === "POST") {
+    return handleTripWeatherCollectionRequest({
+      init,
+      jsonResponse,
+      state,
+    });
   }
 
   const analysisEmailTripId = readAnalysisEmailTripIdFromPath(pathname);

@@ -1,9 +1,6 @@
-import {
-  ALL_TRIP_ANALYSIS_CATEGORIES,
-  TRIP_ANALYSIS_CATEGORY_METADATA,
-} from "@camping/shared";
 import type {
   AnalyzeTripResponse,
+  CollectTripWeatherResponse,
   Companion,
   DataBackupSnapshot,
   EquipmentCatalog,
@@ -19,14 +16,17 @@ import type {
   ValidateTripResponse,
   Vehicle,
 } from "@camping/shared";
+import {
+  createAnalysisResponse,
+  createUserLearningStatus,
+  summarizeTrip,
+} from "./mock-state-builders";
 
 export type ApiResponse<T> = {
   body: T;
   status?: number;
 };
-type MetadataStatusSequenceEntry =
-  | ApiResponse<RefreshDurableEquipmentMetadataResponse>
-  | null;
+type MetadataStatusSequenceEntry = ApiResponse<RefreshDurableEquipmentMetadataResponse> | null;
 
 type FailedValidationResponse = {
   status: "failed";
@@ -51,6 +51,9 @@ export type MockState = {
     string,
     ApiResponse<AnalyzeTripResponse> | ApiResponse<AnalyzeTripResponse>[]
   >;
+  tripWeatherResponse:
+    | ApiResponse<CollectTripWeatherResponse | FailedValidationResponse>
+    | null;
   analysisEmailResponses: Record<
     string,
     ApiResponse<SendTripAnalysisEmailResponse | FailedValidationResponse>
@@ -81,68 +84,20 @@ export type MockState = {
       recipient_companion_ids: string[];
     };
   }>;
+  collectTripWeatherCalls: Array<{
+    body: {
+      region: string;
+      campsite_name?: string;
+      start_date?: string;
+      end_date?: string;
+    };
+  }>;
   dataBackups: DataBackupSnapshot[];
   metadataStatuses: Record<
     string,
     MetadataStatusSequenceEntry | MetadataStatusSequenceEntry[]
   >;
 };
-
-function summarizeTrip(trip: TripData): TripSummary {
-  return {
-    trip_id: trip.trip_id,
-    title: trip.title,
-    start_date: trip.date?.start,
-    end_date: trip.date?.end,
-    region: trip.location?.region,
-    companion_count: trip.party.companion_ids.length,
-  };
-}
-
-function createAnalysisResponse(
-  tripId: string,
-  overrides: Partial<AnalyzeTripResponse> = {},
-): AnalyzeTripResponse {
-  const categories = ALL_TRIP_ANALYSIS_CATEGORIES.map((category) => ({
-    category,
-    label: TRIP_ANALYSIS_CATEGORY_METADATA[category].label,
-    sections: TRIP_ANALYSIS_CATEGORY_METADATA[category].sections,
-    status: "idle" as const,
-    has_result: false,
-    requested_at: null,
-    started_at: null,
-    finished_at: null,
-    collected_at: null,
-  }));
-
-  return {
-    trip_id: tripId,
-    status: "idle",
-    requested_at: null,
-    started_at: null,
-    finished_at: null,
-    output_path: null,
-    categories,
-    completed_category_count: 0,
-    total_category_count: ALL_TRIP_ANALYSIS_CATEGORIES.length,
-    ...overrides,
-  };
-}
-
-function createUserLearningStatus(
-  overrides: Partial<UserLearningJobStatusResponse> = {},
-): UserLearningJobStatusResponse {
-  return {
-    status: "idle",
-    trigger_history_id: null,
-    source_history_ids: [],
-    source_entry_count: 0,
-    requested_at: null,
-    started_at: null,
-    finished_at: null,
-    ...overrides,
-  };
-}
 
 export function createMockState(): MockState {
   const trip: TripData = {
@@ -269,6 +224,7 @@ export function createMockState(): MockState {
         body: createAnalysisResponse(trip.trip_id),
       },
     },
+    tripWeatherResponse: null,
     analysisEmailResponses: {},
     equipment: {
       durable: {
@@ -314,6 +270,7 @@ export function createMockState(): MockState {
     outputAvailability: {},
     updateTripCalls: [],
     sendAnalysisEmailCalls: [],
+    collectTripWeatherCalls: [],
     dataBackups: [],
     metadataStatuses: {},
   };

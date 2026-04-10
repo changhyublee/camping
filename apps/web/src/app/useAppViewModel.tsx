@@ -100,6 +100,10 @@ import {
   toggleSelectionId,
 } from "./planning-history-helpers";
 import {
+  canCollectTripWeatherFromDraft,
+  collectTripWeatherIntoDraft,
+} from "./planning-weather-actions";
+import {
   createCommaSeparatedInputs,
   createEmptyCategoryDrafts,
   createEmptyEquipmentCategoryDraft,
@@ -204,6 +208,10 @@ export function useAppViewModel(initialPage?: PageKey) {
     setDetailLoading,
     savingTrip,
     setSavingTrip,
+    collectingTripWeather,
+    setCollectingTripWeather,
+    expectedWeatherEditedSinceLoad,
+    setExpectedWeatherEditedSinceLoad,
     sendingAnalysisEmail,
     setSendingAnalysisEmail,
     commaInputs,
@@ -385,6 +393,7 @@ export function useAppViewModel(initialPage?: PageKey) {
     if (isCreatingTrip || !selectedTripId) {
       if (!isCreatingTrip) {
         setTripDraft(null);
+        setExpectedWeatherEditedSinceLoad(false);
         setValidationWarnings([]);
         setCommaInputs(createCommaSeparatedInputs());
         setAnalysisOutput(null);
@@ -402,6 +411,7 @@ export function useAppViewModel(initialPage?: PageKey) {
     setDetailLoading(true);
     setLoadError(null);
     setTripDraft(null);
+    setExpectedWeatherEditedSinceLoad(false);
     setValidationWarnings([]);
     setCommaInputs(createCommaSeparatedInputs());
     setAnalysisOutput(null);
@@ -427,6 +437,7 @@ export function useAppViewModel(initialPage?: PageKey) {
         }
 
         setTripDraft(tripResult.value.data);
+        setExpectedWeatherEditedSinceLoad(false);
         setCommaInputs(createCommaSeparatedInputs(tripResult.value.data));
         setTripNoteInput(joinLineList(tripResult.value.data.notes));
         setLoadError(null);
@@ -597,6 +608,8 @@ export function useAppViewModel(initialPage?: PageKey) {
     isAnalysisReadyForEmail &&
     selectedTripEmailRecipientIds.length > 0 &&
     !hasInvalidSelectedTripEmailRecipients;
+  const canCollectTripWeather =
+    !collectingTripWeather && canCollectTripWeatherFromDraft(tripDraft);
 
   const missingCompanionIds = useMemo(
     () =>
@@ -1653,6 +1666,20 @@ export function useAppViewModel(initialPage?: PageKey) {
     setTripDraft((current) => (current ? updater(current) : current));
   }
 
+  async function handleCollectTripWeather() {
+    if (!tripDraft || collectingTripWeather) {
+      return;
+    }
+
+    await collectTripWeatherIntoDraft({
+      setCollectingTripWeather,
+      setExpectedWeatherEditedSinceLoad,
+      setOperationState,
+      setTripDraft,
+      tripDraft,
+    });
+  }
+
   const {
     beginCreateTrip,
     handleAnalyzeAll,
@@ -1686,6 +1713,7 @@ export function useAppViewModel(initialPage?: PageKey) {
     setAssistantLoading,
     setAssistantResponse,
     setCommaInputs,
+    setExpectedWeatherEditedSinceLoad,
     setHistory,
     setHistoryDetailTab,
     setHistoryPageTab,
@@ -1705,6 +1733,7 @@ export function useAppViewModel(initialPage?: PageKey) {
     sendingAnalysisEmail,
     tripDraft,
     tripNoteInput,
+    expectedWeatherEditedSinceLoad,
     applyAnalysisStatus,
   });
 
@@ -1985,8 +2014,10 @@ export function useAppViewModel(initialPage?: PageKey) {
     currentHistoryLabel,
     currentTripLabel,
     currentUserLearningStatusLabel,
+    canCollectTripWeather,
     canSendAnalysisEmail,
     clearAnalysisCategorySelection,
+    collectingTripWeather,
     completedAnalysisCategoryCount,
     dashboardAlerts,
     dashboardMetrics,
@@ -2001,6 +2032,7 @@ export function useAppViewModel(initialPage?: PageKey) {
     handleApplyAssistantAction,
     handleArchiveTrip,
     handleAssistantSubmit,
+    handleCollectTripWeather,
     handleCancelAllAiJobs,
     handleChangeEquipmentItemCategory,
     handleCreateDataBackup,

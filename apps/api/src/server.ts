@@ -33,6 +33,12 @@ import {
 } from "./services/openai-client";
 import { isAppError, toApiError } from "./services/app-error";
 import {
+  CodexCliTripWeatherClient,
+  MissingTripWeatherClient,
+  OpenAITripWeatherClient,
+  type TripWeatherSearchClient,
+} from "./services/trip-weather-service";
+import {
   CodexCliUserLearningClient,
   MissingUserLearningClient,
   OpenAIUserLearningClient,
@@ -46,6 +52,7 @@ export type BuildServerOptions = ConfigOverrides & {
   equipmentMetadataClient?: EquipmentMetadataSearchClient;
   campsiteTipClient?: CampsiteTipSearchClient;
   userLearningClient?: UserLearningClient;
+  tripWeatherClient?: TripWeatherSearchClient;
 };
 
 export async function buildServer(
@@ -62,6 +69,8 @@ export async function buildServer(
     options.campsiteTipClient ?? createCampsiteTipClient(config);
   const userLearningClient =
     options.userLearningClient ?? createUserLearningClient(config);
+  const tripWeatherClient =
+    options.tripWeatherClient ?? createTripWeatherClient(config);
   const analysisService = new AnalysisService(
     repository,
     modelClient,
@@ -69,6 +78,7 @@ export async function buildServer(
     equipmentMetadataClient,
     campsiteTipClient,
     userLearningClient,
+    tripWeatherClient,
   );
   await analysisService.initialize();
 
@@ -82,6 +92,9 @@ export async function buildServer(
     allowedHeaders: ["Content-Type"],
   });
   await registerApiRoutes(app, analysisService);
+  app.addHook("onClose", async () => {
+    await analysisService.shutdown();
+  });
 
   app.setErrorHandler((error, request, reply) => {
     if (isAppError(error)) {
@@ -258,6 +271,33 @@ function createUserLearningClient(
       )
     : new MissingUserLearningClient(
         "OPENAI_API_KEY 가 없어 사용자 회고 학습을 갱신할 수 없습니다.",
+      );
+}
+
+function createTripWeatherClient(
+  config: ReturnType<typeof resolveConfig>,
+): TripWeatherSearchClient {
+  if (config.aiBackend === "codex-cli") {
+    return new CodexCliTripWeatherClient({
+      binary: config.codexBin,
+      model: config.codexMetadataModel,
+      reasoningEffort: config.codexMetadataReasoningEffort,
+      projectRoot: config.projectRoot,
+      outputSchemaPath: path.join(
+        config.projectRoot,
+        "schemas",
+        "codex-trip-weather-output.schema.json",
+      ),
+    });
+  }
+
+  return config.openaiApiKey
+    ? new OpenAITripWeatherClient(
+        config.openaiApiKey,
+        config.openaiMetadataModel,
+      )
+    : new MissingTripWeatherClient(
+        "OPENAI_API_KEY 가 없어 날씨 수집을 실행할 수 없습니다.",
       );
 }
 

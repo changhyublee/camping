@@ -196,6 +196,33 @@ export const durableEquipmentMetadataSchema = z.object({
   sources: z.array(durableEquipmentMetadataSourceSchema).default([]),
 });
 
+export const tripExpectedWeatherSchema = z.object({
+  source: z.string().optional(),
+  summary: z.string().optional(),
+  min_temp_c: z.number().optional(),
+  max_temp_c: z.number().optional(),
+  precipitation: z.string().optional(),
+});
+
+export const tripWeatherResearchSchema = z.object({
+  lookup_status: equipmentMetadataLookupStatusSchema,
+  searched_at: z.string().min(1),
+  query: z.string().min(1),
+  region: z.string().min(1),
+  campsite_name: z.string().min(1).optional(),
+  start_date: z.string().optional(),
+  end_date: z.string().optional(),
+  summary: z.string().min(1).optional(),
+  min_temp_c: z.number().optional(),
+  max_temp_c: z.number().optional(),
+  precipitation: z.string().min(1).optional(),
+  search_result_excerpt: z.string().min(1).optional(),
+  source: z.string().min(1).optional(),
+  google_search_url: z.string().url().optional(),
+  notes: z.array(z.string()).default([]),
+  sources: z.array(durableEquipmentMetadataSourceSchema).default([]),
+});
+
 export const durableEquipmentItemBaseSchema = z.object({
   id: z.string().min(1),
   kind: z.string().min(1).optional(),
@@ -365,15 +392,7 @@ export const tripSchema = z.object({
     .object({
       electricity_available: z.boolean().optional(),
       cooking_allowed: z.boolean().optional(),
-      expected_weather: z
-        .object({
-          source: z.string().optional(),
-          summary: z.string().optional(),
-          min_temp_c: z.number().optional(),
-          max_temp_c: z.number().optional(),
-          precipitation: z.string().optional(),
-        })
-        .optional(),
+      expected_weather: tripExpectedWeatherSchema.optional(),
     })
     .optional(),
   meal_plan: z
@@ -539,6 +558,26 @@ export const analyzeTripRequestSchema = z.object({
 
 export const sendTripAnalysisEmailRequestSchema = z.object({
   recipient_companion_ids: z.array(companionIdSchema).min(1),
+});
+
+export const collectTripWeatherRequestSchema = z
+  .object({
+    region: z.string().min(1),
+    campsite_name: z.string().optional(),
+    start_date: z.string().optional(),
+    end_date: z.string().optional(),
+  })
+  .refine(
+    (value) => Boolean(value.start_date?.trim() || value.end_date?.trim()),
+    {
+      message: "시작일 또는 종료일 중 하나는 필요합니다.",
+      path: ["start_date"],
+    },
+  );
+
+export const collectTripWeatherResponseSchema = z.object({
+  item: tripWeatherResearchSchema,
+  expected_weather: tripExpectedWeatherSchema,
 });
 
 export const sendTripAnalysisEmailResponseSchema = z.object({

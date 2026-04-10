@@ -6,6 +6,8 @@ import type {
   CancelAllAiJobsResponse,
   Companion,
   CompanionInput,
+  CollectTripWeatherRequest,
+  CollectTripWeatherResponse,
   ConsumableEquipmentItemInput,
   CreateDataBackupResponse,
   DurableEquipmentItemInput,
@@ -159,6 +161,14 @@ export const apiClient = {
   },
   async createTrip(input: TripDraft): Promise<{ trip_id: string; data: TripData }> {
     return request("/api/trips", {
+      method: "POST",
+      body: JSON.stringify(input),
+    });
+  },
+  async collectTripWeather(
+    input: CollectTripWeatherRequest,
+  ): Promise<CollectTripWeatherResponse> {
+    return request("/api/trips/weather/collect", {
       method: "POST",
       body: JSON.stringify(input),
     });

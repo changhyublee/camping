@@ -45,6 +45,7 @@
 - `DELETE /api/trips/:tripId`
 - `POST /api/trips/:tripId/archive`
 - `GET /api/trips/:tripId/analysis-status`
+- `POST /api/trips/weather/collect`
 - `POST /api/trips/:tripId/analysis-email`
 - `POST /api/trips/:tripId/assistant`
 - `POST /api/validate-trip`
@@ -74,6 +75,9 @@
 - 요청 본문은 `{ "recipient_companion_ids": ["self", "child-1"] }` 형식을 사용한다
 - 수신 대상은 현재 계획 `party.companion_ids` 안에 있으면서 메일 주소가 등록된 동행자만 허용한다
 - 발송 성공 시 현재 선택한 `recipient_companion_ids` 는 `trips/<trip-id>.yaml` 의 `notifications.email_recipient_companion_ids` 에 함께 저장한다
+- `POST /api/trips/weather/collect` 는 `region`, `start_date`, `end_date`, `campsite_name` 을 받아 Google 검색 결과를 읽고 보조 웹 조사 AI 모델로 날씨 요약을 구조화한다
+- `POST /api/trips` 와 `PUT /api/trips/:tripId` 는 저장된 계획의 날씨 입력이 비어 있고 지역과 일정이 있으면 백그라운드 날씨 수집을 자동으로 시작한다
+- 자동 수집은 저장 응답을 막지 않고 별도로 진행하며, 성공 시 `trips/<trip-id>.yaml` 의 `conditions.expected_weather` 와 `cache/weather/<trip-id>-weather.json` 을 함께 갱신한다
 
 ### 장비 관리
 
@@ -258,6 +262,45 @@
 }
 ```
 
+### `POST /api/trips/weather/collect`
+
+```json
+{
+  "item": {
+    "lookup_status": "found",
+    "searched_at": "2026-04-10T14:12:00.000Z",
+    "query": "gapyeong 자라섬 캠핑장 2026-04-18 2026-04-19 날씨",
+    "region": "gapyeong",
+    "campsite_name": "자라섬 캠핑장",
+    "start_date": "2026-04-18",
+    "end_date": "2026-04-19",
+    "summary": "맑고 낮에는 선선하지만 아침저녁은 쌀쌀합니다.",
+    "min_temp_c": 8,
+    "max_temp_c": 18,
+    "precipitation": "강수 가능성은 낮습니다.",
+    "search_result_excerpt": "Google 검색 결과에 4월 18일~19일 가평 지역 최저 8도, 최고 18도, 비 가능성 낮음으로 표시됨",
+    "source": "google-search-ai",
+    "google_search_url": "https://www.google.com/search?hl=ko&gl=kr&q=gapyeong%20%EC%9E%90%EB%9D%BC%EC%84%AC%20%EC%BA%A0%ED%95%91%EC%9E%A5%202026-04-18%202026-04-19%20%EB%82%A0%EC%94%A8",
+    "notes": [
+      "Google 검색 결과 요약이라 예보 시점에 따라 세부 수치가 바뀔 수 있습니다."
+    ],
+    "sources": [
+      {
+        "title": "Google 검색 결과",
+        "url": "https://www.google.com/search?hl=ko&gl=kr&q=gapyeong%20%EC%9E%90%EB%9D%BC%EC%84%AC%20%EC%BA%A0%ED%95%91%EC%9E%A5%202026-04-18%202026-04-19%20%EB%82%A0%EC%94%A8"
+      }
+    ]
+  },
+  "expected_weather": {
+    "source": "google-search-ai",
+    "summary": "맑고 낮에는 선선하지만 아침저녁은 쌀쌀합니다.",
+    "min_temp_c": 8,
+    "max_temp_c": 18,
+    "precipitation": "강수 가능성은 낮습니다."
+  }
+}
+```
+
 ## 5. 환경 변수
 
 - `SMTP_HOST`
@@ -271,6 +314,7 @@
 
 - `SMTP_HOST` 와 `SMTP_FROM` 은 항상 필요하다.
 - SMTP 인증을 쓰는 환경이면 `SMTP_USER` 와 `SMTP_PASS` 를 함께 설정해야 한다.
+- 날씨 자동 수집, 반복 장비 메타데이터 수집, 캠핑장 tip 조사는 메일 설정과 별개로 보조 웹 조사 모델 설정을 사용한다.
 
 ### `POST /api/analyze-trip`
 

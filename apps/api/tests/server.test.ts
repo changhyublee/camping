@@ -13,6 +13,7 @@ import {
   type CampsiteTipsResearch,
   type DurableEquipmentMetadata,
   type TripBundle,
+  type TripWeatherResearch,
   type UserLearningProfile,
 } from "@camping/shared";
 import { buildAiJobEventStreamHeaders } from "../src/routes/api-routes";
@@ -25,6 +26,7 @@ import type {
 import type { CampsiteTipSearchClient } from "../src/services/campsite-tip-service";
 import type { EquipmentMetadataSearchClient } from "../src/services/equipment-metadata-service";
 import type { AnalysisModelClient } from "../src/services/openai-client";
+import type { TripWeatherSearchClient } from "../src/services/trip-weather-service";
 import type { UserLearningClient } from "../src/services/user-learning-service";
 
 const __dirname = path.dirname(fileURLToPath(import.meta.url));
@@ -336,7 +338,7 @@ class MockCampsiteTipClient implements CampsiteTipSearchClient {
       summary: "그늘, 철길 소음, 장보기 접근성 관련 후기 팁이 반복 확인됨.",
       tip_items: [
         {
-          title: "그늘 대비 타프를 미리 챙기기",
+          title: "낮 체류가 길면 타프나 차광막을 따로 준비",
           detail: "낮 시간 차광이 약하다는 후기가 반복되어 봄·여름에는 타프나 차광막 준비가 유용함.",
           helpful_for: "아이 동행, 낮 체류 시간이 긴 일정",
         },
@@ -366,6 +368,60 @@ class MockCampsiteTipClient implements CampsiteTipSearchClient {
 
   async collectCampsiteTips(_input: { bundle: TripBundle; signal?: AbortSignal }) {
     this.calls += 1;
+    return this.research;
+  }
+}
+
+class MockTripWeatherClient implements TripWeatherSearchClient {
+  public calls: Array<{
+    region: string;
+    startDate?: string;
+    endDate?: string;
+    campsiteName?: string;
+  }> = [];
+
+  constructor(
+    private readonly research: TripWeatherResearch = {
+      lookup_status: "found",
+      searched_at: "2026-04-10T08:00:00.000Z",
+      query: "gapyeong 자라섬 캠핑장 2026-04-18 2026-04-19 날씨",
+      region: "gapyeong",
+      campsite_name: "자라섬 캠핑장",
+      start_date: "2026-04-18",
+      end_date: "2026-04-19",
+      summary: "흐리고 오후 한때 비 가능성",
+      min_temp_c: 11,
+      max_temp_c: 18,
+      precipitation: "토요일 오후 한때 비 예보",
+      search_result_excerpt: "Google 날씨 카드에 흐리고 오후 비 가능성이 표시됨",
+      source: "google-search-ai",
+      google_search_url:
+        "https://www.google.com/search?hl=ko&gl=kr&q=gapyeong%20weather",
+      notes: [],
+      sources: [
+        {
+          title: "Google 검색 결과",
+          url: "https://www.google.com/search?hl=ko&gl=kr&q=gapyeong%20weather",
+          domain: "www.google.com",
+        },
+      ],
+    },
+  ) {}
+
+  async collectTripWeather(input: {
+    region: string;
+    startDate?: string;
+    endDate?: string;
+    campsiteName?: string;
+    signal?: AbortSignal;
+  }): Promise<TripWeatherResearch> {
+    this.calls.push({
+      region: input.region,
+      startDate: input.startDate,
+      endDate: input.endDate,
+      campsiteName: input.campsiteName,
+    });
+
     return this.research;
   }
 }
@@ -587,6 +643,32 @@ async function createCompletedAnalysisArtifacts(dataDir: string, tripId: string)
     ),
     "utf8",
   );
+}
+
+async function waitForTripWeatherSummary(
+  dataDir: string,
+  tripId: string,
+  expectedSummary: string,
+) {
+  const tripPath = path.join(dataDir, "trips", `${tripId}.yaml`);
+
+  for (let attempt = 0; attempt < 60; attempt += 1) {
+    const trip = parse(await readFile(tripPath, "utf8")) as {
+      conditions?: {
+        expected_weather?: {
+          summary?: string;
+        };
+      };
+    };
+
+    if (trip.conditions?.expected_weather?.summary === expectedSummary) {
+      return trip;
+    }
+
+    await new Promise((resolve) => setTimeout(resolve, 10));
+  }
+
+  throw new Error(`Timed out waiting for collected weather: ${tripId}`);
 }
 
 async function waitForTripAnalysisStatus(
@@ -1131,6 +1213,124 @@ describe("API server", () => {
         }),
       }),
     );
+
+    await app.close();
+  });
+
+  it("collects trip weather from region and date inputs with the metadata client", async () => {
+    const dataDir = await createSeededDataDir();
+    const tripWeatherClient = new MockTripWeatherClient();
+    const app = await buildServer({
+      dataDir,
+      projectRoot,
+      modelClient: new MockAnalysisClient("# sample"),
+      tripWeatherClient,
+    });
+
+    const response = await app.inject({
+      method: "POST",
+      url: "/api/trips/weather/collect",
+      payload: {
+        region: "gapyeong",
+        campsite_name: "자라섬 캠핑장",
+        start_date: "2026-04-18",
+        end_date: "2026-04-19",
+      },
+    });
+
+    expect(response.statusCode).toBe(200);
+    expect(response.json()).toEqual({
+      item: expect.objectContaining({
+        lookup_status: "found",
+        region: "gapyeong",
+        summary: "흐리고 오후 한때 비 가능성",
+      }),
+      expected_weather: {
+        source: "google-search-ai",
+        summary: "흐리고 오후 한때 비 가능성",
+        min_temp_c: 11,
+        max_temp_c: 18,
+        precipitation: "토요일 오후 한때 비 예보",
+      },
+    });
+    expect(tripWeatherClient.calls).toEqual([
+      {
+        region: "gapyeong",
+        startDate: "2026-04-18",
+        endDate: "2026-04-19",
+        campsiteName: "자라섬 캠핑장",
+      },
+    ]);
+
+    await app.close();
+  });
+
+  it("starts background weather collection after saving a trip with empty weather fields", async () => {
+    const dataDir = await createSeededDataDir();
+    const tripWeatherClient = new MockTripWeatherClient();
+    const tripPath = path.join(dataDir, "trips", "2026-04-18-gapyeong.yaml");
+    const trip = parse(await readFile(tripPath, "utf8")) as Record<string, unknown>;
+
+    delete (trip.conditions as Record<string, unknown>).expected_weather;
+    await writeFile(tripPath, stringify(trip), "utf8");
+
+    const app = await buildServer({
+      dataDir,
+      projectRoot,
+      modelClient: new MockAnalysisClient("# sample"),
+      tripWeatherClient,
+    });
+
+    const response = await app.inject({
+      method: "PUT",
+      url: "/api/trips/2026-04-18-gapyeong",
+      payload: trip,
+    });
+
+    expect(response.statusCode).toBe(200);
+    await waitForTripWeatherSummary(
+      dataDir,
+      "2026-04-18-gapyeong",
+      "흐리고 오후 한때 비 가능성",
+    );
+
+    const refreshedTrip = parse(await readFile(tripPath, "utf8")) as {
+      conditions?: {
+        expected_weather?: {
+          source?: string;
+          summary?: string;
+          precipitation?: string;
+        };
+      };
+    };
+    const weatherCachePath = path.join(
+      dataDir,
+      "cache",
+      "weather",
+      "2026-04-18-gapyeong-weather.json",
+    );
+
+    expect(refreshedTrip.conditions?.expected_weather).toEqual({
+      source: "google-search-ai",
+      summary: "흐리고 오후 한때 비 가능성",
+      min_temp_c: 11,
+      max_temp_c: 18,
+      precipitation: "토요일 오후 한때 비 예보",
+    });
+    expect(JSON.parse(await readFile(weatherCachePath, "utf8"))).toEqual(
+      expect.objectContaining({
+        lookup_status: "found",
+        summary: "흐리고 오후 한때 비 가능성",
+      }),
+    );
+    expect(tripWeatherClient.calls).toEqual([
+      {
+        region: "gapyeong",
+        startDate: "2026-04-18",
+        endDate: "2026-04-19",
+        campsiteName: "자라섬 캠핑장",
+      },
+    ]);
 
     await app.close();
   });

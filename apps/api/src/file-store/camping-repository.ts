@@ -79,6 +79,7 @@ import {
   type TripDraft,
   type TripId,
   type TripSummary,
+  type TripWeatherResearch,
   type Vehicle,
   type VehicleInput,
   type VehiclesData,
@@ -997,6 +998,13 @@ export class CampingRepository {
     research: CampsiteTipsResearch,
   ): Promise<void> {
     await this.writeJsonFile(this.getCampsiteTipCachePath(tripId), research);
+  }
+
+  async saveTripWeatherResearch(
+    tripId: TripId,
+    research: TripWeatherResearch,
+  ): Promise<void> {
+    await this.writeJsonFile(this.getTripWeatherCachePath(tripId), research);
   }
 
   async readEnrichedDurableItem(itemId: string): Promise<DurableEquipmentItem> {
@@ -2104,6 +2112,14 @@ export class CampingRepository {
 
   private getCampsiteTipCachePath(tripId: string) {
     return path.join(this.getCampsiteTipCacheDir(), `${tripId}-campsite-tips.json`);
+  }
+
+  private getTripWeatherCacheDir() {
+    return path.join(this.config.dataDir, "cache", "weather");
+  }
+
+  private getTripWeatherCachePath(tripId: string) {
+    return path.join(this.getTripWeatherCacheDir(), `${tripId}-weather.json`);
   }
 
   private getConsumablesPath() {

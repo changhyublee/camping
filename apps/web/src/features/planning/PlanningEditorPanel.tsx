@@ -7,12 +7,15 @@ export function PlanningEditorPanel(props: { view: AppViewModel }) {
   const {
     buildTripVehicleSelection,
     buildVehicleOptions,
+    canCollectTripWeather,
     canSendAnalysisEmail,
     commaInputs,
     companions,
+    collectingTripWeather,
     detailLoading,
     handleAnalyzeAll,
     handleArchiveTrip,
+    handleCollectTripWeather,
     handleDeleteTrip,
     handleSendAnalysisEmail,
     handleSaveTrip,
@@ -27,6 +30,7 @@ export function PlanningEditorPanel(props: { view: AppViewModel }) {
     sendingAnalysisEmail,
     setActivePage,
     setCommaInputs,
+    setExpectedWeatherEditedSinceLoad,
     setTripNoteInput,
     splitCommaList,
     toggleSelectionId,
@@ -49,6 +53,33 @@ export function PlanningEditorPanel(props: { view: AppViewModel }) {
 
       {!detailLoading && tripDraft ? (
         <>
+          <div className="action-card">
+            <strong>날씨 자동 수집</strong>
+            <p>
+              입력한 지역과 일정으로 Google 날씨 검색 결과를 읽고 AI가 날씨 요약을 채웁니다.
+            </p>
+            <p>
+              {tripDraft.conditions?.expected_weather?.summary ||
+              tripDraft.conditions?.expected_weather?.precipitation
+                ? `현재 값: ${tripDraft.conditions?.expected_weather?.summary ?? "요약 없음"}${
+                    tripDraft.conditions?.expected_weather?.precipitation
+                      ? ` / ${tripDraft.conditions.expected_weather.precipitation}`
+                      : ""
+                  }`
+                : "아직 날씨 입력이 없습니다. 직접 입력하거나 수집 버튼을 사용할 수 있습니다."}
+            </p>
+            <div className="button-row button-row--compact">
+              <button
+                className="button"
+                disabled={!canCollectTripWeather}
+                onClick={handleCollectTripWeather}
+                type="button"
+              >
+                {collectingTripWeather ? "수집 중..." : "수집"}
+              </button>
+            </div>
+          </div>
+
           <div className="form-grid">
             <FormField label="계획 제목">
               <input
@@ -299,7 +330,8 @@ export function PlanningEditorPanel(props: { view: AppViewModel }) {
               <input
                 placeholder="예: 흐리고 바람 강함"
                 value={tripDraft.conditions?.expected_weather?.summary ?? ""}
-                onChange={(event) =>
+                onChange={(event) => {
+                  setExpectedWeatherEditedSinceLoad(true);
                   updateTripDraft((current) => ({
                     ...current,
                     conditions: {
@@ -309,15 +341,16 @@ export function PlanningEditorPanel(props: { view: AppViewModel }) {
                         summary: event.target.value || undefined,
                       },
                     },
-                  }))
-                }
+                  }));
+                }}
               />
             </FormField>
             <FormField label="강수 정보">
               <input
                 placeholder="예: 오후 비 예보"
                 value={tripDraft.conditions?.expected_weather?.precipitation ?? ""}
-                onChange={(event) =>
+                onChange={(event) => {
+                  setExpectedWeatherEditedSinceLoad(true);
                   updateTripDraft((current) => ({
                     ...current,
                     conditions: {
@@ -327,8 +360,8 @@ export function PlanningEditorPanel(props: { view: AppViewModel }) {
                         precipitation: event.target.value || undefined,
                       },
                     },
-                  }))
-                }
+                  }));
+                }}
               />
             </FormField>
             <FormField label="전기 사용">

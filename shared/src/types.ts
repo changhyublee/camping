@@ -19,6 +19,8 @@ import type {
   campsiteTipSourceSchema,
   campsiteTipsResearchSchema,
   cancelAllAiJobsResponseSchema,
+  collectTripWeatherRequestSchema,
+  collectTripWeatherResponseSchema,
   companionIdSchema,
   companionSchema,
   companionInputSchema,
@@ -79,6 +81,8 @@ import type {
   tripAnalysisResultsCacheSchema,
   tripAnalysisSectionSchema,
   tripAnalysisStatusSchema,
+  tripExpectedWeatherSchema,
+  tripWeatherResearchSchema,
   tripSchema,
   tripSummarySchema,
   userLearningJobStatusResponseSchema,
@@ -123,6 +127,8 @@ export type CampsiteTipSource = z.infer<typeof campsiteTipSourceSchema>;
 export type CampsiteTipItem = z.infer<typeof campsiteTipItemSchema>;
 export type CampsiteBestSiteItem = z.infer<typeof campsiteBestSiteItemSchema>;
 export type CampsiteTipsResearch = z.infer<typeof campsiteTipsResearchSchema>;
+export type TripExpectedWeather = z.infer<typeof tripExpectedWeatherSchema>;
+export type TripWeatherResearch = z.infer<typeof tripWeatherResearchSchema>;
 export type DurableEquipmentMetadata = z.infer<
   typeof durableEquipmentMetadataSchema
 >;
@@ -182,6 +188,12 @@ export type AnalyzeTripRequest = z.infer<typeof analyzeTripRequestSchema>;
 export type AnalyzeTripResponse = z.infer<typeof analyzeTripResponseSchema>;
 export type SendTripAnalysisEmailRequest = z.infer<
   typeof sendTripAnalysisEmailRequestSchema
+>;
+export type CollectTripWeatherRequest = z.infer<
+  typeof collectTripWeatherRequestSchema
+>;
+export type CollectTripWeatherResponse = z.infer<
+  typeof collectTripWeatherResponseSchema
 >;
 export type SendTripAnalysisEmailResponse = z.infer<
   typeof sendTripAnalysisEmailResponseSchema

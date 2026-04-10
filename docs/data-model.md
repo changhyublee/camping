@@ -44,7 +44,14 @@
 - 전역 개인화 학습 작업 상태는 `cache/user-learning/jobs/profile.json` 으로 저장한다
 - 사람이 직접 관리하는 `profile.yaml`, `preferences/*.yaml` 는 AI가 덮어쓰지 않는다
 
-### 원칙 7. 운영 데이터 백업은 별도 경로로 분리한다
+### 원칙 7. 계획 날씨는 원본 입력과 AI 보강을 함께 허용한다
+
+- 사용자는 `trips/*.yaml` 의 `conditions.expected_weather` 를 직접 입력할 수 있다
+- 같은 필드는 지역과 일정 기준 Google 검색 결과를 보조 웹 조사 AI가 읽어 자동으로 채울 수도 있다
+- 자동 수집의 조사 원문과 메타 정보는 `cache/weather/*.json` 으로 분리 저장한다
+- 계획 원본에는 분석 상태가 아니라 최종적으로 사용할 날씨 요약만 반영한다
+
+### 원칙 8. 운영 데이터 백업은 별도 경로로 분리한다
 
 - 시점별 백업은 `./.camping-backups/`
 - 운영 데이터와 다른 루트에 둬서 초기화 작업이 백업까지 지우지 않게 한다
@@ -210,6 +217,7 @@
 - 앞으로 갈 캠핑 계획
 - 분석 단위
 - 선택한 동행자 ID와 차량 스냅샷을 함께 저장
+- `conditions.expected_weather` 는 수동 입력 또는 Google 검색 기반 자동 수집 결과를 함께 저장
 - 메일 발송 대상 기본 선택 상태는 `notifications.email_recipient_companion_ids` 로 저장
 
 ### `history/*.yaml`
@@ -236,6 +244,12 @@
 - 전역 개인화 학습 갱신 상태 캐시
 - `status`, `trigger_history_id`, `source_history_ids`, `source_entry_count`, `requested_at`, `started_at`, `finished_at`, `error` 저장
 - UI는 pending 개인화 학습 작업이 있을 때만 SSE 이벤트로 즉시 반영하고, 재진입/재연결 시 상태 조회 API로 복원한다
+
+### `cache/weather/*.json`
+
+- 계획별 날씨 조사 캐시
+- Google 검색 질의, 검색 URL, 검색 결과 근거 발췌, AI 구조화 결과, 조회 시각 저장
+- 수동 입력과 분리해 자동 수집 결과의 근거와 실패 상태를 보관
 
 ### `links.yaml`
 
