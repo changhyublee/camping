@@ -947,25 +947,29 @@ function createFailedTripWeatherResearch(
     search_result_excerpt: undefined,
     source: "open-meteo",
     lookup_url: collectionInput
-      ? `https://geocoding-api.open-meteo.com/v1/search?${new URLSearchParams({
-          name: collectionInput.region,
-          count: "10",
-          language: "ko",
-          format: "json",
+      ? `https://nominatim.openstreetmap.org/search?${new URLSearchParams({
+          q: collectionInput.region,
+          format: "jsonv2",
+          limit: "10",
+          addressdetails: "1",
+          "accept-language": "ko,en",
+          countrycodes: "kr",
         }).toString()}`
       : undefined,
     notes: [],
     sources: collectionInput
       ? [
           {
-            title: "Open-Meteo Geocoding API",
-            url: `https://geocoding-api.open-meteo.com/v1/search?${new URLSearchParams({
-              name: collectionInput.region,
-              count: "10",
-              language: "ko",
-              format: "json",
+            title: "Nominatim Search API",
+            url: `https://nominatim.openstreetmap.org/search?${new URLSearchParams({
+              q: collectionInput.region,
+              format: "jsonv2",
+              limit: "10",
+              addressdetails: "1",
+              "accept-language": "ko,en",
+              countrycodes: "kr",
             }).toString()}`,
-            domain: "geocoding-api.open-meteo.com",
+            domain: "nominatim.openstreetmap.org",
           },
         ]
       : [],

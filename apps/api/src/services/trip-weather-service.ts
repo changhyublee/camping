@@ -15,13 +15,33 @@ export type TripWeatherSearchClient = {
 
 type FetchLike = typeof fetch;
 
-type OpenMeteoGeocodingResponse = {
-  results?: OpenMeteoLocation[];
-  error?: boolean;
-  reason?: string;
+type NominatimSearchResponse = NominatimLocation[];
+
+type NominatimLocation = {
+  lat?: string;
+  lon?: string;
+  name?: string;
+  display_name?: string;
+  address?: {
+    country?: string;
+    state?: string;
+    province?: string;
+    region?: string;
+    county?: string;
+    city?: string;
+    city_district?: string;
+    district?: string;
+    borough?: string;
+    municipality?: string;
+    town?: string;
+    village?: string;
+    suburb?: string;
+    quarter?: string;
+    hamlet?: string;
+  };
 };
 
-type OpenMeteoLocation = {
+type GeocodedLocation = {
   name: string;
   latitude: number;
   longitude: number;
@@ -62,7 +82,7 @@ type LookupDateRange = ResolvedDateRange & {
 };
 
 type LocationLookupResult = {
-  location: OpenMeteoLocation;
+  location: GeocodedLocation;
   geocodingUrl: string;
   queryUsed: string;
 };
@@ -76,10 +96,20 @@ type DailyWeatherPoint = {
   precipitationSum: number | null;
 };
 
-const OPEN_METEO_GEOCODING_URL = "https://geocoding-api.open-meteo.com/v1/search";
+const NOMINATIM_SEARCH_URL = "https://nominatim.openstreetmap.org/search";
 const OPEN_METEO_FORECAST_URL = "https://api.open-meteo.com/v1/forecast";
 const OPEN_METEO_FORECAST_MAX_DAYS = 16;
 const OPEN_METEO_SOURCE = "open-meteo";
+const NOMINATIM_USER_AGENT = "camping-local-api/1.0 (local weather geocoding)";
+const LOCATION_TRAILING_TERMS = [
+  "오토 캠핑장",
+  "오토캠핑장",
+  "캠핑장",
+  "캠핑",
+  "야영장",
+  "노지",
+  "주차장",
+] as const;
 
 export class MissingTripWeatherClient implements TripWeatherSearchClient {
   constructor(private readonly message: string) {}
@@ -110,7 +140,7 @@ export class OpenMeteoTripWeatherClient implements TripWeatherSearchClient {
     if (!locationLookup) {
       return createNotFoundResearch(input, query, {
         lookupUrl: buildGeocodingUrl(buildGeocodingQueries(input).at(-1) ?? input.region.trim()),
-        note: "입력한 지역 정보로 Open-Meteo 좌표를 찾지 못했습니다. 지역명을 조금 더 구체적으로 입력해 주세요.",
+        note: "입력한 지역 정보로 좌표를 찾지 못했습니다. 행정구역 중심 지역명이나 대표 장소명으로 다시 시도해 주세요.",
       });
     }
 
@@ -156,25 +186,17 @@ export class OpenMeteoTripWeatherClient implements TripWeatherSearchClient {
   ): Promise<LocationLookupResult | null> {
     for (const query of buildGeocodingQueries(input)) {
       const geocodingUrl = buildGeocodingUrl(query);
-      const response = await this.fetchJson<OpenMeteoGeocodingResponse>(
+      const response = await this.fetchJson<NominatimSearchResponse>(
         geocodingUrl,
         input.signal,
-        "Open-Meteo 지역 검색",
+        "지역 검색",
       );
 
-      if (response.error) {
-        throw new AppError(
-          "OPENAI_REQUEST_FAILED",
-          `Open-Meteo 지역 검색 응답이 실패했습니다. ${response.reason ?? "원인을 알 수 없습니다."}`,
-          502,
-        );
-      }
-
-      const location = response.results?.find(isValidLocation);
+      const location = response.find(isValidNominatimLocation);
 
       if (location) {
         return {
-          location,
+          location: toGeocodedLocation(location),
           geocodingUrl,
           queryUsed: query,
         };
@@ -195,6 +217,7 @@ export class OpenMeteoTripWeatherClient implements TripWeatherSearchClient {
       response = await this.fetchImpl(url, {
         headers: {
           "accept-language": "ko-KR,ko;q=0.9,en-US;q=0.8,en;q=0.7",
+          "user-agent": NOMINATIM_USER_AGENT,
         },
         signal,
       });
@@ -295,33 +318,39 @@ function resolveRequestedDateRange(input: TripWeatherCollectionInput): ResolvedD
 }
 
 function buildGeocodingQueries(input: TripWeatherCollectionInput) {
-  const region = input.region.trim();
-  const campsiteName = input.campsiteName?.trim();
+  const regionVariants = buildLocationQueryVariants(input.region);
+  const campsiteVariants = input.campsiteName
+    ? buildLocationQueryVariants(input.campsiteName)
+    : [];
+  const queries: string[] = [];
 
-  return [
-    ...new Set(
-      [campsiteName ? `${campsiteName} ${region}` : null, campsiteName, region].filter(
-        (value): value is string => Boolean(value),
-      ),
-    ),
-  ]
-    .map((value) => value.trim())
-    .filter((value) => value.length > 0);
+  if (campsiteVariants.length > 0 && regionVariants.length > 0) {
+    queries.push(`${campsiteVariants[0]} ${regionVariants[0]}`);
+  }
+
+  queries.push(...campsiteVariants, ...regionVariants);
+
+  return queries
+    .map(normalizeLocationText)
+    .filter((value) => value.length > 0)
+    .filter((value, index, values) => values.indexOf(value) === index);
 }
 
 function buildGeocodingUrl(query: string) {
   const params = new URLSearchParams({
-    name: query,
-    count: "10",
-    language: "ko",
-    format: "json",
+    q: query,
+    format: "jsonv2",
+    limit: "10",
+    addressdetails: "1",
+    "accept-language": "ko,en",
+    countrycodes: "kr",
   });
 
-  return `${OPEN_METEO_GEOCODING_URL}?${params.toString()}`;
+  return `${NOMINATIM_SEARCH_URL}?${params.toString()}`;
 }
 
 function buildForecastUrl(
-  location: Pick<OpenMeteoLocation, "latitude" | "longitude">,
+  location: Pick<GeocodedLocation, "latitude" | "longitude">,
   dateRange: ResolvedDateRange,
 ) {
   const params = new URLSearchParams({
@@ -475,9 +504,9 @@ function buildFallbackSources(lookupUrl?: string): TripWeatherResearch["sources"
 
   return [
     {
-      title: "Open-Meteo 요청 URL",
+      title: "지역/예보 조회 URL",
       url: lookupUrl,
-      domain: extractDomain(lookupUrl) ?? "api.open-meteo.com",
+      domain: extractDomain(lookupUrl) ?? "nominatim.openstreetmap.org",
     },
   ];
 }
@@ -488,9 +517,9 @@ function buildSources(
 ): TripWeatherResearch["sources"] {
   return [
     {
-      title: "Open-Meteo Geocoding API",
+      title: "Nominatim Search API",
       url: geocodingUrl,
-      domain: "geocoding-api.open-meteo.com",
+      domain: "nominatim.openstreetmap.org",
     },
     {
       title: "Open-Meteo Forecast API",
@@ -535,7 +564,7 @@ function buildWeatherNotes(input: {
   requestedDateRange: ResolvedDateRange;
   lookupDateRange: LookupDateRange;
   locationLabel: string;
-  location: OpenMeteoLocation;
+  location: GeocodedLocation;
   geocodingQuery: string;
   timezone?: string;
   pointCount: number;
@@ -736,12 +765,16 @@ function isDirectPrecipitationCode(code: number | null) {
   );
 }
 
-function isValidLocation(location: OpenMeteoLocation | undefined): location is OpenMeteoLocation {
+function isValidNominatimLocation(
+  location: NominatimLocation | undefined,
+): location is NominatimLocation {
   return Boolean(
     location &&
-      typeof location.name === "string" &&
-      typeof location.latitude === "number" &&
-      typeof location.longitude === "number",
+      typeof location.display_name === "string" &&
+      typeof location.lat === "string" &&
+      typeof location.lon === "string" &&
+      Number.isFinite(Number.parseFloat(location.lat)) &&
+      Number.isFinite(Number.parseFloat(location.lon)),
   );
 }
 
@@ -768,7 +801,7 @@ function sumValues(values: Array<number | null>) {
   return filtered.length > 0 ? filtered.reduce((sum, value) => sum + value, 0) : null;
 }
 
-function formatLocationLabel(location: OpenMeteoLocation) {
+function formatLocationLabel(location: GeocodedLocation) {
   return [
     location.name,
     location.admin4,
@@ -852,4 +885,75 @@ function isAbortError(error: unknown) {
     "name" in error &&
     error.name === "AbortError"
   );
+}
+
+function buildLocationQueryVariants(input: string) {
+  const normalized = normalizeLocationText(input);
+
+  if (!normalized) {
+    return [];
+  }
+
+  const variants = [normalized];
+  let current = normalized;
+
+  while (true) {
+    const stripped = stripTrailingLocationTerm(current);
+
+    if (!stripped || stripped === current) {
+      break;
+    }
+
+    variants.push(stripped);
+    current = stripped;
+  }
+
+  const tokens = current.split(" ").filter(Boolean);
+
+  for (let end = tokens.length - 1; end >= 2; end -= 1) {
+    variants.push(tokens.slice(0, end).join(" "));
+  }
+
+  return variants.filter((value, index, values) => values.indexOf(value) === index);
+}
+
+function normalizeLocationText(input: string) {
+  return input.trim().replace(/\s+/gu, " ");
+}
+
+function stripTrailingLocationTerm(input: string) {
+  for (const term of LOCATION_TRAILING_TERMS) {
+    if (input.endsWith(term)) {
+      return normalizeLocationText(input.slice(0, -term.length));
+    }
+  }
+
+  return null;
+}
+
+function toGeocodedLocation(location: NominatimLocation): GeocodedLocation {
+  const address = location.address ?? {};
+
+  return {
+    name:
+      location.name ??
+      address.town ??
+      address.city ??
+      address.village ??
+      address.suburb ??
+      location.display_name?.split(",")[0]?.trim() ??
+      "위치",
+    latitude: Number.parseFloat(location.lat ?? "NaN"),
+    longitude: Number.parseFloat(location.lon ?? "NaN"),
+    country: address.country,
+    admin1: address.province ?? address.state ?? address.region,
+    admin2: address.county ?? address.city ?? address.municipality,
+    admin3:
+      address.city_district ??
+      address.district ??
+      address.borough ??
+      address.town ??
+      address.city,
+    admin4: address.suburb ?? address.quarter ?? address.village ?? address.hamlet,
+  };
 }

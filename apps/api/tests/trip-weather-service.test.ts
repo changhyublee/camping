@@ -5,21 +5,21 @@ import {
 } from "../src/services/trip-weather-service";
 
 describe("OpenMeteoTripWeatherClient", () => {
-  it("collects structured weather from Open-Meteo geocoding and forecast responses", async () => {
+  it("collects structured weather from Nominatim geocoding and Open-Meteo forecast responses", async () => {
     const client = new OpenMeteoTripWeatherClient(createMockFetch((url) => {
-      if (url.startsWith("https://geocoding-api.open-meteo.com/v1/search")) {
-        return jsonResponse({
-          results: [
-            {
-              name: "Gapyeong",
-              latitude: 37.8315,
-              longitude: 127.5097,
-              timezone: "Asia/Seoul",
-              admin1: "Gyeonggi-do",
-              country: "South Korea",
+      if (url.startsWith("https://nominatim.openstreetmap.org/search")) {
+        return jsonResponse([
+          {
+            lat: "37.8315",
+            lon: "127.5097",
+            display_name: "가평군, 경기도, 대한민국",
+            address: {
+              county: "가평군",
+              province: "경기도",
+              country: "대한민국",
             },
-          ],
-        });
+          },
+        ]);
       }
 
       if (url.startsWith("https://api.open-meteo.com/v1/forecast")) {
@@ -65,8 +65,8 @@ describe("OpenMeteoTripWeatherClient", () => {
     );
     expect(result.sources).toEqual([
       expect.objectContaining({
-        title: "Open-Meteo Geocoding API",
-        domain: "geocoding-api.open-meteo.com",
+        title: "Nominatim Search API",
+        domain: "nominatim.openstreetmap.org",
       }),
       expect.objectContaining({
         title: "Open-Meteo Forecast API",
@@ -81,8 +81,8 @@ describe("OpenMeteoTripWeatherClient", () => {
   it("returns not_found when the region cannot be geocoded", async () => {
     const client = new OpenMeteoTripWeatherClient(
       createMockFetch((url) => {
-        if (url.startsWith("https://geocoding-api.open-meteo.com/v1/search")) {
-          return jsonResponse({});
+        if (url.startsWith("https://nominatim.openstreetmap.org/search")) {
+          return jsonResponse([]);
         }
 
         throw new Error(`unexpected url: ${url}`);
@@ -104,24 +104,28 @@ describe("OpenMeteoTripWeatherClient", () => {
   it("falls back to campsite name only when the combined geocoding query does not resolve", async () => {
     const geocodingCalls: string[] = [];
     const client = new OpenMeteoTripWeatherClient(createMockFetch((url) => {
-      if (url.startsWith("https://geocoding-api.open-meteo.com/v1/search")) {
+      if (url.startsWith("https://nominatim.openstreetmap.org/search")) {
         geocodingCalls.push(url);
-        const queryName = new URL(url).searchParams.get("name");
+        const queryName = new URL(url).searchParams.get("q");
 
         if (queryName === "자라섬 캠핑장 gapyeong") {
-          return jsonResponse({});
+          return jsonResponse([]);
         }
 
         if (queryName === "자라섬 캠핑장") {
-          return jsonResponse({
-            results: [
-              {
-                name: "자라섬 캠핑장",
-                latitude: 37.822,
-                longitude: 127.521,
+          return jsonResponse([
+            {
+              lat: "37.822",
+              lon: "127.521",
+              display_name: "자라섬 캠핑장, 가평군, 경기도, 대한민국",
+              name: "자라섬 캠핑장",
+              address: {
+                county: "가평군",
+                province: "경기도",
+                country: "대한민국",
               },
-            ],
-          });
+            },
+          ]);
         }
 
         throw new Error(`unexpected geocoding query: ${url}`);
@@ -152,9 +156,62 @@ describe("OpenMeteoTripWeatherClient", () => {
 
     expect(result.lookup_status).toBe("found");
     expect(geocodingCalls).toEqual([
-      expect.stringContaining("name=%EC%9E%90%EB%9D%BC%EC%84%AC+%EC%BA%A0%ED%95%91%EC%9E%A5+gapyeong"),
-      expect.stringContaining("name=%EC%9E%90%EB%9D%BC%EC%84%AC+%EC%BA%A0%ED%95%91%EC%9E%A5"),
+      expect.stringContaining("q=%EC%9E%90%EB%9D%BC%EC%84%AC+%EC%BA%A0%ED%95%91%EC%9E%A5+gapyeong"),
+      expect.stringContaining("q=%EC%9E%90%EB%9D%BC%EC%84%AC+%EC%BA%A0%ED%95%91%EC%9E%A5"),
     ]);
+  });
+
+  it("broadens free-form Korean place strings before giving up", async () => {
+    const geocodingCalls: string[] = [];
+    const client = new OpenMeteoTripWeatherClient(createMockFetch((url) => {
+      if (url.startsWith("https://nominatim.openstreetmap.org/search")) {
+        const queryName = new URL(url).searchParams.get("q") ?? "";
+        geocodingCalls.push(queryName);
+
+        if (queryName === "안면도 꽃지 해수욕장") {
+          return jsonResponse([
+            {
+              lat: "36.5000",
+              lon: "126.3400",
+              display_name: "꽃지해수욕장, 안면읍, 태안군, 충청남도, 대한민국",
+              address: {
+                town: "안면읍",
+                county: "태안군",
+                province: "충청남도",
+                country: "대한민국",
+              },
+            },
+          ]);
+        }
+
+        return jsonResponse([]);
+      }
+
+      if (url.startsWith("https://api.open-meteo.com/v1/forecast")) {
+        return jsonResponse({
+          daily: {
+            time: ["2026-04-24"],
+            weather_code: [1],
+            temperature_2m_min: [9],
+            temperature_2m_max: [18],
+            precipitation_probability_max: [10],
+            precipitation_sum: [0],
+          },
+        });
+      }
+
+      throw new Error(`unexpected url: ${url}`);
+    }));
+
+    const result = await client.collectTripWeather({
+      region: "안면도 꽃지해수욕장 주차장",
+      campsiteName: "안면도 꽃지 해수욕장 노지 캠핑",
+      startDate: "2026-04-24",
+      endDate: "2026-04-24",
+    });
+
+    expect(result.lookup_status).toBe("found");
+    expect(geocodingCalls).toContain("안면도 꽃지 해수욕장");
   });
 
   it("returns not_found when the requested date is outside the forecast window", async () => {
@@ -177,16 +234,19 @@ describe("OpenMeteoTripWeatherClient", () => {
     vi.setSystemTime(new Date("2026-04-10T16:30:00.000Z"));
 
     const client = new OpenMeteoTripWeatherClient(createMockFetch((url) => {
-      if (url.startsWith("https://geocoding-api.open-meteo.com/v1/search")) {
-        return jsonResponse({
-          results: [
-            {
-              name: "Gapyeong",
-              latitude: 37.8315,
-              longitude: 127.5097,
+      if (url.startsWith("https://nominatim.openstreetmap.org/search")) {
+        return jsonResponse([
+          {
+            lat: "37.8315",
+            lon: "127.5097",
+            display_name: "가평군, 경기도, 대한민국",
+            address: {
+              county: "가평군",
+              province: "경기도",
+              country: "대한민국",
             },
-          ],
-        });
+          },
+        ]);
       }
 
       if (url.startsWith("https://api.open-meteo.com/v1/forecast")) {
@@ -220,16 +280,19 @@ describe("OpenMeteoTripWeatherClient", () => {
     let requestedForecastUrl = "";
 
     const client = new OpenMeteoTripWeatherClient(createMockFetch((url) => {
-      if (url.startsWith("https://geocoding-api.open-meteo.com/v1/search")) {
-        return jsonResponse({
-          results: [
-            {
-              name: "Gapyeong",
-              latitude: 37.8315,
-              longitude: 127.5097,
+      if (url.startsWith("https://nominatim.openstreetmap.org/search")) {
+        return jsonResponse([
+          {
+            lat: "37.8315",
+            lon: "127.5097",
+            display_name: "가평군, 경기도, 대한민국",
+            address: {
+              county: "가평군",
+              province: "경기도",
+              country: "대한민국",
             },
-          ],
-        });
+          },
+        ]);
       }
 
       if (url.startsWith("https://api.open-meteo.com/v1/forecast")) {

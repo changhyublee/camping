@@ -75,7 +75,7 @@
 - 요청 본문은 `{ "recipient_companion_ids": ["self", "child-1"] }` 형식을 사용한다
 - 수신 대상은 현재 계획 `party.companion_ids` 안에 있으면서 메일 주소가 등록된 동행자만 허용한다
 - 발송 성공 시 현재 선택한 `recipient_companion_ids` 는 `trips/<trip-id>.yaml` 의 `notifications.email_recipient_companion_ids` 에 함께 저장한다
-- `POST /api/trips/weather/collect` 는 `region`, `start_date`, `end_date`, `campsite_name` 을 받아 Open-Meteo geocoding + forecast API로 날씨 요약을 구조화한다
+- `POST /api/trips/weather/collect` 는 `region`, `start_date`, `end_date`, `campsite_name` 을 받아 Nominatim geocoding + Open-Meteo forecast API로 날씨 요약을 구조화한다
 - Open-Meteo 예보는 현재 시점부터 최대 16일까지만 조회한다
 - 요청 기간이 예보 가능 범위와 일부만 겹치면 가능한 날짜만 조회하고, 제외된 날짜는 `notes` 에 남긴다
 - `POST /api/trips` 와 `PUT /api/trips/:tripId` 는 저장된 계획의 날씨 입력이 비어 있고 지역과 일정이 있으면 백그라운드 날씨 수집을 자동으로 시작한다
@@ -290,9 +290,9 @@
     ],
     "sources": [
       {
-        "title": "Open-Meteo Geocoding API",
-        "url": "https://geocoding-api.open-meteo.com/v1/search?name=gapyeong&count=10&language=ko&format=json",
-        "domain": "geocoding-api.open-meteo.com"
+        "title": "Nominatim Search API",
+        "url": "https://nominatim.openstreetmap.org/search?q=%EA%B2%BD%EA%B8%B0%EB%8F%84+%EA%B0%80%ED%8F%89%EA%B5%B0&format=jsonv2&limit=10&addressdetails=1&accept-language=ko%2Cen&countrycodes=kr",
+        "domain": "nominatim.openstreetmap.org"
       },
       {
         "title": "Open-Meteo Forecast API",

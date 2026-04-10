@@ -97,7 +97,7 @@
 - 이 보조 웹 조사 모델은 반복 장비 메타데이터와 캠핑장 후기 tip 조사에 공통으로 사용합니다.
 - `openai` fallback 백엔드에서 같은 보조 웹 조사 모델을 별도로 조정하려면 `.env` 에 `OPENAI_METADATA_MODEL` 을 설정할 수 있습니다.
 - 별도 설정이 없으면 보조 웹 조사는 `CODEX_METADATA_MODEL=gpt-5.4-mini`, `CODEX_METADATA_REASONING_EFFORT=low`, `OPENAI_METADATA_MODEL=gpt-5-mini` 기본값을 사용합니다.
-- 계획 날씨 자동 수집은 Open-Meteo geocoding + forecast API를 직접 사용하며 별도 API key가 필요 없습니다.
+- 계획 날씨 자동 수집은 Nominatim geocoding + Open-Meteo forecast API를 직접 사용하며 별도 API key가 필요 없습니다.
 
 실행 순서:
 

@@ -47,7 +47,7 @@
 ### 원칙 7. 계획 날씨는 원본 입력과 AI 보강을 함께 허용한다
 
 - 사용자는 `trips/*.yaml` 의 `conditions.expected_weather` 를 직접 입력할 수 있다
-- 같은 필드는 지역과 일정 기준 Open-Meteo geocoding + forecast API로 자동으로 채울 수도 있다
+- 같은 필드는 지역과 일정 기준 Nominatim geocoding + Open-Meteo forecast API로 자동으로 채울 수도 있다
 - 자동 수집의 조사 원문과 메타 정보는 `cache/weather/*.json` 으로 분리 저장한다
 - 계획 원본에는 분석 상태가 아니라 최종적으로 사용할 날씨 요약만 반영한다
 
