@@ -68,8 +68,8 @@ export async function collectTripWeatherIntoDraft(
 
     const descriptionBase =
       response.item.lookup_status === "found"
-        ? "Google 검색 결과를 분석해 날씨 입력란을 채웠습니다. 저장하면 계획 파일에 반영됩니다."
-        : "Google 검색 결과에서 신뢰할 만한 날씨를 충분히 읽지 못했습니다. 필요하면 직접 보완하세요.";
+        ? "Open-Meteo 예보를 읽어 날씨 입력란을 채웠습니다. 저장하면 계획 파일에 반영됩니다."
+        : "Open-Meteo 예보에서 신뢰할 만한 날씨를 충분히 읽지 못했습니다. 필요하면 직접 보완하세요.";
 
     input.setOperationState({
       title:

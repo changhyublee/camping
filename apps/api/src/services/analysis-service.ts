@@ -898,7 +898,7 @@ function buildTripWeatherCollectionInput(
 
 function toExpectedWeather(research: TripWeatherResearch): TripExpectedWeather {
   return {
-    source: research.source ?? "google-search-ai",
+    source: research.source ?? "open-meteo",
     summary: research.summary,
     min_temp_c: research.min_temp_c,
     max_temp_c: research.max_temp_c,
@@ -945,17 +945,27 @@ function createFailedTripWeatherResearch(
         ? `날씨 자동 수집에 실패했습니다. ${error.message}`
         : "날씨 자동 수집에 실패했습니다.",
     search_result_excerpt: undefined,
-    source: "google-search-ai",
-    google_search_url: collectionInput
-      ? `https://www.google.com/search?hl=ko&gl=kr&q=${encodeURIComponent(query)}`
+    source: "open-meteo",
+    lookup_url: collectionInput
+      ? `https://geocoding-api.open-meteo.com/v1/search?${new URLSearchParams({
+          name: collectionInput.region,
+          count: "10",
+          language: "ko",
+          format: "json",
+        }).toString()}`
       : undefined,
     notes: [],
     sources: collectionInput
       ? [
           {
-            title: "Google 검색 결과",
-            url: `https://www.google.com/search?hl=ko&gl=kr&q=${encodeURIComponent(query)}`,
-            domain: "www.google.com",
+            title: "Open-Meteo Geocoding API",
+            url: `https://geocoding-api.open-meteo.com/v1/search?${new URLSearchParams({
+              name: collectionInput.region,
+              count: "10",
+              language: "ko",
+              format: "json",
+            }).toString()}`,
+            domain: "geocoding-api.open-meteo.com",
           },
         ]
       : [],

@@ -56,7 +56,7 @@ export function PlanningEditorPanel(props: { view: AppViewModel }) {
           <div className="action-card">
             <strong>날씨 자동 수집</strong>
             <p>
-              입력한 지역과 일정으로 Google 날씨 검색 결과를 읽고 AI가 날씨 요약을 채웁니다.
+              입력한 지역과 일정으로 Open-Meteo 예보를 조회해 날씨 요약을 채웁니다.
             </p>
             <p>
               {tripDraft.conditions?.expected_weather?.summary ||

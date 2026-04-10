@@ -167,7 +167,7 @@ export function buildPlanningActions(input: BuildPlanningActionsInput) {
         !hasMeaningfulExpectedWeather(response.data.conditions?.expected_weather) &&
         response.data.location?.region &&
         (response.data.date?.start || response.data.date?.end)
-          ? " 날씨 입력이 비어 있어 Google 검색 기반 자동 수집을 백그라운드에서 시작했습니다."
+          ? " 날씨 입력이 비어 있어 Open-Meteo 기반 자동 수집을 백그라운드에서 시작했습니다."
           : "";
       const backgroundAnalysisNotice = input.isAnalysisPending
         ? " 현재 분석에는 방금 저장한 변경이 반영되지 않습니다. 완료 후 다시 실행하세요."

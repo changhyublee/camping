@@ -60,21 +60,21 @@ function createTripWeatherCollectionResponse(body: {
       min_temp_c: 11,
       max_temp_c: 18,
       precipitation: "토요일 오후 한때 비 예보",
-      search_result_excerpt: "Google 날씨 카드에 흐리고 오후 비 가능성이 표시됨",
-      source: "google-search-ai",
-      google_search_url:
-        "https://www.google.com/search?hl=ko&gl=kr&q=gapyeong%20weather",
+      search_result_excerpt: "Open-Meteo 예보에 최저 11°C, 최고 18°C, 비 가능성이 표시됨",
+      source: "open-meteo",
+      lookup_url:
+        "https://api.open-meteo.com/v1/forecast?latitude=37.8&longitude=127.5",
       notes: [],
       sources: [
         {
-          title: "Google 검색 결과",
-          url: "https://www.google.com/search?hl=ko&gl=kr&q=gapyeong%20weather",
-          domain: "www.google.com",
+          title: "Open-Meteo Forecast API",
+          url: "https://api.open-meteo.com/v1/forecast?latitude=37.8&longitude=127.5",
+          domain: "api.open-meteo.com",
         },
       ],
     },
     expected_weather: {
-      source: "google-search-ai",
+      source: "open-meteo",
       summary: "흐리고 오후 한때 비 가능성",
       min_temp_c: 11,
       max_temp_c: 18,

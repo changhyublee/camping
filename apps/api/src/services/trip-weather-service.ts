@@ -1,17 +1,5 @@
-import { mkdtemp, readFile, rm } from "node:fs/promises";
-import os from "node:os";
-import path from "node:path";
-import OpenAI from "openai";
-import {
-  tripWeatherResearchSchema,
-  type TripWeatherResearch,
-} from "@camping/shared";
+import type { TripWeatherResearch } from "@camping/shared";
 import { AppError } from "./app-error";
-import {
-  isAbortError,
-  runCommand,
-  type CommandRunner,
-} from "./openai-client";
 
 export type TripWeatherCollectionInput = {
   region: string;
@@ -27,13 +15,71 @@ export type TripWeatherSearchClient = {
 
 type FetchLike = typeof fetch;
 
-type GoogleSearchContext = {
-  query: string;
-  searchUrl: string;
-  responseText: string;
+type OpenMeteoGeocodingResponse = {
+  results?: OpenMeteoLocation[];
+  error?: boolean;
+  reason?: string;
 };
 
-const GOOGLE_SEARCH_RESPONSE_MAX_CHARS = 12000;
+type OpenMeteoLocation = {
+  name: string;
+  latitude: number;
+  longitude: number;
+  timezone?: string;
+  country?: string;
+  country_code?: string;
+  admin1?: string;
+  admin2?: string;
+  admin3?: string;
+  admin4?: string;
+};
+
+type OpenMeteoForecastResponse = {
+  latitude?: number;
+  longitude?: number;
+  timezone?: string;
+  timezone_abbreviation?: string;
+  daily?: {
+    time?: string[];
+    weather_code?: Array<number | null>;
+    temperature_2m_min?: Array<number | null>;
+    temperature_2m_max?: Array<number | null>;
+    precipitation_probability_max?: Array<number | null>;
+    precipitation_sum?: Array<number | null>;
+  };
+  error?: boolean;
+  reason?: string;
+};
+
+type ResolvedDateRange = {
+  startDate: string;
+  endDate: string;
+};
+
+type LookupDateRange = ResolvedDateRange & {
+  clippedPastDays: boolean;
+  clippedFutureDays: boolean;
+};
+
+type LocationLookupResult = {
+  location: OpenMeteoLocation;
+  geocodingUrl: string;
+  queryUsed: string;
+};
+
+type DailyWeatherPoint = {
+  date: string;
+  weatherCode: number | null;
+  minTempC: number | null;
+  maxTempC: number | null;
+  precipitationProbabilityMax: number | null;
+  precipitationSum: number | null;
+};
+
+const OPEN_METEO_GEOCODING_URL = "https://geocoding-api.open-meteo.com/v1/search";
+const OPEN_METEO_FORECAST_URL = "https://api.open-meteo.com/v1/forecast";
+const OPEN_METEO_FORECAST_MAX_DAYS = 16;
+const OPEN_METEO_SOURCE = "open-meteo";
 
 export class MissingTripWeatherClient implements TripWeatherSearchClient {
   constructor(private readonly message: string) {}
@@ -43,319 +89,149 @@ export class MissingTripWeatherClient implements TripWeatherSearchClient {
   }
 }
 
-export class OpenAITripWeatherClient implements TripWeatherSearchClient {
-  private readonly client: OpenAI;
-
-  constructor(
-    private readonly apiKey: string,
-    private readonly model: string,
-    private readonly fetchImpl: FetchLike = fetch,
-  ) {
-    this.client = new OpenAI({ apiKey: this.apiKey });
-  }
+export class OpenMeteoTripWeatherClient implements TripWeatherSearchClient {
+  constructor(private readonly fetchImpl: FetchLike = fetch) {}
 
   async collectTripWeather(input: TripWeatherCollectionInput): Promise<TripWeatherResearch> {
-    const searchContext = await fetchGoogleSearchContext(input, this.fetchImpl);
-    const response = await this.requestWeatherResearch(input, searchContext);
-    const rawText = extractResponseText(response);
+    validateCollectionInput(input);
+    const query = buildWeatherQuery(input);
+    const requestedDateRange = resolveRequestedDateRange(input);
+    const lookupDateRange = resolveLookupDateRange(requestedDateRange);
 
-    if (!rawText.trim()) {
-      throw new AppError(
-        "OPENAI_REQUEST_FAILED",
-        "날씨 수집 응답을 비어 있는 본문으로 받았습니다.",
-        502,
-      );
-    }
-
-    return normalizeWeatherResearch(rawText, searchContext);
-  }
-
-  private async requestWeatherResearch(
-    input: TripWeatherCollectionInput,
-    searchContext: GoogleSearchContext,
-  ) {
-    try {
-      return await this.client.responses.create(
-        {
-          model: this.model,
-          reasoning: { effort: "low" },
-          input: [
-            {
-              role: "system",
-              content: [
-                {
-                  type: "input_text",
-                  text: buildSystemPrompt(),
-                },
-              ],
-            },
-            {
-              role: "user",
-              content: [
-                {
-                  type: "input_text",
-                  text: buildUserPrompt(input, searchContext),
-                },
-              ],
-            },
-          ],
-        },
-        input.signal ? { signal: input.signal } : undefined,
-      );
-    } catch (error) {
-      if (isAbortError(error)) {
-        throw error;
-      }
-
-      throw new AppError(
-        "OPENAI_REQUEST_FAILED",
-        error instanceof Error
-          ? `날씨 수집 분석 요청에 실패했습니다. ${error.message}`
-          : "날씨 수집 분석 요청에 실패했습니다.",
-        502,
-      );
-    }
-  }
-}
-
-export class CodexCliTripWeatherClient implements TripWeatherSearchClient {
-  constructor(
-    private readonly options: {
-      binary: string;
-      model: string;
-      reasoningEffort?: "low" | "medium" | "high" | "xhigh";
-      projectRoot: string;
-      outputSchemaPath: string;
-      runner?: CommandRunner;
-      fetchImpl?: FetchLike;
-    },
-  ) {}
-
-  async collectTripWeather(input: TripWeatherCollectionInput): Promise<TripWeatherResearch> {
-    const searchContext = await fetchGoogleSearchContext(
-      input,
-      this.options.fetchImpl ?? fetch,
-    );
-    const tempDir = await mkdtemp(path.join(os.tmpdir(), "camping-codex-weather-"));
-    const outputFile = path.join(tempDir, "trip-weather.json");
-
-    try {
-      const result = await this.run({
-        command: this.options.binary,
-        cwd: this.options.projectRoot,
-        args: [
-          "exec",
-          "--skip-git-repo-check",
-          "--ephemeral",
-          "--sandbox",
-          "read-only",
-          "--color",
-          "never",
-          "--output-schema",
-          this.options.outputSchemaPath,
-          "--output-last-message",
-          outputFile,
-          "-c",
-          "mcp_servers.github.enabled=false",
-          ...(this.options.reasoningEffort
-            ? ["-c", `model_reasoning_effort="${this.options.reasoningEffort}"`]
-            : []),
-          "-C",
-          this.options.projectRoot,
-          "-m",
-          this.options.model,
-          "-",
-        ],
-        stdin: buildCodexPrompt(input, searchContext),
-        signal: input.signal,
+    if (!lookupDateRange) {
+      return createNotFoundResearch(input, query, {
+        lookupUrl: buildGeocodingUrl(input.region.trim()),
+        note: `Open-Meteo 예보는 오늘부터 최대 ${OPEN_METEO_FORECAST_MAX_DAYS}일까지만 제공되어 현재 일정 범위는 자동 수집할 수 없습니다.`,
       });
+    }
 
-      if (result.exitCode !== 0) {
+    const locationLookup = await this.resolveLocation(input);
+
+    if (!locationLookup) {
+      return createNotFoundResearch(input, query, {
+        lookupUrl: buildGeocodingUrl(buildGeocodingQueries(input).at(-1) ?? input.region.trim()),
+        note: "입력한 지역 정보로 Open-Meteo 좌표를 찾지 못했습니다. 지역명을 조금 더 구체적으로 입력해 주세요.",
+      });
+    }
+
+    const forecastUrl = buildForecastUrl(locationLookup.location, lookupDateRange);
+    const forecastResponse = await this.fetchJson<OpenMeteoForecastResponse>(
+      forecastUrl,
+      input.signal,
+      "Open-Meteo 예보",
+    );
+
+    if (forecastResponse.error) {
+      throw new AppError(
+        "OPENAI_REQUEST_FAILED",
+        `Open-Meteo 예보 응답이 실패했습니다. ${forecastResponse.reason ?? "원인을 알 수 없습니다."}`,
+        502,
+      );
+    }
+
+    const dailyPoints = selectDailyWeatherPoints(forecastResponse, lookupDateRange);
+
+    if (dailyPoints.length === 0) {
+      return createNotFoundResearch(input, query, {
+        lookupUrl: forecastUrl,
+        note: "Open-Meteo 예보 응답에서 일정에 맞는 일별 날씨 데이터를 찾지 못했습니다.",
+        sources: buildSources(locationLookup.geocodingUrl, forecastUrl),
+      });
+    }
+
+    return buildResearchFromForecast({
+      input,
+      query,
+      locationLookup,
+      forecastUrl,
+      forecastResponse,
+      requestedDateRange,
+      lookupDateRange,
+      dailyPoints,
+    });
+  }
+
+  private async resolveLocation(
+    input: TripWeatherCollectionInput,
+  ): Promise<LocationLookupResult | null> {
+    for (const query of buildGeocodingQueries(input)) {
+      const geocodingUrl = buildGeocodingUrl(query);
+      const response = await this.fetchJson<OpenMeteoGeocodingResponse>(
+        geocodingUrl,
+        input.signal,
+        "Open-Meteo 지역 검색",
+      );
+
+      if (response.error) {
         throw new AppError(
           "OPENAI_REQUEST_FAILED",
-          firstMeaningfulLine(`${result.stdout}\n${result.stderr}`) ??
-            "Codex CLI 날씨 수집 분석 요청에 실패했습니다.",
+          `Open-Meteo 지역 검색 응답이 실패했습니다. ${response.reason ?? "원인을 알 수 없습니다."}`,
           502,
         );
       }
 
-      const rawText = await readFile(outputFile, "utf8");
-      return normalizeWeatherResearch(rawText, searchContext);
+      const location = response.results?.find(isValidLocation);
+
+      if (location) {
+        return {
+          location,
+          geocodingUrl,
+          queryUsed: query,
+        };
+      }
+    }
+
+    return null;
+  }
+
+  private async fetchJson<T>(
+    url: string,
+    signal: AbortSignal | undefined,
+    label: string,
+  ): Promise<T> {
+    let response: Response;
+
+    try {
+      response = await this.fetchImpl(url, {
+        headers: {
+          "accept-language": "ko-KR,ko;q=0.9,en-US;q=0.8,en;q=0.7",
+        },
+        signal,
+      });
     } catch (error) {
       if (isAbortError(error)) {
-        throw error;
-      }
-
-      if (error instanceof AppError) {
         throw error;
       }
 
       throw new AppError(
         "OPENAI_REQUEST_FAILED",
         error instanceof Error
-          ? `Codex CLI 날씨 수집 분석 요청에 실패했습니다. ${error.message}`
-          : "Codex CLI 날씨 수집 분석 요청에 실패했습니다.",
+          ? `${label} 요청에 실패했습니다. ${error.message}`
+          : `${label} 요청에 실패했습니다.`,
         502,
       );
-    } finally {
-      await rm(tempDir, { recursive: true, force: true });
-    }
-  }
-
-  private run(input: {
-    command: string;
-    args: string[];
-    cwd: string;
-    stdin?: string;
-    signal?: AbortSignal;
-  }) {
-    return (this.options.runner ?? runCommand)(input);
-  }
-}
-
-function buildCodexPrompt(
-  input: TripWeatherCollectionInput,
-  searchContext: GoogleSearchContext,
-) {
-  return [
-    "당신은 Google 검색 결과 응답을 읽고 캠핑 계획용 날씨 요약 JSON만 반환하는 실행기다.",
-    "중요 제약:",
-    "- 주어진 Google 검색 응답 텍스트만 사용하라.",
-    "- 추가 웹 탐색을 하지 마라.",
-    "- 파일을 수정하지 마라.",
-    "- 셸 명령을 실행하지 마라.",
-    "- JSON 객체 하나만 반환하라.",
-    "",
-    "## 시스템 지시",
-    buildSystemPrompt(),
-    "",
-    "## 입력 컨텍스트",
-    buildUserPrompt(input, searchContext),
-  ].join("\n");
-}
-
-function buildSystemPrompt() {
-  return [
-    "당신은 캠핑 계획에 필요한 날씨 정보를 Google 검색 결과 텍스트에서 구조화하는 조사기다.",
-    "반드시 제공된 google.com 검색 결과 응답 텍스트만 근거로 사용하라.",
-    "응답 텍스트에 없는 사실을 추측으로 채우지 마라.",
-    "lookup_status 규칙:",
-    "- found: 날씨 요약과 함께 온도 범위 또는 강수 정보를 하나 이상 신뢰성 있게 읽을 수 있음",
-    "- not_found: 검색 결과 응답에 날씨 정보가 부족하거나 명확하지 않음",
-    "- failed: 검색 결과 응답이 막혔거나 읽을 수 없어서 날씨 판단이 불가능함",
-    "필드 규칙:",
-    "- 스키마에 있는 필드는 누락하지 마라",
-    "- searched_at 는 현재 시각 ISO 문자열 대신 그대로 '__SERVER_TIMESTAMP__' 를 넣어라",
-    "- 문자열/숫자 필드에 값이 없으면 null 을 넣어라",
-    "- 배열 필드에 값이 없으면 빈 배열을 넣어라",
-    "- source 는 'google-search-ai' 를 넣어라",
-    "- google_search_url 은 전달받은 URL 그대로 넣어라",
-    "- summary 와 precipitation 은 짧은 한국어 문장으로 적어라",
-    "- search_result_excerpt 는 실제 근거가 된 텍스트 일부를 1~2문장으로 적어라",
-    "- notes 는 예보 범위 불확실성이나 검색 한계를 짧은 한국어 문장 배열로 적어라",
-    "- sources 는 최소한 Google 검색 URL 1건을 포함하라",
-  ].join("\n");
-}
-
-function buildUserPrompt(
-  input: TripWeatherCollectionInput,
-  searchContext: GoogleSearchContext,
-) {
-  return [
-    "아래 캠핑 계획 컨텍스트와 Google 검색 결과 응답을 읽고 날씨 요약 JSON을 반환하라.",
-    `- 지역: ${input.region}`,
-    `- 캠핑장명: ${input.campsiteName ?? "없음"}`,
-    `- 시작일: ${input.startDate ?? "없음"}`,
-    `- 종료일: ${input.endDate ?? "없음"}`,
-    `- Google 검색 질의: ${searchContext.query}`,
-    `- Google 검색 URL: ${searchContext.searchUrl}`,
-    "",
-    "## Google 검색 결과 응답 텍스트",
-    searchContext.responseText,
-    "",
-    "반환 JSON 스키마:",
-    `{
-  "lookup_status": "found | not_found | failed",
-  "searched_at": "__SERVER_TIMESTAMP__",
-  "query": "실제 Google 검색 질의",
-  "region": "지역",
-  "campsite_name": "캠핑장명",
-  "start_date": "시작일",
-  "end_date": "종료일",
-  "summary": "예상 날씨 요약",
-  "min_temp_c": 9,
-  "max_temp_c": 17,
-  "precipitation": "강수 정보",
-  "search_result_excerpt": "판단 근거가 된 검색 결과 텍스트 요약",
-  "source": "google-search-ai",
-  "google_search_url": "https://www.google.com/search?...",
-  "notes": ["불확실성 메모"],
-  "sources": [
-    {
-      "title": "Google 검색 결과",
-      "url": "https://www.google.com/search?..."
-    }
-  ]
-}`,
-  ].join("\n");
-}
-
-async function fetchGoogleSearchContext(
-  input: TripWeatherCollectionInput,
-  fetchImpl: FetchLike,
-): Promise<GoogleSearchContext> {
-  validateCollectionInput(input);
-  const query = buildGoogleWeatherQuery(input);
-  const searchUrl = `https://www.google.com/search?hl=ko&gl=kr&q=${encodeURIComponent(query)}`;
-  let response: Response;
-
-  try {
-    response = await fetchImpl(searchUrl, {
-      headers: {
-        "accept-language": "ko-KR,ko;q=0.9,en-US;q=0.8,en;q=0.7",
-        "user-agent":
-          "Mozilla/5.0 (Macintosh; Intel Mac OS X 10_15_7) AppleWebKit/537.36 (KHTML, like Gecko) Chrome/136.0.0.0 Safari/537.36",
-      },
-      signal: input.signal,
-    });
-  } catch (error) {
-    if (isAbortError(error)) {
-      throw error;
     }
 
-    throw new AppError(
-      "OPENAI_REQUEST_FAILED",
-      error instanceof Error
-        ? `Google 날씨 검색 요청에 실패했습니다. ${error.message}`
-        : "Google 날씨 검색 요청에 실패했습니다.",
-      502,
-    );
+    if (!response.ok) {
+      throw new AppError(
+        "OPENAI_REQUEST_FAILED",
+        `${label} 응답이 실패했습니다. status=${response.status}`,
+        502,
+      );
+    }
+
+    try {
+      return (await response.json()) as T;
+    } catch (error) {
+      throw new AppError(
+        "OPENAI_REQUEST_FAILED",
+        error instanceof Error
+          ? `${label} JSON 파싱에 실패했습니다. ${error.message}`
+          : `${label} JSON 파싱에 실패했습니다.`,
+        502,
+      );
+    }
   }
-
-  if (!response.ok) {
-    throw new AppError(
-      "OPENAI_REQUEST_FAILED",
-      `Google 날씨 검색 응답이 실패했습니다. status=${response.status}`,
-      502,
-    );
-  }
-
-  const html = await response.text();
-  const responseText = extractGoogleSearchText(html);
-
-  if (!responseText) {
-    throw new AppError(
-      "OPENAI_REQUEST_FAILED",
-      "Google 검색 결과 응답에서 텍스트를 추출하지 못했습니다.",
-      502,
-    );
-  }
-
-  return {
-    query,
-    searchUrl,
-    responseText,
-  };
 }
 
 function validateCollectionInput(input: TripWeatherCollectionInput) {
@@ -372,7 +248,7 @@ function validateCollectionInput(input: TripWeatherCollectionInput) {
   }
 }
 
-function buildGoogleWeatherQuery(input: TripWeatherCollectionInput) {
+function buildWeatherQuery(input: TripWeatherCollectionInput) {
   return [
     input.region.trim(),
     input.campsiteName?.trim(),
@@ -384,288 +260,596 @@ function buildGoogleWeatherQuery(input: TripWeatherCollectionInput) {
     .join(" ");
 }
 
-function extractGoogleSearchText(html: string) {
-  const withoutScript = html
-    .replace(/<script[\s\S]*?<\/script>/giu, " ")
-    .replace(/<style[\s\S]*?<\/style>/giu, " ")
-    .replace(/<noscript[\s\S]*?<\/noscript>/giu, " ");
-  const text = decodeHtmlEntities(
-    withoutScript.replace(/<[^>]+>/gu, " ").replace(/\s+/gu, " ").trim(),
-  );
+function resolveRequestedDateRange(input: TripWeatherCollectionInput): ResolvedDateRange {
+  const startDate = (input.startDate ?? input.endDate)?.trim();
+  const endDate = (input.endDate ?? input.startDate)?.trim();
 
-  return text.slice(0, GOOGLE_SEARCH_RESPONSE_MAX_CHARS);
-}
-
-function decodeHtmlEntities(input: string) {
-  return input
-    .replace(/&nbsp;/gu, " ")
-    .replace(/&amp;/gu, "&")
-    .replace(/&lt;/gu, "<")
-    .replace(/&gt;/gu, ">")
-    .replace(/&quot;/gu, '"')
-    .replace(/&#39;/gu, "'")
-    .replace(/&#(\d+);/gu, (_, code: string) =>
-      String.fromCodePoint(Number.parseInt(code, 10)),
+  if (!startDate || !endDate) {
+    throw new AppError(
+      "TRIP_INVALID",
+      "날씨 수집에는 시작일 또는 종료일이 필요합니다.",
+      400,
     );
+  }
+
+  const startTimestamp = toUtcDayTimestamp(startDate);
+  const endTimestamp = toUtcDayTimestamp(endDate);
+
+  if (startTimestamp === null || endTimestamp === null) {
+    throw new AppError(
+      "TRIP_INVALID",
+      "날씨 수집 날짜는 YYYY-MM-DD 형식이어야 합니다.",
+      400,
+    );
+  }
+
+  if (startTimestamp > endTimestamp) {
+    throw new AppError(
+      "TRIP_INVALID",
+      "날씨 수집 시작일은 종료일보다 늦을 수 없습니다.",
+      400,
+    );
+  }
+
+  return { startDate, endDate };
 }
 
-function normalizeWeatherResearch(
-  text: string,
-  searchContext: Pick<GoogleSearchContext, "query" | "searchUrl">,
-): TripWeatherResearch {
-  const payload = stripNullishFields(parseJsonObject(text));
-  const parsed = tripWeatherResearchSchema.safeParse({
-    ...payload,
-    query: payload.query ?? searchContext.query,
-    google_search_url: payload.google_search_url ?? searchContext.searchUrl,
-    source: payload.source ?? "google-search-ai",
-    sources: mergeSources(
-      [
-        {
-          title: "Google 검색 결과",
-          url: searchContext.searchUrl,
-          domain: "www.google.com",
-        },
-      ],
-      parseModelSources(payload.sources),
+function buildGeocodingQueries(input: TripWeatherCollectionInput) {
+  const region = input.region.trim();
+  const campsiteName = input.campsiteName?.trim();
+
+  return [
+    ...new Set(
+      [campsiteName ? `${campsiteName} ${region}` : null, campsiteName, region].filter(
+        (value): value is string => Boolean(value),
+      ),
     ),
+  ]
+    .map((value) => value.trim())
+    .filter((value) => value.length > 0);
+}
+
+function buildGeocodingUrl(query: string) {
+  const params = new URLSearchParams({
+    name: query,
+    count: "10",
+    language: "ko",
+    format: "json",
   });
 
-  if (!parsed.success) {
-    throw new AppError(
-      "OPENAI_REQUEST_FAILED",
-      "날씨 수집 응답 형식이 올바르지 않습니다.",
-      502,
-    );
-  }
-
-  return parsed.data;
+  return `${OPEN_METEO_GEOCODING_URL}?${params.toString()}`;
 }
 
-function extractResponseText(response: unknown): string {
-  if (
-    typeof response === "object" &&
-    response !== null &&
-    "output_text" in response &&
-    typeof response.output_text === "string"
-  ) {
-    return response.output_text;
-  }
+function buildForecastUrl(
+  location: Pick<OpenMeteoLocation, "latitude" | "longitude">,
+  dateRange: ResolvedDateRange,
+) {
+  const params = new URLSearchParams({
+    latitude: String(location.latitude),
+    longitude: String(location.longitude),
+    daily: [
+      "weather_code",
+      "temperature_2m_min",
+      "temperature_2m_max",
+      "precipitation_probability_max",
+      "precipitation_sum",
+    ].join(","),
+    timezone: "auto",
+    start_date: dateRange.startDate,
+    end_date: dateRange.endDate,
+  });
 
-  if (
-    typeof response === "object" &&
-    response !== null &&
-    "output" in response &&
-    Array.isArray(response.output)
-  ) {
-    const texts: string[] = [];
-
-    for (const item of response.output) {
-      if (
-        typeof item === "object" &&
-        item !== null &&
-        "content" in item &&
-        Array.isArray(item.content)
-      ) {
-        for (const content of item.content) {
-          if (
-            typeof content === "object" &&
-            content !== null &&
-            "type" in content &&
-            content.type === "output_text" &&
-            "text" in content &&
-            typeof content.text === "string"
-          ) {
-            texts.push(content.text);
-          }
-        }
-      }
-    }
-
-    return texts.join("\n").trim();
-  }
-
-  return "";
+  return `${OPEN_METEO_FORECAST_URL}?${params.toString()}`;
 }
 
-function parseJsonObject(text: string): Record<string, unknown> {
-  const normalized = text.trim().replaceAll(
-    "__SERVER_TIMESTAMP__",
-    new Date().toISOString(),
-  );
-  const fenced = normalized.match(/```(?:json)?\s*([\s\S]*?)```/u);
-  const candidate = fenced?.[1]?.trim() ?? normalized;
+function resolveLookupDateRange(dateRange: ResolvedDateRange): LookupDateRange | null {
+  const today = currentLocalDateString();
+  const latestSupported = addUtcDays(today, OPEN_METEO_FORECAST_MAX_DAYS - 1);
+  const startDate = dateRange.startDate < today ? today : dateRange.startDate;
+  const endDate = dateRange.endDate > latestSupported ? latestSupported : dateRange.endDate;
 
-  try {
-    return JSON.parse(candidate) as Record<string, unknown>;
-  } catch {
-    const objectMatch = candidate.match(/\{[\s\S]*\}/u);
-
-    if (!objectMatch) {
-      throw new AppError(
-        "OPENAI_REQUEST_FAILED",
-        "날씨 수집 응답에서 JSON 객체를 추출하지 못했습니다.",
-        502,
-      );
-    }
-
-    try {
-      return JSON.parse(objectMatch[0]) as Record<string, unknown>;
-    } catch {
-      throw new AppError(
-        "OPENAI_REQUEST_FAILED",
-        "날씨 수집 JSON 파싱에 실패했습니다.",
-        502,
-      );
-    }
-  }
-}
-
-function stripNullishFields(value: unknown): Record<string, unknown> {
-  if (typeof value !== "object" || value === null || Array.isArray(value)) {
-    throw new AppError(
-      "OPENAI_REQUEST_FAILED",
-      "날씨 수집 응답에서 JSON 객체를 추출하지 못했습니다.",
-      502,
-    );
+  if (dateRange.endDate < today || dateRange.startDate > latestSupported || startDate > endDate) {
+    return null;
   }
 
-  return Object.fromEntries(
-    Object.entries(value).flatMap(([key, entryValue]) => {
-      if (entryValue === null) {
-        return [];
-      }
-
-      if (Array.isArray(entryValue)) {
-        return [
-          [
-            key,
-            entryValue
-              .filter((item) => item !== null)
-              .map((item) =>
-                typeof item === "object" && item !== null && !Array.isArray(item)
-                  ? Object.fromEntries(
-                      Object.entries(item).flatMap(([nestedKey, nestedValue]) =>
-                        nestedValue === null ? [] : [[nestedKey, nestedValue]],
-                      ),
-                    )
-                  : item,
-              ),
-          ],
-        ];
-      }
-
-      if (typeof entryValue === "object") {
-        const nestedValue = Object.fromEntries(
-          Object.entries(entryValue).flatMap(([nestedKey, nestedEntryValue]) =>
-            nestedEntryValue === null ? [] : [[nestedKey, nestedEntryValue]],
-          ),
-        );
-
-        return Object.keys(nestedValue).length > 0 ? [[key, nestedValue]] : [];
-      }
-
-      return [[key, entryValue]];
-    }),
-  );
+  return {
+    startDate,
+    endDate,
+    clippedPastDays: startDate !== dateRange.startDate,
+    clippedFutureDays: endDate !== dateRange.endDate,
+  };
 }
 
-function parseModelSources(value: unknown) {
-  if (!Array.isArray(value)) {
+function selectDailyWeatherPoints(
+  response: OpenMeteoForecastResponse,
+  dateRange: ResolvedDateRange,
+): DailyWeatherPoint[] {
+  const dates = response.daily?.time;
+
+  if (!Array.isArray(dates)) {
     return [];
   }
 
-  return value.flatMap((item) => {
-    if (
-      typeof item !== "object" ||
-      item === null ||
-      !("url" in item) ||
-      typeof item.url !== "string" ||
-      !("title" in item) ||
-      typeof item.title !== "string"
-    ) {
-      return [];
-    }
-
-    return [
-      {
-        title: item.title,
-        url: item.url,
-        domain: extractDomain(item.url),
-      },
-    ];
-  });
+  return dates
+    .map((date, index) => ({
+      date,
+      weatherCode: readNumberArrayItem(response.daily?.weather_code, index),
+      minTempC: readNumberArrayItem(response.daily?.temperature_2m_min, index),
+      maxTempC: readNumberArrayItem(response.daily?.temperature_2m_max, index),
+      precipitationProbabilityMax: readNumberArrayItem(
+        response.daily?.precipitation_probability_max,
+        index,
+      ),
+      precipitationSum: readNumberArrayItem(response.daily?.precipitation_sum, index),
+    }))
+    .filter((point) => point.date >= dateRange.startDate && point.date <= dateRange.endDate);
 }
 
-function mergeSources(
-  primary: TripWeatherResearch["sources"],
-  secondary: TripWeatherResearch["sources"],
-) {
-  const seen = new Set<string>();
+function buildResearchFromForecast(input: {
+  input: TripWeatherCollectionInput;
+  query: string;
+  locationLookup: LocationLookupResult;
+  forecastUrl: string;
+  forecastResponse: OpenMeteoForecastResponse;
+  requestedDateRange: ResolvedDateRange;
+  lookupDateRange: LookupDateRange;
+  dailyPoints: DailyWeatherPoint[];
+}): TripWeatherResearch {
+  const minTempC = minValue(input.dailyPoints.map((point) => point.minTempC));
+  const maxTempC = maxValue(input.dailyPoints.map((point) => point.maxTempC));
+  const precipitationProbabilityMax = maxValue(
+    input.dailyPoints.map((point) => point.precipitationProbabilityMax),
+  );
+  const precipitationSum = sumValues(input.dailyPoints.map((point) => point.precipitationSum));
+  const primaryWeatherCode = selectPrimaryWeatherCode(input.dailyPoints);
+  const locationLabel = formatLocationLabel(input.locationLookup.location);
+  const excerpt = buildForecastExcerpt({
+    locationLabel,
+    dateRange: input.lookupDateRange,
+    minTempC,
+    maxTempC,
+    precipitationProbabilityMax,
+    precipitationSum,
+  });
 
-  return [...primary, ...secondary].filter((source) => {
-    if (seen.has(source.url)) {
-      return false;
+  return {
+    lookup_status: "found",
+    searched_at: new Date().toISOString(),
+    query: input.query,
+    region: input.input.region.trim(),
+    campsite_name: input.input.campsiteName?.trim(),
+    start_date: input.input.startDate,
+    end_date: input.input.endDate,
+    summary: buildWeatherSummary(primaryWeatherCode, precipitationProbabilityMax, precipitationSum),
+    min_temp_c: minTempC ?? undefined,
+    max_temp_c: maxTempC ?? undefined,
+    precipitation: buildPrecipitationSummary(
+      precipitationProbabilityMax,
+      precipitationSum,
+    ),
+    search_result_excerpt: excerpt,
+    source: OPEN_METEO_SOURCE,
+    lookup_url: input.forecastUrl,
+    notes: buildWeatherNotes({
+      requestedDateRange: input.requestedDateRange,
+      lookupDateRange: input.lookupDateRange,
+      locationLabel,
+      location: input.locationLookup.location,
+      geocodingQuery: input.locationLookup.queryUsed,
+      timezone:
+        input.forecastResponse.timezone_abbreviation ?? input.forecastResponse.timezone,
+      pointCount: input.dailyPoints.length,
+    }),
+    sources: buildSources(input.locationLookup.geocodingUrl, input.forecastUrl),
+  };
+}
+
+function createNotFoundResearch(
+  input: TripWeatherCollectionInput,
+  query: string,
+  options: {
+    lookupUrl?: string;
+    note: string;
+    sources?: TripWeatherResearch["sources"];
+  },
+): TripWeatherResearch {
+  return {
+    lookup_status: "not_found",
+    searched_at: new Date().toISOString(),
+    query,
+    region: input.region.trim(),
+    campsite_name: input.campsiteName?.trim(),
+    start_date: input.startDate,
+    end_date: input.endDate,
+    source: OPEN_METEO_SOURCE,
+    lookup_url: options.lookupUrl,
+    notes: [options.note],
+    sources: options.sources ?? buildFallbackSources(options.lookupUrl),
+  };
+}
+
+function buildFallbackSources(lookupUrl?: string): TripWeatherResearch["sources"] {
+  if (!lookupUrl) {
+    return [];
+  }
+
+  return [
+    {
+      title: "Open-Meteo 요청 URL",
+      url: lookupUrl,
+      domain: extractDomain(lookupUrl) ?? "api.open-meteo.com",
+    },
+  ];
+}
+
+function buildSources(
+  geocodingUrl: string,
+  forecastUrl: string,
+): TripWeatherResearch["sources"] {
+  return [
+    {
+      title: "Open-Meteo Geocoding API",
+      url: geocodingUrl,
+      domain: "geocoding-api.open-meteo.com",
+    },
+    {
+      title: "Open-Meteo Forecast API",
+      url: forecastUrl,
+      domain: "api.open-meteo.com",
+    },
+  ];
+}
+
+function buildForecastExcerpt(input: {
+  locationLabel: string;
+  dateRange: ResolvedDateRange;
+  minTempC: number | null;
+  maxTempC: number | null;
+  precipitationProbabilityMax: number | null;
+  precipitationSum: number | null;
+}) {
+  const dateLabel =
+    input.dateRange.startDate === input.dateRange.endDate
+      ? input.dateRange.startDate
+      : `${input.dateRange.startDate}~${input.dateRange.endDate}`;
+  const parts = [`${input.locationLabel} 기준 ${dateLabel} 예보`];
+
+  if (input.minTempC !== null || input.maxTempC !== null) {
+    parts.push(
+      `최저 ${formatTemp(input.minTempC)} / 최고 ${formatTemp(input.maxTempC)}`,
+    );
+  }
+
+  if (input.precipitationProbabilityMax !== null) {
+    parts.push(`최대 강수 확률 ${Math.round(input.precipitationProbabilityMax)}%`);
+  }
+
+  if (input.precipitationSum !== null) {
+    parts.push(`누적 강수량 ${formatMillimeters(input.precipitationSum)}`);
+  }
+
+  return parts.join(", ");
+}
+
+function buildWeatherNotes(input: {
+  requestedDateRange: ResolvedDateRange;
+  lookupDateRange: LookupDateRange;
+  locationLabel: string;
+  location: OpenMeteoLocation;
+  geocodingQuery: string;
+  timezone?: string;
+  pointCount: number;
+}) {
+  const notes = [
+    `좌표 기준 위치: ${input.locationLabel} (${input.location.latitude.toFixed(3)}, ${input.location.longitude.toFixed(3)})`,
+  ];
+
+  if (input.geocodingQuery !== input.location.name) {
+    notes.push(`지역 검색 질의는 "${input.geocodingQuery}" 를 사용했습니다.`);
+  }
+
+  if (input.lookupDateRange.clippedPastDays) {
+    notes.push(
+      `요청 기간 중 지난 날짜(${input.requestedDateRange.startDate}~${addUtcDays(
+        input.lookupDateRange.startDate,
+        -1,
+      )})는 예보 범위를 벗어나 제외했습니다.`,
+    );
+  }
+
+  if (input.lookupDateRange.clippedFutureDays) {
+    notes.push(
+      `요청 기간 중 ${addUtcDays(input.lookupDateRange.endDate, 1)} 이후 날짜는 Open-Meteo 예보 제공 범위를 넘어 제외했습니다.`,
+    );
+  }
+
+  if (
+    input.lookupDateRange.startDate !== input.lookupDateRange.endDate &&
+    input.pointCount > 1
+  ) {
+    notes.push("기간 전체 일별 예보를 합쳐 최저/최고 기온과 최대 강수 확률을 요약했습니다.");
+  }
+
+  if (input.timezone) {
+    notes.push(`예보 시간대: ${input.timezone}`);
+  }
+
+  return notes;
+}
+
+function buildWeatherSummary(
+  weatherCode: number | null,
+  precipitationProbabilityMax: number | null,
+  precipitationSum: number | null,
+) {
+  const phrase = weatherCode !== null ? weatherCodeToPhrase(weatherCode) : null;
+  const hasMeaningfulPrecipitation =
+    (precipitationProbabilityMax ?? 0) >= 30 || (precipitationSum ?? 0) >= 0.5;
+
+  if (!phrase) {
+    return hasMeaningfulPrecipitation ? "강수 가능성이 있습니다." : undefined;
+  }
+
+  if (isDirectPrecipitationCode(weatherCode)) {
+    return `${phrase} 예상입니다.`;
+  }
+
+  if (hasMeaningfulPrecipitation) {
+    return `${phrase}이며 비 가능성이 있습니다.`;
+  }
+
+  return `${phrase} 예상입니다.`;
+}
+
+function buildPrecipitationSummary(
+  precipitationProbabilityMax: number | null,
+  precipitationSum: number | null,
+) {
+  if (precipitationProbabilityMax === null && precipitationSum === null) {
+    return undefined;
+  }
+
+  const hasMeaningfulPrecipitation =
+    (precipitationProbabilityMax ?? 0) >= 30 || (precipitationSum ?? 0) >= 0.5;
+  const prefix = hasMeaningfulPrecipitation
+    ? (precipitationProbabilityMax ?? 0) >= 60 || (precipitationSum ?? 0) >= 5
+      ? "강수 가능성이 높습니다."
+      : "강수 가능성이 있습니다."
+    : "뚜렷한 강수 예보는 약합니다.";
+  const details: string[] = [];
+
+  if (precipitationProbabilityMax !== null) {
+    details.push(`최대 강수 확률 ${Math.round(precipitationProbabilityMax)}%`);
+  }
+
+  if (precipitationSum !== null) {
+    details.push(`예상 누적 강수량 ${formatMillimeters(precipitationSum)}`);
+  }
+
+  return details.length > 0 ? `${prefix} ${details.join(", ")}` : prefix;
+}
+
+function selectPrimaryWeatherCode(points: DailyWeatherPoint[]) {
+  return points.reduce<number | null>((selected, point) => {
+    if (point.weatherCode === null) {
+      return selected;
     }
 
-    seen.add(source.url);
-    return true;
-  });
+    if (selected === null) {
+      return point.weatherCode;
+    }
+
+    return weatherSeverity(point.weatherCode) > weatherSeverity(selected)
+      ? point.weatherCode
+      : selected;
+  }, null);
+}
+
+function weatherSeverity(code: number) {
+  if ([95, 96, 99].includes(code)) {
+    return 90;
+  }
+
+  if ([71, 73, 75, 77, 85, 86].includes(code)) {
+    return 80;
+  }
+
+  if ([66, 67].includes(code)) {
+    return 75;
+  }
+
+  if ([80, 81, 82, 61, 63, 65].includes(code)) {
+    return 70;
+  }
+
+  if ([51, 53, 55, 56, 57].includes(code)) {
+    return 60;
+  }
+
+  if ([45, 48].includes(code)) {
+    return 40;
+  }
+
+  if (code === 3) {
+    return 30;
+  }
+
+  if (code === 2) {
+    return 20;
+  }
+
+  if (code === 1) {
+    return 10;
+  }
+
+  return 0;
+}
+
+function weatherCodeToPhrase(code: number) {
+  if (code === 0) {
+    return "맑은 날씨";
+  }
+
+  if (code === 1) {
+    return "대체로 맑은 날씨";
+  }
+
+  if (code === 2) {
+    return "구름이 조금 있는 날씨";
+  }
+
+  if (code === 3) {
+    return "흐린 날씨";
+  }
+
+  if ([45, 48].includes(code)) {
+    return "안개 낀 날씨";
+  }
+
+  if ([51, 53, 55, 56, 57].includes(code)) {
+    return "가벼운 비";
+  }
+
+  if ([61, 63, 65, 66, 67, 80, 81, 82].includes(code)) {
+    return "비";
+  }
+
+  if ([71, 73, 75, 77, 85, 86].includes(code)) {
+    return "눈";
+  }
+
+  if ([95, 96, 99].includes(code)) {
+    return "뇌우";
+  }
+
+  return "변화가 있는 날씨";
+}
+
+function isDirectPrecipitationCode(code: number | null) {
+  if (code === null) {
+    return false;
+  }
+
+  return (
+    [51, 53, 55, 56, 57, 61, 63, 65, 66, 67, 71, 73, 75, 77, 80, 81, 82, 85, 86, 95, 96, 99]
+      .includes(code)
+  );
+}
+
+function isValidLocation(location: OpenMeteoLocation | undefined): location is OpenMeteoLocation {
+  return Boolean(
+    location &&
+      typeof location.name === "string" &&
+      typeof location.latitude === "number" &&
+      typeof location.longitude === "number",
+  );
+}
+
+function readNumberArrayItem(
+  values: Array<number | null> | undefined,
+  index: number,
+): number | null {
+  const value = values?.[index];
+  return typeof value === "number" && Number.isFinite(value) ? value : null;
+}
+
+function minValue(values: Array<number | null>) {
+  const filtered = values.filter((value): value is number => value !== null);
+  return filtered.length > 0 ? Math.min(...filtered) : null;
+}
+
+function maxValue(values: Array<number | null>) {
+  const filtered = values.filter((value): value is number => value !== null);
+  return filtered.length > 0 ? Math.max(...filtered) : null;
+}
+
+function sumValues(values: Array<number | null>) {
+  const filtered = values.filter((value): value is number => value !== null);
+  return filtered.length > 0 ? filtered.reduce((sum, value) => sum + value, 0) : null;
+}
+
+function formatLocationLabel(location: OpenMeteoLocation) {
+  return [
+    location.name,
+    location.admin4,
+    location.admin3,
+    location.admin2,
+    location.admin1,
+    location.country,
+  ]
+    .filter((value): value is string => Boolean(value))
+    .filter((value, index, values) => values.indexOf(value) === index)
+    .join(", ");
+}
+
+function formatTemp(value: number | null) {
+  if (value === null) {
+    return "정보 없음";
+  }
+
+  return `${Math.round(value)}°C`;
+}
+
+function formatMillimeters(value: number) {
+  return `${Math.round(value * 10) / 10}mm`;
+}
+
+function currentLocalDateString() {
+  const now = new Date();
+  const year = now.getFullYear();
+  const month = String(now.getMonth() + 1).padStart(2, "0");
+  const day = String(now.getDate()).padStart(2, "0");
+  return `${year}-${month}-${day}`;
+}
+
+function addUtcDays(dateString: string, days: number) {
+  const timestamp = toUtcDayTimestamp(dateString);
+
+  if (timestamp === null) {
+    throw new AppError("TRIP_INVALID", "날짜 계산에 실패했습니다.", 400);
+  }
+
+  return new Date(timestamp + days * 24 * 60 * 60 * 1000).toISOString().slice(0, 10);
+}
+
+function toUtcDayTimestamp(value: string) {
+  const match = /^(\d{4})-(\d{2})-(\d{2})$/u.exec(value);
+
+  if (!match) {
+    return null;
+  }
+
+  const [, yearText, monthText, dayText] = match;
+  const year = Number.parseInt(yearText, 10);
+  const month = Number.parseInt(monthText, 10);
+  const day = Number.parseInt(dayText, 10);
+  const timestamp = Date.UTC(year, month - 1, day);
+  const candidate = new Date(timestamp);
+
+  if (
+    candidate.getUTCFullYear() !== year ||
+    candidate.getUTCMonth() !== month - 1 ||
+    candidate.getUTCDate() !== day
+  ) {
+    return null;
+  }
+
+  return timestamp;
 }
 
 function extractDomain(url: string) {
   try {
     return new URL(url).hostname;
   } catch {
-    return url;
+    return undefined;
   }
 }
 
-function firstMeaningfulLine(output: string) {
-  const lines = output
-    .split("\n")
-    .map((line) => line.trim());
-
+function isAbortError(error: unknown) {
   return (
-    lines.find(isActionableCodexErrorLine) ??
-    lines.find(
-      (line) =>
-        line.length > 0 &&
-        !line.startsWith("WARNING:") &&
-        !line.startsWith("OpenAI Codex") &&
-        !line.startsWith("--------") &&
-        !line.startsWith("workdir:") &&
-        !line.startsWith("model:") &&
-        !line.startsWith("provider:") &&
-        !line.startsWith("approval:") &&
-        !line.startsWith("sandbox:") &&
-        !line.startsWith("reasoning ") &&
-        !line.startsWith("session id:") &&
-        !line.startsWith("user") &&
-        !line.startsWith("codex") &&
-        !line.startsWith("tokens used") &&
-        !line.startsWith("mcp:") &&
-        !line.startsWith("mcp startup:") &&
-        !line.startsWith("당신은 ") &&
-        !line.startsWith("중요 제약:") &&
-        !line.startsWith("## ") &&
-        !line.startsWith("- 지역:") &&
-        !line.startsWith("- 캠핑장명:") &&
-        !line.startsWith("- 시작일:") &&
-        !line.startsWith("- 종료일:") &&
-        !line.startsWith("- Google 검색 질의:") &&
-        !line.startsWith("- Google 검색 URL:"),
-    )
-  );
-}
-
-function isActionableCodexErrorLine(line: string) {
-  return (
-    line.startsWith("ERROR:") ||
-    line.startsWith("thread '") ||
-    line.includes("panicked at") ||
-    line.includes("invalid_request_error") ||
-    line.includes("not supported when using Codex with a ChatGPT account") ||
-    line.includes("Could not create otel exporter")
+    typeof error === "object" &&
+    error !== null &&
+    "name" in error &&
+    error.name === "AbortError"
   );
 }

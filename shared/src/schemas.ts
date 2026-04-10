@@ -218,7 +218,7 @@ export const tripWeatherResearchSchema = z.object({
   precipitation: z.string().min(1).optional(),
   search_result_excerpt: z.string().min(1).optional(),
   source: z.string().min(1).optional(),
-  google_search_url: z.string().url().optional(),
+  lookup_url: z.string().url().optional(),
   notes: z.array(z.string()).default([]),
   sources: z.array(durableEquipmentMetadataSourceSchema).default([]),
 });

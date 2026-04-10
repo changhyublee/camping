@@ -33,9 +33,7 @@ import {
 } from "./services/openai-client";
 import { isAppError, toApiError } from "./services/app-error";
 import {
-  CodexCliTripWeatherClient,
-  MissingTripWeatherClient,
-  OpenAITripWeatherClient,
+  OpenMeteoTripWeatherClient,
   type TripWeatherSearchClient,
 } from "./services/trip-weather-service";
 import {
@@ -275,30 +273,9 @@ function createUserLearningClient(
 }
 
 function createTripWeatherClient(
-  config: ReturnType<typeof resolveConfig>,
+  _config: ReturnType<typeof resolveConfig>,
 ): TripWeatherSearchClient {
-  if (config.aiBackend === "codex-cli") {
-    return new CodexCliTripWeatherClient({
-      binary: config.codexBin,
-      model: config.codexMetadataModel,
-      reasoningEffort: config.codexMetadataReasoningEffort,
-      projectRoot: config.projectRoot,
-      outputSchemaPath: path.join(
-        config.projectRoot,
-        "schemas",
-        "codex-trip-weather-output.schema.json",
-      ),
-    });
-  }
-
-  return config.openaiApiKey
-    ? new OpenAITripWeatherClient(
-        config.openaiApiKey,
-        config.openaiMetadataModel,
-      )
-    : new MissingTripWeatherClient(
-        "OPENAI_API_KEY 가 없어 날씨 수집을 실행할 수 없습니다.",
-      );
+  return new OpenMeteoTripWeatherClient();
 }
 
 function requestLogger(app: FastifyInstance, error: unknown) {
